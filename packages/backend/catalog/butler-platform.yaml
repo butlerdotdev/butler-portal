@@ -1,0 +1,101 @@
+---
+apiVersion: backstage.io/v1alpha1
+kind: Group
+metadata:
+  name: platform-team
+  title: Platform Engineering Team
+  description: Butler Labs platform engineering
+spec:
+  type: team
+  children: []
+
+---
+apiVersion: backstage.io/v1alpha1
+kind: Domain
+metadata:
+  name: infrastructure
+  title: Infrastructure
+  description: Core infrastructure and platform services
+spec:
+  owner: group:default/platform-team
+
+---
+apiVersion: backstage.io/v1alpha1
+kind: System
+metadata:
+  name: butler-kaas
+  title: Butler KaaS Platform
+  description: Kubernetes-as-a-Service platform for multi-tenant cluster management
+  tags:
+    - kubernetes
+    - platform
+    - infrastructure
+  links:
+    - url: https://github.com/butlerdotdev/butler
+      title: GitHub Repository
+      icon: github
+spec:
+  owner: group:default/platform-team
+  domain: infrastructure
+
+---
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: butler-management-cluster
+  title: Management Cluster
+  description: Central management cluster running Kamaji, Flux, and platform controllers
+  tags:
+    - kubernetes
+    - talos
+    - management
+spec:
+  type: service
+  lifecycle: production
+  owner: group:default/platform-team
+  system: butler-kaas
+
+---
+apiVersion: backstage.io/v1alpha1
+kind: Resource
+metadata:
+  name: cilium-cni
+  title: Cilium CNI
+  description: eBPF-based networking and security
+  tags:
+    - networking
+    - cni
+spec:
+  type: resource
+  owner: group:default/platform-team
+  system: butler-kaas
+
+---
+apiVersion: backstage.io/v1alpha1
+kind: Resource
+metadata:
+  name: linstor-storage
+  title: LINSTOR Storage
+  description: Distributed block storage via Piraeus/LINSTOR
+  tags:
+    - storage
+    - csi
+spec:
+  type: resource
+  owner: group:default/platform-team
+  system: butler-kaas
+
+---
+apiVersion: backstage.io/v1alpha1
+kind: Resource
+metadata:
+  name: flux-gitops
+  title: FluxCD
+  description: GitOps continuous delivery
+  tags:
+    - gitops
+    - flux
+spec:
+  type: resource
+  owner: group:default/platform-team
+  system: butler-kaas

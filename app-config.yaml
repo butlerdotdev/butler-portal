@@ -1,0 +1,66 @@
+app:
+  title: Butler Portal
+  baseUrl: http://localhost:3000
+
+organization:
+  name: Butler Labs
+
+backend:
+  baseUrl: http://localhost:7007
+  listen:
+    port: 7007
+  csp:
+    connect-src: ["'self'", 'http:', 'https:', 'ws:', 'wss:']
+  cors:
+    origin: http://localhost:3000
+    methods: [GET, HEAD, PATCH, POST, PUT, DELETE]
+    credentials: true
+  database:
+    client: better-sqlite3
+    connection: ':memory:'
+  auth:
+    dangerouslyDisableDefaultAuthPolicy: true
+
+auth:
+  environment: development
+  providers:
+    guest: {}
+    google:
+      development:
+        clientId: ${AUTH_GOOGLE_CLIENT_ID}
+        clientSecret: ${AUTH_GOOGLE_CLIENT_SECRET}
+
+catalog:
+  import:
+    entityFilename: catalog-info.yaml
+    pullRequestBranchName: backstage-integration
+  rules:
+    - allow: [Component, System, API, Resource, Location, Template, Group, User, Domain]
+  locations:
+    - type: file
+      target: ./catalog/butler-platform.yaml
+
+techdocs:
+  builder: 'local'
+  generator:
+    runIn: 'local'
+  publisher:
+    type: 'local'
+
+scaffolder:
+  defaultAuthor:
+    name: Butler Portal
+    email: butler-portal@butlerlabs.dev
+
+butler:
+  baseUrl: ${BUTLER_SERVER_URL:-http://localhost:8080}
+  auth:
+    username: ${BUTLER_SERVICE_ACCOUNT_USER:-admin}
+    password: ${BUTLER_SERVICE_ACCOUNT_PASSWORD:-admin}
+
+search:
+  collators:
+    catalog:
+      schedule:
+        frequency: { minutes: 10 }
+        timeout: { minutes: 5 }
