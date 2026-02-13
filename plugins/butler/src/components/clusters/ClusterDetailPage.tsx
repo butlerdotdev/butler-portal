@@ -36,6 +36,8 @@ import { AddonsTab } from './AddonsTab';
 import { GitOpsTab } from './GitOpsTab';
 import { CertificatesTab } from './CertificatesTab';
 import { TerminalTab } from './TerminalTab';
+import { WorkspacesTab } from './WorkspacesTab';
+import { ServicesTab } from './ServicesTab';
 
 const useStyles = makeStyles(theme => ({
   header: {
@@ -408,6 +410,8 @@ export const ClusterDetailPage = () => {
         <Tab label="Certificates" />
         <Tab label="Events" />
         <Tab label="Terminal" />
+        <Tab label="Workspaces" />
+        <Tab label="Services" />
       </Tabs>
 
       <div className={classes.tabContent}>
@@ -634,6 +638,20 @@ export const ClusterDetailPage = () => {
         <TabPanel value={activeTab} index={6}>
           {namespace && name && (
             <TerminalTab clusterNamespace={namespace} clusterName={name} />
+          )}
+        </TabPanel>
+
+        {/* Workspaces Tab */}
+        <TabPanel value={activeTab} index={7}>
+          {namespace && name && (
+            <WorkspacesTab clusterNamespace={namespace} clusterName={name} />
+          )}
+        </TabPanel>
+
+        {/* Services Tab */}
+        <TabPanel value={activeTab} index={8}>
+          {namespace && name && (
+            <ServicesTab clusterNamespace={namespace} clusterName={name} />
           )}
         </TabPanel>
       </div>

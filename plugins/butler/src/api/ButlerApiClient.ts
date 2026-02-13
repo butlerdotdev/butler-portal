@@ -61,6 +61,21 @@ import type {
   CreateIdentityProviderRequest,
   TestDiscoveryResponse,
 } from './types/identity-providers';
+import type {
+  Workspace,
+  WorkspaceListResponse,
+  CreateWorkspaceRequest,
+  WorkspaceImageListResponse,
+  WorkspaceTemplate,
+  WorkspaceTemplateListResponse,
+  CreateWorkspaceTemplateRequest,
+  ClusterServiceListResponse,
+  MirrordConfig,
+  WorkspaceMetrics,
+  SSHKeyEntry,
+  SSHKeyListResponse,
+  AddSSHKeyRequest,
+} from './types/workspaces';
 
 export class ButlerApiClient implements ButlerApi {
   private readonly discoveryApi: DiscoveryApi;
@@ -744,5 +759,152 @@ export class ButlerApiClient implements ButlerApi {
     role: string,
   ): Promise<void> {
     return this.patch(`/admin/teams/${teamName}/groups/${encodeURIComponent(groupName)}`, { role });
+  }
+
+  // ---- Workspaces ----
+
+  async listWorkspaces(
+    namespace: string,
+    clusterName: string,
+  ): Promise<WorkspaceListResponse> {
+    return this.get<WorkspaceListResponse>(
+      `/clusters/${namespace}/${clusterName}/workspaces`,
+    );
+  }
+
+  async getWorkspace(
+    namespace: string,
+    clusterName: string,
+    workspaceName: string,
+  ): Promise<Workspace> {
+    return this.get<Workspace>(
+      `/clusters/${namespace}/${clusterName}/workspaces/${workspaceName}`,
+    );
+  }
+
+  async createWorkspace(
+    namespace: string,
+    clusterName: string,
+    data: CreateWorkspaceRequest,
+  ): Promise<Workspace> {
+    return this.post<Workspace>(
+      `/clusters/${namespace}/${clusterName}/workspaces`,
+      data,
+    );
+  }
+
+  async deleteWorkspace(
+    namespace: string,
+    clusterName: string,
+    workspaceName: string,
+  ): Promise<void> {
+    return this.del(
+      `/clusters/${namespace}/${clusterName}/workspaces/${workspaceName}`,
+    );
+  }
+
+  async connectWorkspace(
+    namespace: string,
+    clusterName: string,
+    workspaceName: string,
+  ): Promise<Workspace> {
+    return this.post<Workspace>(
+      `/clusters/${namespace}/${clusterName}/workspaces/${workspaceName}/connect`,
+      {},
+    );
+  }
+
+  async disconnectWorkspace(
+    namespace: string,
+    clusterName: string,
+    workspaceName: string,
+  ): Promise<Workspace> {
+    return this.post<Workspace>(
+      `/clusters/${namespace}/${clusterName}/workspaces/${workspaceName}/disconnect`,
+      {},
+    );
+  }
+
+  async startWorkspace(
+    namespace: string,
+    clusterName: string,
+    workspaceName: string,
+  ): Promise<Workspace> {
+    return this.post<Workspace>(
+      `/clusters/${namespace}/${clusterName}/workspaces/${workspaceName}/start`,
+      {},
+    );
+  }
+
+  async getWorkspaceMetrics(
+    namespace: string,
+    clusterName: string,
+    workspaceName: string,
+  ): Promise<WorkspaceMetrics> {
+    return this.get<WorkspaceMetrics>(
+      `/clusters/${namespace}/${clusterName}/workspaces/${workspaceName}/metrics`,
+    );
+  }
+
+  // ---- Cluster Services ----
+
+  async listClusterServices(
+    namespace: string,
+    clusterName: string,
+  ): Promise<ClusterServiceListResponse> {
+    return this.get<ClusterServiceListResponse>(
+      `/clusters/${namespace}/${clusterName}/services`,
+    );
+  }
+
+  async generateMirrordConfig(
+    namespace: string,
+    clusterName: string,
+    serviceName: string,
+    serviceNamespace: string,
+  ): Promise<MirrordConfig> {
+    return this.post<MirrordConfig>(
+      `/clusters/${namespace}/${clusterName}/mirrord-config`,
+      { serviceName, serviceNamespace },
+    );
+  }
+
+  // ---- Workspace Images ----
+
+  async listWorkspaceImages(): Promise<WorkspaceImageListResponse> {
+    return this.get<WorkspaceImageListResponse>('/workspace-images');
+  }
+
+  // ---- Workspace Templates ----
+
+  async listWorkspaceTemplates(): Promise<WorkspaceTemplateListResponse> {
+    return this.get<WorkspaceTemplateListResponse>('/workspace-templates');
+  }
+
+  async createWorkspaceTemplate(
+    data: CreateWorkspaceTemplateRequest,
+  ): Promise<WorkspaceTemplate> {
+    return this.post<WorkspaceTemplate>('/workspace-templates', data);
+  }
+
+  async deleteWorkspaceTemplate(
+    namespace: string,
+    name: string,
+  ): Promise<void> {
+    return this.del(`/workspace-templates/${namespace}/${name}`);
+  }
+
+  // ---- SSH Keys ----
+
+  async listSSHKeys(): Promise<SSHKeyListResponse> {
+    return this.get<SSHKeyListResponse>('/auth/ssh-keys');
+  }
+
+  async addSSHKey(data: AddSSHKeyRequest): Promise<SSHKeyEntry> {
+    return this.post<SSHKeyEntry>('/auth/ssh-keys', data);
+  }
+
+  async removeSSHKey(fingerprint: string): Promise<void> {
+    return this.del(`/auth/ssh-keys/${encodeURIComponent(fingerprint)}`);
   }
 }
