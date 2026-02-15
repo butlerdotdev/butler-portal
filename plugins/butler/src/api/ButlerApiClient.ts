@@ -267,6 +267,17 @@ export class ButlerApiClient implements ButlerApi {
     );
   }
 
+  async toggleClusterWorkspaces(
+    namespace: string,
+    name: string,
+    enabled: boolean,
+  ): Promise<Cluster> {
+    return this.post<Cluster>(
+      `/clusters/${namespace}/${name}/settings/workspaces`,
+      { enabled },
+    );
+  }
+
   // ---- Management ----
 
   async getManagement(): Promise<ManagementCluster> {
@@ -846,6 +857,17 @@ export class ButlerApiClient implements ButlerApi {
     );
   }
 
+  async syncWorkspaceSSHKeys(
+    namespace: string,
+    clusterName: string,
+    workspaceName: string,
+  ): Promise<{ synced: boolean; keys: number; message: string }> {
+    return this.post<{ synced: boolean; keys: number; message: string }>(
+      `/clusters/${namespace}/${clusterName}/workspaces/${workspaceName}/sync-ssh-keys`,
+      {},
+    );
+  }
+
   // ---- Cluster Services ----
 
   async listClusterServices(
@@ -865,7 +887,7 @@ export class ButlerApiClient implements ButlerApi {
   ): Promise<MirrordConfig> {
     return this.post<MirrordConfig>(
       `/clusters/${namespace}/${clusterName}/mirrord-config`,
-      { serviceName, serviceNamespace },
+      { targetService: serviceName, targetNamespace: serviceNamespace },
     );
   }
 
@@ -885,6 +907,17 @@ export class ButlerApiClient implements ButlerApi {
     data: CreateWorkspaceTemplateRequest,
   ): Promise<WorkspaceTemplate> {
     return this.post<WorkspaceTemplate>('/workspace-templates', data);
+  }
+
+  async updateWorkspaceTemplate(
+    namespace: string,
+    name: string,
+    data: Partial<CreateWorkspaceTemplateRequest>,
+  ): Promise<WorkspaceTemplate> {
+    return this.post<WorkspaceTemplate>(
+      `/workspace-templates/${namespace}/${name}`,
+      data,
+    );
   }
 
   async deleteWorkspaceTemplate(

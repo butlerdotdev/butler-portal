@@ -18,6 +18,7 @@ export interface Workspace {
     owner: string;
     image: string;
     repository?: WorkspaceRepository;
+    repositories?: WorkspaceRepository[];
     envFrom?: WorkspaceEnvSource[];
     resources?: WorkspaceResources;
     dotfiles?: DotfilesSpec;
@@ -25,6 +26,7 @@ export interface Workspace {
     autoStopAfter?: string;
     storageSize?: string;
     sshPublicKeys?: string[];
+    editorConfig?: EditorConfig;
   };
   status?: {
     phase?: WorkspacePhase;
@@ -58,6 +60,7 @@ export interface WorkspaceCondition {
 
 export interface WorkspaceRepository {
   url: string;
+  name?: string;
   branch?: string;
   secretRef?: {
     name: string;
@@ -79,8 +82,7 @@ export interface WorkspaceResources {
 }
 
 export interface DotfilesSpec {
-  repository: string;
-  branch?: string;
+  url: string;
   installCommand?: string;
 }
 
@@ -92,6 +94,7 @@ export interface CreateWorkspaceRequest {
   name: string;
   image: string;
   repository?: WorkspaceRepository;
+  repositories?: WorkspaceRepository[];
   envFrom?: WorkspaceEnvSource[];
   resources?: WorkspaceResources;
   dotfiles?: DotfilesSpec;
@@ -100,6 +103,13 @@ export interface CreateWorkspaceRequest {
   storageSize?: string;
   sshPublicKeys?: string[];
   templateName?: string;
+  editorConfig?: EditorConfig;
+}
+
+export interface EditorConfig {
+  neovimConfigRepo?: string;
+  neovimInitLua?: string;
+  neovimConfigArchive?: string;
 }
 
 export interface WorkspaceImage {
@@ -131,6 +141,7 @@ export interface WorkspaceTemplate {
     template: {
       image: string;
       repository?: WorkspaceRepository;
+      repositories?: WorkspaceRepository[];
       envFrom?: WorkspaceEnvSource[];
       dotfiles?: DotfilesSpec;
       resources?: WorkspaceResources;
@@ -153,6 +164,7 @@ export interface CreateWorkspaceTemplateRequest {
   template: {
     image: string;
     repository?: WorkspaceRepository;
+    repositories?: WorkspaceRepository[];
     envFrom?: WorkspaceEnvSource[];
     dotfiles?: DotfilesSpec;
     resources?: WorkspaceResources;
@@ -202,7 +214,7 @@ export interface SSHKeyEntry {
 }
 
 export interface SSHKeyListResponse {
-  keys: SSHKeyEntry[];
+  sshKeys: SSHKeyEntry[];
 }
 
 export interface AddSSHKeyRequest {

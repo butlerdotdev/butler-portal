@@ -9,6 +9,7 @@ import StorageIcon from '@material-ui/icons/Storage';
 import LogoFull from './LogoFull';
 import LogoIcon from './LogoIcon';
 import ButlerIcon from './ButlerIcon';
+import WorkspacesIcon from './WorkspacesIcon';
 import {
 	Sidebar,
 	sidebarConfig,
@@ -86,6 +87,7 @@ export const Root = ({ children }: PropsWithChildren<{}>) => (
 				<SidebarDivider />
 				<SidebarScrollWrapper>
 					<SidebarItem icon={ButlerIcon} to="butler" text="Butler" />
+					<SidebarItem icon={WorkspacesIcon} to="workspaces" text="Workspaces" />
 				</SidebarScrollWrapper>
 			</SidebarGroup>
 

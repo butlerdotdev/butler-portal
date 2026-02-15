@@ -31,6 +31,12 @@ export interface Cluster {
         end: string;
       };
     };
+    workspaces?: {
+      enabled?: boolean;
+      defaultImage?: string;
+      maxWorkspaces?: number;
+      autoDeleteAfter?: string;
+    };
     infrastructureOverride?: {
       harvester?: {
         namespace?: string;
@@ -108,6 +114,9 @@ export interface CreateClusterRequest {
   proxmoxNode?: string;
   proxmoxStorage?: string;
   proxmoxTemplateID?: number;
+
+  // Workspaces
+  workspacesEnabled?: boolean;
 }
 
 export interface ScaleRequest {

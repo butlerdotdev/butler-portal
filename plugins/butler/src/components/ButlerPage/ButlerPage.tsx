@@ -91,12 +91,6 @@ const CreateIdentityProviderPage = React.lazy(() =>
     default: m.CreateIdentityProviderPage,
   })),
 );
-const WorkspacesPage = React.lazy(() =>
-  import('../workspaces/WorkspacesPage').then(m => ({
-    default: m.WorkspacesPage,
-  })),
-);
-
 const useStyles = makeStyles(() => ({
   adminBanner: {
     display: 'flex',
@@ -165,7 +159,6 @@ const ButlerContent = () => {
             path="/t/:team/clusters/:namespace/:name"
             element={<ClusterDetailPage />}
           />
-          <Route path="/t/:team/workspaces" element={<WorkspacesPage />} />
           <Route path="/t/:team/members" element={<TeamMembersPage />} />
           <Route path="/t/:team/settings" element={<TeamSettingsPage />} />
           <Route path="/admin" element={<AdminDashboard />} />

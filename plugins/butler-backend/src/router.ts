@@ -211,15 +211,23 @@ export async function createRouter(options: {
         }
       }
 
+      // Construct the canonical email. This MUST match what we send as
+      // X-Butler-User-Email in proxy requests so workspace ownership,
+      // SSH key resolution, and dashboard filtering all use the same email.
+      const canonicalEmail = userLocalPart.includes('@')
+        ? userLocalPart
+        : `${userLocalPart}@butlerlabs.dev`;
+
       logger.info('Resolved Backstage user identity', {
         user: userLocalPart,
+        email: canonicalEmail,
         isPlatformAdmin,
         teamCount: userTeams.length,
       });
 
       res.json({
         authenticated: true,
-        email: matchedUser?.email || `${userLocalPart}@butlerlabs.dev`,
+        email: canonicalEmail,
         displayName: matchedUser?.name || matchedUser?.displayName || userLocalPart,
         isPlatformAdmin,
         teams: userTeams,
@@ -249,10 +257,17 @@ export async function createRouter(options: {
         Authorization: `Bearer ${token}`,
       };
 
-      // Extract Backstage user email and forward it
+      // Extract Backstage user email and forward it.
+      // The sign-in resolver creates entity refs from the email local part
+      // (e.g., abagan@butlerlabs.dev → user:default/abagan), so we may
+      // only get the local part. Reconstruct the full email for the server
+      // to use as the effective user identity.
       const userEmail = await resolveUserEmail(req);
       if (userEmail) {
-        forwardHeaders['X-Butler-User-Email'] = userEmail;
+        const fullEmail = userEmail.includes('@')
+          ? userEmail
+          : `${userEmail}@butlerlabs.dev`;
+        forwardHeaders['X-Butler-User-Email'] = fullEmail;
       }
 
       // Forward content-type if present
@@ -390,8 +405,31 @@ async function handleWsRelay(
       headers: { Authorization: `Bearer ${token}` },
     });
 
+    let alive = true;
+    let pingInterval: ReturnType<typeof setInterval> | null = null;
+
     serverWs.on('open', () => {
       logger.debug('WebSocket relay connected to butler-server');
+
+      // Send pings to the browser every 20s. The browser auto-responds
+      // with pongs (WebSocket protocol). This keeps the browser→relay
+      // connection alive through proxies and prevents idle timeouts.
+      pingInterval = setInterval(() => {
+        if (clientWs.readyState === WebSocket.OPEN) {
+          if (!alive) {
+            logger.debug('Client WebSocket ping timeout, closing');
+            clientWs.terminate();
+            return;
+          }
+          alive = false;
+          clientWs.ping();
+        }
+      }, 20_000);
+    });
+
+    // Track browser pong responses
+    clientWs.on('pong', () => {
+      alive = true;
     });
 
     // Relay: butler-server → client
@@ -411,11 +449,19 @@ async function handleWsRelay(
       }
     });
 
+    const cleanup = () => {
+      if (pingInterval) {
+        clearInterval(pingInterval);
+        pingInterval = null;
+      }
+    };
+
     // Handle butler-server close
     // Close codes 1004-1006, 1015 are reserved and cannot be sent in a
     // close frame — only forward codes that are valid for the ws library.
     serverWs.on('close', (code, reason) => {
       logger.debug('Butler-server WebSocket closed', { code });
+      cleanup();
       if (clientWs.readyState === WebSocket.OPEN) {
         const safeCode =
           code >= 1000 && code <= 4999 && ![1004, 1005, 1006, 1015].includes(code)
@@ -428,6 +474,7 @@ async function handleWsRelay(
     // Handle client close
     clientWs.on('close', (code, reason) => {
       logger.debug('Client WebSocket closed', { code });
+      cleanup();
       if (serverWs.readyState === WebSocket.OPEN) {
         const safeCode =
           code >= 1000 && code <= 4999 && ![1004, 1005, 1006, 1015].includes(code)
@@ -440,6 +487,7 @@ async function handleWsRelay(
     // Handle butler-server error
     serverWs.on('error', err => {
       logger.error('Butler-server WebSocket error', { error: String(err) });
+      cleanup();
       if (clientWs.readyState === WebSocket.OPEN) {
         clientWs.close(1011, 'Server connection error');
       }
@@ -448,6 +496,7 @@ async function handleWsRelay(
     // Handle client error
     clientWs.on('error', err => {
       logger.error('Client WebSocket error', { error: String(err) });
+      cleanup();
       if (serverWs.readyState === WebSocket.OPEN) {
         serverWs.close(1011, 'Client connection error');
       }

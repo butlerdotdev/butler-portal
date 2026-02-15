@@ -124,6 +124,11 @@ export interface ButlerApi {
     namespace: string,
     name: string,
   ): Promise<{ events: ClusterEvent[] }>;
+  toggleClusterWorkspaces(
+    namespace: string,
+    name: string,
+    enabled: boolean,
+  ): Promise<Cluster>;
 
   // Management
   getManagement(): Promise<ManagementCluster>;
@@ -369,6 +374,11 @@ export interface ButlerApi {
     clusterName: string,
     workspaceName: string,
   ): Promise<WorkspaceMetrics>;
+  syncWorkspaceSSHKeys(
+    namespace: string,
+    clusterName: string,
+    workspaceName: string,
+  ): Promise<{ synced: boolean; keys: number; message: string }>;
 
   // Cluster Services
   listClusterServices(
@@ -389,6 +399,11 @@ export interface ButlerApi {
   listWorkspaceTemplates(): Promise<WorkspaceTemplateListResponse>;
   createWorkspaceTemplate(
     data: CreateWorkspaceTemplateRequest,
+  ): Promise<WorkspaceTemplate>;
+  updateWorkspaceTemplate(
+    namespace: string,
+    name: string,
+    data: Partial<CreateWorkspaceTemplateRequest>,
   ): Promise<WorkspaceTemplate>;
   deleteWorkspaceTemplate(
     namespace: string,
