@@ -60,6 +60,21 @@ import type {
   CreateIdentityProviderRequest,
   TestDiscoveryResponse,
 } from './types/identity-providers';
+import type {
+  Workspace,
+  WorkspaceListResponse,
+  CreateWorkspaceRequest,
+  WorkspaceImageListResponse,
+  WorkspaceTemplate,
+  WorkspaceTemplateListResponse,
+  CreateWorkspaceTemplateRequest,
+  ClusterServiceListResponse,
+  MirrordConfig,
+  WorkspaceMetrics,
+  SSHKeyEntry,
+  SSHKeyListResponse,
+  AddSSHKeyRequest,
+} from './types/workspaces';
 
 export interface ButlerApi {
   // Team context
@@ -109,6 +124,11 @@ export interface ButlerApi {
     namespace: string,
     name: string,
   ): Promise<{ events: ClusterEvent[] }>;
+  toggleClusterWorkspaces(
+    namespace: string,
+    name: string,
+    enabled: boolean,
+  ): Promise<Cluster>;
 
   // Management
   getManagement(): Promise<ManagementCluster>;
@@ -313,6 +333,87 @@ export interface ButlerApi {
     groupName: string,
     role: string,
   ): Promise<void>;
+
+  // Workspaces
+  listWorkspaces(
+    namespace: string,
+    clusterName: string,
+  ): Promise<WorkspaceListResponse>;
+  getWorkspace(
+    namespace: string,
+    clusterName: string,
+    workspaceName: string,
+  ): Promise<Workspace>;
+  createWorkspace(
+    namespace: string,
+    clusterName: string,
+    data: CreateWorkspaceRequest,
+  ): Promise<Workspace>;
+  deleteWorkspace(
+    namespace: string,
+    clusterName: string,
+    workspaceName: string,
+  ): Promise<void>;
+  connectWorkspace(
+    namespace: string,
+    clusterName: string,
+    workspaceName: string,
+  ): Promise<Workspace>;
+  disconnectWorkspace(
+    namespace: string,
+    clusterName: string,
+    workspaceName: string,
+  ): Promise<Workspace>;
+  startWorkspace(
+    namespace: string,
+    clusterName: string,
+    workspaceName: string,
+  ): Promise<Workspace>;
+  getWorkspaceMetrics(
+    namespace: string,
+    clusterName: string,
+    workspaceName: string,
+  ): Promise<WorkspaceMetrics>;
+  syncWorkspaceSSHKeys(
+    namespace: string,
+    clusterName: string,
+    workspaceName: string,
+  ): Promise<{ synced: boolean; keys: number; message: string }>;
+
+  // Cluster Services
+  listClusterServices(
+    namespace: string,
+    clusterName: string,
+  ): Promise<ClusterServiceListResponse>;
+  generateMirrordConfig(
+    namespace: string,
+    clusterName: string,
+    serviceName: string,
+    serviceNamespace: string,
+  ): Promise<MirrordConfig>;
+
+  // Workspace Images
+  listWorkspaceImages(): Promise<WorkspaceImageListResponse>;
+
+  // Workspace Templates
+  listWorkspaceTemplates(): Promise<WorkspaceTemplateListResponse>;
+  createWorkspaceTemplate(
+    data: CreateWorkspaceTemplateRequest,
+  ): Promise<WorkspaceTemplate>;
+  updateWorkspaceTemplate(
+    namespace: string,
+    name: string,
+    data: Partial<CreateWorkspaceTemplateRequest>,
+  ): Promise<WorkspaceTemplate>;
+  deleteWorkspaceTemplate(
+    namespace: string,
+    name: string,
+  ): Promise<void>;
+
+  // SSH Keys
+  listSSHKeys(): Promise<SSHKeyListResponse>;
+  addSSHKey(data: AddSSHKeyRequest): Promise<SSHKeyEntry>;
+  removeSSHKey(fingerprint: string): Promise<void>;
 }
 
 export const butlerApiRef = createApiRef<ButlerApi>({

@@ -91,7 +91,6 @@ const CreateIdentityProviderPage = React.lazy(() =>
     default: m.CreateIdentityProviderPage,
   })),
 );
-
 const useStyles = makeStyles(() => ({
   adminBanner: {
     display: 'flex',

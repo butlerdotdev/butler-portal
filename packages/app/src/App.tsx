@@ -42,6 +42,7 @@ import { UnifiedThemeProvider } from '@backstage/theme';
 import { butlerPortalTheme } from './themes/butlerPortalTheme';
 import { HomePage } from './components/home';
 import { ButlerPage } from '@internal/plugin-butler';
+import { WorkspacesPluginPage } from '@internal/plugin-workspaces';
 
 const app = createApp({
 	apis,
@@ -129,6 +130,7 @@ const routes = (
 		<Route path="/catalog-graph" element={<CatalogGraphPage />} />
 		<Route path="/notifications" element={<NotificationsPage />} />
 		<Route path="/butler/*" element={<ButlerPage />} />
+		<Route path="/workspaces/*" element={<WorkspacesPluginPage />} />
 	</FlatRoutes>
 );
 

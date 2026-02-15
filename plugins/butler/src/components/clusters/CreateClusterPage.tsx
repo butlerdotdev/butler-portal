@@ -18,6 +18,8 @@ import {
   Card,
   CardContent,
   Divider,
+  Switch,
+  FormControlLabel,
 } from '@material-ui/core';
 import { makeStyles } from '@material-ui/core/styles';
 import ArrowBackIcon from '@material-ui/icons/ArrowBack';
@@ -58,6 +60,9 @@ interface CreateClusterFormState {
   proxmoxNode: string;
   proxmoxStorage: string;
   proxmoxTemplateID: string;
+
+  // Workspaces
+  workspacesEnabled: boolean;
 }
 
 const KUBERNETES_VERSIONS = [
@@ -151,6 +156,7 @@ const initialFormState: CreateClusterFormState = {
   proxmoxNode: '',
   proxmoxStorage: 'local-lvm',
   proxmoxTemplateID: '',
+  workspacesEnabled: true,
 };
 
 export const CreateClusterPage = () => {
@@ -352,6 +358,7 @@ export const CreateClusterPage = () => {
         loadBalancerStart: form.loadBalancerStart,
         loadBalancerEnd: form.loadBalancerEnd,
         teamRef: team || undefined,
+        workspacesEnabled: form.workspacesEnabled || undefined,
         // Harvester
         ...(providerType === 'harvester' && {
           harvesterNamespace: form.harvesterNamespace,
@@ -856,6 +863,32 @@ export const CreateClusterPage = () => {
           }
         />
       </Grid>
+      <Grid item xs={12}>
+        <Box mt={2}>
+          <Typography variant="subtitle1" gutterBottom>
+            Features
+          </Typography>
+          <FormControlLabel
+            control={
+              <Switch
+                checked={form.workspacesEnabled}
+                onChange={e =>
+                  setForm(prev => ({
+                    ...prev,
+                    workspacesEnabled: e.target.checked,
+                  }))
+                }
+                color="primary"
+              />
+            }
+            label="Enable Cloud Workspaces"
+          />
+          <Typography variant="body2" color="textSecondary">
+            Allow developers to create cloud development environments on this
+            cluster.
+          </Typography>
+        </Box>
+      </Grid>
     </Grid>
   );
 
@@ -892,6 +925,15 @@ export const CreateClusterPage = () => {
           {
             label: 'LB IP Range',
             value: `${form.loadBalancerStart} - ${form.loadBalancerEnd}`,
+          },
+        ],
+      },
+      {
+        title: 'Features',
+        rows: [
+          {
+            label: 'Cloud Workspaces',
+            value: form.workspacesEnabled ? 'Enabled' : 'Disabled',
           },
         ],
       },

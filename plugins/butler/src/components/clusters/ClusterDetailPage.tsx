@@ -29,6 +29,7 @@ import GetAppIcon from '@material-ui/icons/GetApp';
 import DeleteIcon from '@material-ui/icons/Delete';
 import ArrowBackIcon from '@material-ui/icons/ArrowBack';
 import RefreshIcon from '@material-ui/icons/Refresh';
+import Switch from '@material-ui/core/Switch';
 import { butlerApiRef } from '../../api/ButlerApi';
 import type { Cluster, Node, ClusterEvent } from '../../api/types/clusters';
 import { StatusBadge } from '../StatusBadge/StatusBadge';
@@ -145,6 +146,7 @@ export const ClusterDetailPage = () => {
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [downloading, setDownloading] = useState(false);
+  const [togglingWorkspaces, setTogglingWorkspaces] = useState(false);
 
   // Nodes state
   const [nodes, setNodes] = useState<Node[]>([]);
@@ -244,6 +246,23 @@ export const ClusterDetailPage = () => {
       // Error handled silently
     } finally {
       setDeleting(false);
+    }
+  };
+
+  const handleToggleWorkspaces = async (enabled: boolean) => {
+    if (!namespace || !name) return;
+    setTogglingWorkspaces(true);
+    try {
+      const updated = await api.toggleClusterWorkspaces(
+        namespace,
+        name,
+        enabled,
+      );
+      setCluster(updated);
+    } catch {
+      // Silent
+    } finally {
+      setTogglingWorkspaces(false);
     }
   };
 
@@ -486,6 +505,20 @@ export const ClusterDetailPage = () => {
                       </Typography>
                     </div>
                   )}
+                  <div className={classes.specRow}>
+                    <Typography className={classes.specLabel}>
+                      Cloud Workspaces
+                    </Typography>
+                    <Switch
+                      checked={cluster.spec.workspaces?.enabled ?? false}
+                      onChange={e =>
+                        handleToggleWorkspaces(e.target.checked)
+                      }
+                      color="primary"
+                      size="small"
+                      disabled={togglingWorkspaces}
+                    />
+                  </div>
                 </div>
               </InfoCard>
             </Grid>
@@ -636,6 +669,7 @@ export const ClusterDetailPage = () => {
             <TerminalTab clusterNamespace={namespace} clusterName={name} />
           )}
         </TabPanel>
+
       </div>
 
       {/* Delete Confirmation Dialog */}

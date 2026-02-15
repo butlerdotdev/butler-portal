@@ -43,6 +43,7 @@
     "@backstage/theme": "^0.7.0",
     "@backstage/ui": "^0.9.0",
     "@internal/plugin-butler": "link:../../plugins/butler",
+    "@internal/plugin-workspaces": "link:../../plugins/workspaces",
     "@material-ui/core": "^4.12.2",
     "@material-ui/icons": "^4.9.1",
     "react": "^18.0.2",
