@@ -65,6 +65,14 @@ import type {
   VariableSetBinding,
   ResolvedVariable,
 } from './types/variableSets';
+import type {
+  PolicyTemplate,
+  PolicyBinding,
+  CreatePolicyTemplateRequest,
+  CreatePolicyBindingRequest,
+  EffectivePolicy,
+  PolicyEvaluation,
+} from './types/policies';
 
 export class RegistryApiClient implements RegistryApi {
   private readonly discoveryApi: DiscoveryApi;
@@ -891,6 +899,86 @@ export class RegistryApiClient implements RegistryApi {
   ): Promise<{ variables: ResolvedVariable[] }> {
     return this.get(
       `/v1/environments/${envId}/modules/${moduleId}/resolved-vars`,
+    );
+  }
+
+  // ── Policies ──
+
+  async listPolicies(): Promise<{ policies: PolicyTemplate[] }> {
+    return this.get('/v1/policies');
+  }
+
+  async createPolicy(
+    data: CreatePolicyTemplateRequest,
+  ): Promise<PolicyTemplate> {
+    return this.post('/v1/policies', data);
+  }
+
+  async getPolicy(id: string): Promise<PolicyTemplate> {
+    return this.get(`/v1/policies/${encodeURIComponent(id)}`);
+  }
+
+  async updatePolicy(
+    id: string,
+    data: Partial<CreatePolicyTemplateRequest>,
+  ): Promise<PolicyTemplate> {
+    return this.request(`/v1/policies/${encodeURIComponent(id)}`, {
+      method: 'PUT',
+      body: data,
+    });
+  }
+
+  async deletePolicy(id: string): Promise<void> {
+    return this.del(`/v1/policies/${encodeURIComponent(id)}`);
+  }
+
+  async listPolicyBindings(
+    policyId: string,
+  ): Promise<{ bindings: PolicyBinding[] }> {
+    return this.get(
+      `/v1/policies/${encodeURIComponent(policyId)}/bindings`,
+    );
+  }
+
+  async createPolicyBinding(
+    policyId: string,
+    data: CreatePolicyBindingRequest,
+  ): Promise<PolicyBinding> {
+    return this.post(
+      `/v1/policies/${encodeURIComponent(policyId)}/bindings`,
+      data,
+    );
+  }
+
+  async deletePolicyBinding(
+    policyId: string,
+    bindingId: string,
+  ): Promise<void> {
+    return this.del(
+      `/v1/policies/${encodeURIComponent(policyId)}/bindings/${encodeURIComponent(bindingId)}`,
+    );
+  }
+
+  async getEffectivePolicy(
+    namespace: string,
+    name: string,
+  ): Promise<EffectivePolicy> {
+    return this.get(
+      `/v1/artifacts/${encodeURIComponent(namespace)}/${encodeURIComponent(name)}/effective-policy`,
+    );
+  }
+
+  async listPolicyEvaluations(
+    namespace: string,
+    name: string,
+    options?: { limit?: number; outcome?: string },
+  ): Promise<{ evaluations: PolicyEvaluation[] }> {
+    const params = new URLSearchParams();
+    if (options?.limit) params.set('limit', String(options.limit));
+    if (options?.outcome) params.set('outcome', options.outcome);
+    const qs = params.toString();
+    return this.get(
+      `/v1/artifacts/${encodeURIComponent(namespace)}/${encodeURIComponent(name)}/evaluations${qs ? `?${qs}` : ''}`,
     );
   }
 }

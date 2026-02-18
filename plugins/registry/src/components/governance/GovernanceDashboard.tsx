@@ -27,6 +27,8 @@ import {
 import CheckIcon from '@material-ui/icons/Check';
 import CloseIcon from '@material-ui/icons/Close';
 import WarningIcon from '@material-ui/icons/Warning';
+import PolicyIcon from '@material-ui/icons/Policy';
+import { useNavigate } from 'react-router-dom';
 import { Progress, EmptyState } from '@backstage/core-components';
 import { useRegistryApi } from '../../hooks/useRegistryApi';
 import { useRegistryTeam } from '../../hooks/useRegistryTeam';
@@ -70,8 +72,10 @@ const useStyles = makeStyles(theme => ({
 export function GovernanceDashboard() {
   const classes = useStyles();
   const api = useRegistryApi();
+  const navigate = useNavigate();
   const { activeRole } = useRegistryTeam();
   const canApprove = hasMinRole(activeRole, 'operator');
+  const canManagePolicies = hasMinRole(activeRole, 'admin');
 
   const [summary, setSummary] = useState<GovernanceSummary | null>(null);
   const [approvals, setApprovals] = useState<PendingApproval[]>([]);
@@ -175,6 +179,18 @@ export function GovernanceDashboard() {
 
   return (
     <>
+      {canManagePolicies && (
+        <Box display="flex" justifyContent="flex-end" mb={2}>
+          <Button
+            variant="outlined"
+            color="primary"
+            startIcon={<PolicyIcon />}
+            onClick={() => navigate('governance/policies')}
+          >
+            Manage Policies
+          </Button>
+        </Box>
+      )}
       {summary && (
         <Grid container spacing={2}>
           <Grid item xs={6} sm={3}>

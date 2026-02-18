@@ -109,3 +109,16 @@ export type {
   VariableSetBinding,
   ResolvedVariable,
 } from './variableSets';
+
+export type {
+  EnforcementLevel,
+  PolicyScopeType,
+  PolicyTemplate,
+  PolicyBinding,
+  CreatePolicyTemplateRequest,
+  CreatePolicyBindingRequest,
+  PolicyRuleResult,
+  PolicySource,
+  EffectivePolicy,
+  PolicyEvaluation,
+} from './policies';

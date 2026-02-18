@@ -64,6 +64,14 @@ import type {
   VariableSetBinding,
   ResolvedVariable,
 } from './types/variableSets';
+import type {
+  PolicyTemplate,
+  PolicyBinding,
+  CreatePolicyTemplateRequest,
+  CreatePolicyBindingRequest,
+  EffectivePolicy,
+  PolicyEvaluation,
+} from './types/policies';
 
 export interface RegistryApi {
   setTeamContext(team: string | null): void;
@@ -252,6 +260,18 @@ export interface RegistryApi {
 
   // Resolved Variables
   getResolvedVariables(envId: string, moduleId: string): Promise<{ variables: ResolvedVariable[] }>;
+
+  // Policies
+  listPolicies(): Promise<{ policies: PolicyTemplate[] }>;
+  createPolicy(data: CreatePolicyTemplateRequest): Promise<PolicyTemplate>;
+  getPolicy(id: string): Promise<PolicyTemplate>;
+  updatePolicy(id: string, data: Partial<CreatePolicyTemplateRequest>): Promise<PolicyTemplate>;
+  deletePolicy(id: string): Promise<void>;
+  listPolicyBindings(policyId: string): Promise<{ bindings: PolicyBinding[] }>;
+  createPolicyBinding(policyId: string, data: CreatePolicyBindingRequest): Promise<PolicyBinding>;
+  deletePolicyBinding(policyId: string, bindingId: string): Promise<void>;
+  getEffectivePolicy(namespace: string, name: string): Promise<EffectivePolicy>;
+  listPolicyEvaluations(namespace: string, name: string, options?: { limit?: number; outcome?: string }): Promise<{ evaluations: PolicyEvaluation[] }>;
 }
 
 export const registryApiRef = createApiRef<RegistryApi>({

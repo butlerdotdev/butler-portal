@@ -28,6 +28,16 @@ const GovernanceDashboard = lazy(() =>
     default: m.GovernanceDashboard,
   })),
 );
+const PolicyTemplateList = lazy(() =>
+  import('../governance/PolicyTemplateList').then(m => ({
+    default: m.PolicyTemplateList,
+  })),
+);
+const PolicyTemplateEditor = lazy(() =>
+  import('../governance/PolicyTemplateEditor').then(m => ({
+    default: m.PolicyTemplateEditor,
+  })),
+);
 const TokenManagement = lazy(() =>
   import('../tokens/TokenManagement').then(m => ({
     default: m.TokenManagement,
@@ -302,6 +312,9 @@ function RegistryPageContent() {
 
               {/* Governance */}
               <Route path="/governance" element={<GovernanceDashboard />} />
+              <Route path="/governance/policies" element={<PolicyTemplateList />} />
+              <Route path="/governance/policies/create" element={<PolicyTemplateEditor />} />
+              <Route path="/governance/policies/:id" element={<PolicyTemplateEditor />} />
 
               {/* Tokens */}
               <Route path="/tokens" element={<TokenManagement />} />
