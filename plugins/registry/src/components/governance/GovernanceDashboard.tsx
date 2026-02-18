@@ -185,7 +185,7 @@ export function GovernanceDashboard() {
             variant="outlined"
             color="primary"
             startIcon={<PolicyIcon />}
-            onClick={() => navigate('governance/policies')}
+            onClick={() => navigate('policies')}
           >
             Manage Policies
           </Button>

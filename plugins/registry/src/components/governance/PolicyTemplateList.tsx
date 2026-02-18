@@ -170,7 +170,7 @@ export function PolicyTemplateList() {
     <>
       <Box className={classes.header}>
         <Box className={classes.headerLeft}>
-          <IconButton size="small" onClick={() => navigate('governance')}>
+          <IconButton size="small" onClick={() => navigate('..')}>
             <ArrowBackIcon />
           </IconButton>
           <Typography variant="h6">Policy Templates</Typography>
@@ -180,7 +180,7 @@ export function PolicyTemplateList() {
             variant="contained"
             color="primary"
             startIcon={<AddIcon />}
-            onClick={() => navigate('governance/policies/create')}
+            onClick={() => navigate('create')}
           >
             Create Policy
           </Button>
@@ -201,7 +201,7 @@ export function PolicyTemplateList() {
               <Button
                 variant="contained"
                 color="primary"
-                onClick={() => navigate('governance/policies/create')}
+                onClick={() => navigate('create')}
               >
                 Create Policy
               </Button>
@@ -227,7 +227,7 @@ export function PolicyTemplateList() {
                   key={policy.id}
                   className={classes.clickableRow}
                   onClick={() =>
-                    navigate(`governance/policies/${policy.id}`)
+                    navigate(policy.id)
                   }
                 >
                   <TableCell>

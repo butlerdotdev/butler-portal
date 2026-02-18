@@ -171,7 +171,7 @@ export function PolicyTemplateEditor() {
       } else {
         await api.createPolicy(data);
       }
-      navigate('governance/policies');
+      navigate('..');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to save policy');
       setSaving(false);
@@ -217,7 +217,7 @@ export function PolicyTemplateEditor() {
       <Box className={classes.header}>
         <IconButton
           size="small"
-          onClick={() => navigate('governance/policies')}
+          onClick={() => navigate('..')}
         >
           <ArrowBackIcon />
         </IconButton>
@@ -446,7 +446,7 @@ export function PolicyTemplateEditor() {
 
       {/* Actions */}
       <Box className={classes.actions}>
-        <Button onClick={() => navigate('governance/policies')}>Cancel</Button>
+        <Button onClick={() => navigate('..')}>Cancel</Button>
         <Button
           variant="contained"
           color="primary"
