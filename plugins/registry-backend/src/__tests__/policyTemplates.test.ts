@@ -708,10 +708,6 @@ describe('Registry Backend - Policy Templates & Governance (Phase 2b)', () => {
   describe('Policy template cascade delete', () => {
     it('deleting a template should cascade to its bindings (ON DELETE CASCADE)', () => {
       // Simulates the FK cascade behavior
-      const templates = [
-        { id: 'tmpl-1', name: 'require-scans' },
-        { id: 'tmpl-2', name: 'require-approvals' },
-      ];
       const bindings = [
         { id: 'bind-1', policy_template_id: 'tmpl-1', scope_type: 'global' },
         { id: 'bind-2', policy_template_id: 'tmpl-1', scope_type: 'team' },

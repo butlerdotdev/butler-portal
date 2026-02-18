@@ -28,6 +28,15 @@ export interface PipelineConfig {
   envVars?: Record<string, { source: string; ref?: string; key?: string; value?: string }>;
 }
 
+/**
+ * @deprecated Use butler-runner binary instead of generated pipeline YAML.
+ * Teams should invoke butler-runner directly in their CI pipelines with
+ * --butler-url, --run-id, and --token flags. The runner fetches execution
+ * config from the /v1/ci/module-runs/:runId/config endpoint.
+ *
+ * This function is retained for backwards compatibility with artifact-level
+ * runs. New module-level runs should not use pipeline generation.
+ */
 export function generatePipelineConfig(
   ciProvider: string,
   config: PipelineConfig,

@@ -7,7 +7,6 @@ import { sendError, notFound, badRequest, forbidden, assertTeamAccess, requireMi
 import { AuthorizeResult } from '@backstage/plugin-permission-common';
 import { registryRunCreatePermission } from '@internal/plugin-registry-common';
 import { parsePagination } from '../util/pagination';
-import { generatePipelineConfig } from '../pipelines/pipelineGenerator';
 import type { RouterOptions } from '../router';
 
 export function createModuleRunRouter(options: RouterOptions) {
@@ -111,22 +110,16 @@ export function createModuleRunRouter(options: RouterOptions) {
           state_backend_snapshot: mod.state_backend ?? undefined,
         });
 
-        // Generate pipeline config for BYOC
-        if (mode === 'byoc' && ci_provider) {
-          const callbackBaseUrl =
+        // Build butler URL for BYOC — runner fetches config from /config endpoint
+        let butlerUrl: string | undefined;
+        if (mode === 'byoc') {
+          butlerUrl =
             config.getOptionalString('registry.iac.byoc.callbackBaseUrl') ??
             config.getOptionalString('registry.baseUrl') ??
             '';
-          const pipelineYaml = generatePipelineConfig(ci_provider, {
-            runId: run.id,
-            callbackBaseUrl: `${callbackBaseUrl}/api/registry/v1/ci/module-runs`,
-            operation,
-            tfVersion: mod.tf_version ?? '1.9.0',
-            repositoryUrl: '',
-            version: module_version ?? mod.pinned_version ?? 'main',
-            workingDirectory: mod.working_directory ?? undefined,
-          });
-          run.pipeline_config = pipelineYaml;
+          if (butlerUrl) {
+            butlerUrl = `${butlerUrl}/api/registry`;
+          }
         }
 
         await db.writeAuditLog({
@@ -151,11 +144,13 @@ export function createModuleRunRouter(options: RouterOptions) {
           callback_token_hash: _h,
           k8s_job_name: _j,
           k8s_namespace: _n,
+          pipeline_config: _p,
           ...runResponse
         } = run;
         res.status(201).json({
           run: runResponse,
           ...(callbackToken ? { callbackToken } : {}),
+          ...(butlerUrl ? { butlerUrl } : {}),
         });
       } catch (err) {
         sendError(res, err);
