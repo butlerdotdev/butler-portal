@@ -38,7 +38,9 @@ export type ErrorCode =
   | 'BINDING_EXISTS'
   | 'INTEGRATION_NOT_FOUND'
   | 'VARIABLE_SET_NOT_FOUND'
-  | 'RESOURCE_NOT_FOUND';
+  | 'RESOURCE_NOT_FOUND'
+  | 'POLICY_NOT_FOUND'
+  | 'BINDING_NOT_FOUND';
 
 export class RegistryError extends Error {
   constructor(

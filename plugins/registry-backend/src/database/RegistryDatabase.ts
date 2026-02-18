@@ -57,6 +57,14 @@ import {
   VariableSetEntryRow,
   CloudIntegrationBindingRow,
   VariableSetBindingRow,
+  PolicyTemplateRow,
+  PolicyBindingRow,
+  PolicyEvaluationRow,
+  PolicyScopeType,
+  PolicyRuleResult,
+  PolicyEvaluationTrigger,
+  PolicyEvaluationOutcome,
+  EnforcementLevel,
 } from './types';
 import { decodeCursor, encodeCursor } from '../util/pagination';
 import { conflict } from '../util/errors';
@@ -2785,6 +2793,217 @@ export class RegistryDatabase {
       size_bytes: row.size_bytes ? Number(row.size_bytes) : null,
       is_latest: Boolean(row.is_latest),
       is_bad: Boolean(row.is_bad),
+    };
+  }
+
+  // ── Policy Templates ──────────────────────────────────────────────
+
+  async listPolicyTemplates(options?: {
+    team?: string;
+  }): Promise<PolicyTemplateRow[]> {
+    let query = this.knex<PolicyTemplateRow>('policy_templates');
+    if (options?.team) {
+      query = query.where(function () {
+        this.where('team', options.team!).orWhereNull('team');
+      });
+    }
+    const rows = await query.orderBy('name', 'asc');
+    return rows.map(r => this.parsePolicyTemplateRow(r));
+  }
+
+  async getPolicyTemplate(id: string): Promise<PolicyTemplateRow | null> {
+    const row = await this.knex<PolicyTemplateRow>('policy_templates')
+      .where({ id })
+      .first();
+    return row ? this.parsePolicyTemplateRow(row) : null;
+  }
+
+  async createPolicyTemplate(data: {
+    name: string;
+    description?: string;
+    enforcement_level: EnforcementLevel;
+    rules: ApprovalPolicy;
+    team?: string;
+    created_by?: string;
+  }): Promise<PolicyTemplateRow> {
+    const id = uuidv4();
+    await this.knex('policy_templates').insert({
+      id,
+      name: data.name,
+      description: data.description ?? null,
+      enforcement_level: data.enforcement_level,
+      rules: JSON.stringify(data.rules),
+      team: data.team ?? null,
+      created_by: data.created_by ?? null,
+    });
+    return (await this.getPolicyTemplate(id))!;
+  }
+
+  async updatePolicyTemplate(
+    id: string,
+    data: {
+      name?: string;
+      description?: string;
+      enforcement_level?: EnforcementLevel;
+      rules?: ApprovalPolicy;
+    },
+  ): Promise<PolicyTemplateRow | null> {
+    const updates: Record<string, unknown> = {
+      updated_at: this.knex.fn.now(),
+    };
+    if (data.name !== undefined) updates.name = data.name;
+    if (data.description !== undefined) updates.description = data.description;
+    if (data.enforcement_level !== undefined)
+      updates.enforcement_level = data.enforcement_level;
+    if (data.rules !== undefined) updates.rules = JSON.stringify(data.rules);
+
+    await this.knex('policy_templates').where({ id }).update(updates);
+    return this.getPolicyTemplate(id);
+  }
+
+  async deletePolicyTemplate(id: string): Promise<boolean> {
+    const count = await this.knex('policy_templates').where({ id }).del();
+    return count > 0;
+  }
+
+  // ── Policy Bindings ───────────────────────────────────────────────
+
+  async listPolicyBindings(policyTemplateId: string): Promise<PolicyBindingRow[]> {
+    return this.knex<PolicyBindingRow>('policy_bindings')
+      .where({ policy_template_id: policyTemplateId })
+      .orderBy('created_at', 'asc');
+  }
+
+  async createPolicyBinding(data: {
+    policy_template_id: string;
+    scope_type: PolicyScopeType;
+    scope_value?: string;
+    created_by?: string;
+  }): Promise<PolicyBindingRow> {
+    const id = uuidv4();
+    await this.knex('policy_bindings').insert({
+      id,
+      policy_template_id: data.policy_template_id,
+      scope_type: data.scope_type,
+      scope_value: data.scope_value ?? null,
+      created_by: data.created_by ?? null,
+    });
+    return (await this.knex<PolicyBindingRow>('policy_bindings')
+      .where({ id })
+      .first())!;
+  }
+
+  async deletePolicyBinding(id: string): Promise<boolean> {
+    const count = await this.knex('policy_bindings').where({ id }).del();
+    return count > 0;
+  }
+
+  /**
+   * Get all policy templates bound to a specific scope.
+   * Used by the policy resolver to collect applicable policies.
+   */
+  async getPoliciesForScope(
+    scopeType: PolicyScopeType,
+    scopeValue?: string,
+  ): Promise<PolicyTemplateRow[]> {
+    const query = this.knex<PolicyTemplateRow>('policy_templates')
+      .join(
+        'policy_bindings',
+        'policy_templates.id',
+        'policy_bindings.policy_template_id',
+      )
+      .where('policy_bindings.scope_type', scopeType);
+
+    if (scopeValue) {
+      query.where('policy_bindings.scope_value', scopeValue);
+    } else {
+      query.whereNull('policy_bindings.scope_value');
+    }
+
+    const rows = await query.select('policy_templates.*');
+    return rows.map(r => this.parsePolicyTemplateRow(r));
+  }
+
+  // ── Policy Evaluations ────────────────────────────────────────────
+
+  async createPolicyEvaluation(data: {
+    artifact_id?: string;
+    version_id?: string;
+    trigger: PolicyEvaluationTrigger;
+    enforcement_level: EnforcementLevel;
+    rules_evaluated: PolicyRuleResult[];
+    outcome: PolicyEvaluationOutcome;
+    overridden_by?: string;
+    actor?: string;
+  }): Promise<PolicyEvaluationRow> {
+    const id = uuidv4();
+    await this.knex('policy_evaluations').insert({
+      id,
+      artifact_id: data.artifact_id ?? null,
+      version_id: data.version_id ?? null,
+      trigger: data.trigger,
+      enforcement_level: data.enforcement_level,
+      rules_evaluated: JSON.stringify(data.rules_evaluated),
+      outcome: data.outcome,
+      overridden_by: data.overridden_by ?? null,
+      actor: data.actor ?? null,
+    });
+    return (await this.knex<PolicyEvaluationRow>('policy_evaluations')
+      .where({ id })
+      .first())!;
+  }
+
+  async listPolicyEvaluations(options?: {
+    artifact_id?: string;
+    version_id?: string;
+    outcome?: PolicyEvaluationOutcome;
+    limit?: number;
+    since?: string;
+  }): Promise<PolicyEvaluationRow[]> {
+    let query = this.knex<PolicyEvaluationRow>('policy_evaluations');
+    if (options?.artifact_id) query = query.where('artifact_id', options.artifact_id);
+    if (options?.version_id) query = query.where('version_id', options.version_id);
+    if (options?.outcome) query = query.where('outcome', options.outcome);
+    if (options?.since) query = query.where('evaluated_at', '>=', options.since);
+    const rows = await query
+      .orderBy('evaluated_at', 'desc')
+      .limit(options?.limit ?? 100);
+    return rows.map(r => ({
+      ...r,
+      rules_evaluated:
+        typeof r.rules_evaluated === 'string'
+          ? JSON.parse(r.rules_evaluated)
+          : r.rules_evaluated,
+    }));
+  }
+
+  /**
+   * Delete evaluations older than the specified date.
+   * Called periodically for retention management.
+   * Deletes in batches to avoid long-running transactions.
+   */
+  async sweepOldEvaluations(olderThan: string, batchSize: number = 1000): Promise<number> {
+    let totalDeleted = 0;
+    let deleted: number;
+    do {
+      const ids = await this.knex('policy_evaluations')
+        .where('evaluated_at', '<', olderThan)
+        .select('id')
+        .limit(batchSize);
+      if (ids.length === 0) break;
+      deleted = await this.knex('policy_evaluations')
+        .whereIn('id', ids.map(r => r.id))
+        .del();
+      totalDeleted += deleted;
+    } while (deleted === batchSize);
+    return totalDeleted;
+  }
+
+  private parsePolicyTemplateRow(row: any): PolicyTemplateRow {
+    return {
+      ...row,
+      rules:
+        typeof row.rules === 'string' ? JSON.parse(row.rules) : row.rules,
     };
   }
 }

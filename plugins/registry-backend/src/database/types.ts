@@ -624,3 +624,50 @@ export interface CiSecretRef {
 }
 
 export type EnvVarSource = SecretRef | LiteralRef | CiSecretRef;
+
+// ── Policy Templates + Bindings + Evaluations ───────────────────────
+
+export type PolicyScopeType = 'global' | 'team' | 'namespace' | 'artifact';
+
+export interface PolicyTemplateRow {
+  id: string;
+  name: string;
+  description: string | null;
+  enforcement_level: EnforcementLevel;
+  rules: ApprovalPolicy;
+  team: string | null;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface PolicyBindingRow {
+  id: string;
+  policy_template_id: string;
+  scope_type: PolicyScopeType;
+  scope_value: string | null;
+  created_by: string | null;
+  created_at: string;
+}
+
+export type PolicyEvaluationTrigger = 'approval' | 'download' | 'publish';
+export type PolicyEvaluationOutcome = 'pass' | 'fail' | 'warn';
+
+export interface PolicyRuleResult {
+  rule: string;
+  result: 'pass' | 'fail' | 'skip';
+  message?: string;
+}
+
+export interface PolicyEvaluationRow {
+  id: string;
+  artifact_id: string | null;
+  version_id: string | null;
+  trigger: PolicyEvaluationTrigger;
+  enforcement_level: EnforcementLevel;
+  rules_evaluated: PolicyRuleResult[];
+  outcome: PolicyEvaluationOutcome;
+  overridden_by: string | null;
+  actor: string | null;
+  evaluated_at: string;
+}

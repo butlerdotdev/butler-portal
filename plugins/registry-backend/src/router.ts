@@ -56,6 +56,8 @@ import { createModuleRunCallbackRouter } from './routes/moduleRunCallbackRoutes'
 import { createCloudIntegrationRouter } from './routes/cloudIntegrationRoutes';
 import { createVariableSetRouter } from './routes/variableSetRoutes';
 import { createBindingRouter } from './routes/bindingRoutes';
+import { createPolicyRouter } from './routes/policyRoutes';
+import { evaluateDownloadPolicy } from './governance/downloadPolicyEvaluator';
 import { CascadeManager } from './orchestration/cascadeManager';
 import { createWebhookRoutes } from './webhooks/webhookRoutes';
 
@@ -1069,6 +1071,19 @@ export async function createRouter(options: RouterOptions): Promise<express.Rout
         return;
       }
 
+      // Download-time policy enforcement
+      const policyResult = await evaluateDownloadPolicy(db, artifact, version);
+      if (policyResult.outcome === 'fail' && policyResult.enforcementLevel === 'block') {
+        res.status(403).json({
+          errors: ['Download blocked by policy'],
+          policy_violations: policyResult.ruleResults.filter(r => r.result === 'fail'),
+        });
+        return;
+      }
+      if (policyResult.warnings.length > 0 && policyResult.enforcementLevel === 'warn') {
+        res.setHeader('X-Butler-Policy-Warning', policyResult.warnings.join('; '));
+      }
+
       // Resolve download URL based on storage backend
       const storageConfig = artifact.storage_config;
       if (storageConfig.backend === 'git' && storageConfig.git) {
@@ -1166,6 +1181,19 @@ export async function createRouter(options: RouterOptions): Promise<express.Rout
       if (!version || version.approval_status !== 'approved' || version.is_bad) {
         res.status(404).json({ errors: ['Version not found or not approved'] });
         return;
+      }
+
+      // Download-time policy enforcement
+      const policyResult = await evaluateDownloadPolicy(db, artifact, version);
+      if (policyResult.outcome === 'fail' && policyResult.enforcementLevel === 'block') {
+        res.status(403).json({
+          errors: ['Download blocked by policy'],
+          policy_violations: policyResult.ruleResults.filter(r => r.result === 'fail'),
+        });
+        return;
+      }
+      if (policyResult.warnings.length > 0 && policyResult.enforcementLevel === 'warn') {
+        res.setHeader('X-Butler-Policy-Warning', policyResult.warnings.join('; '));
       }
 
       const meta = version.terraform_metadata;
@@ -1701,6 +1729,7 @@ export async function createRouter(options: RouterOptions): Promise<express.Rout
   router.use(createCloudIntegrationRouter(options));
   router.use(createVariableSetRouter(options));
   router.use(createBindingRouter(options));
+  router.use(createPolicyRouter(options));
 
   // Catch-all for unimplemented routes
   router.use((_req, res) => {
