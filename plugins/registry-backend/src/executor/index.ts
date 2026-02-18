@@ -16,5 +16,5 @@
 
 export { PeaasExecutor } from './PeaasExecutor';
 export type { PeaasExecutorConfig } from './PeaasExecutor';
-export { buildJobSpec, resolveEnvVars } from './jobSpec';
-export type { ResolvedEnvVar, JobSpecOptions } from './jobSpec';
+export { buildJobSpec, buildModuleRunJobSpec, buildRunSecretSpec, resolveEnvVars } from './jobSpec';
+export type { ResolvedEnvVar, JobSpecOptions, ModuleRunJobSpecOptions } from './jobSpec';

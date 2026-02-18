@@ -4,8 +4,8 @@
 import { LoggerService } from '@backstage/backend-plugin-api';
 import { RegistryDatabase } from '../database/RegistryDatabase';
 import { ModuleRunRow } from '../database/types';
-import { buildJobSpec } from '../executor/jobSpec';
-import { getTfWorkspaceName } from './envVarBuilder';
+import { buildModuleRunJobSpec, buildRunSecretSpec } from '../executor/jobSpec';
+import { generateCallbackToken } from './shared';
 import type { DagExecutor } from '../orchestration/dagExecutor';
 
 export interface ModuleRunExecutorConfig {
@@ -17,6 +17,8 @@ export interface ModuleRunExecutorConfig {
   maxConcurrentRuns: number;
   confirmationTimeoutSeconds: number;
   pgSchemaName?: string;
+  butlerUrl?: string;
+  runnerImage?: string;
 }
 
 /**
@@ -146,77 +148,37 @@ export class ModuleRunExecutor {
   }
 
   /**
-   * Start a single PeaaS module run by building a Job spec.
+   * Start a single PeaaS module run using butler-runner.
+   *
+   * 1. Generate callback token + per-run Secret spec
+   * 2. Build butler-runner Job spec (3 env vars only)
+   * 3. Store callback token hash on the run
+   * 4. In production: create Secret + Job via K8s API
    */
   private async startModuleRun(run: ModuleRunRow): Promise<void> {
     try {
-      // Resolve module variables from snapshot
-      const envVars: Record<string, { source: string; ref?: string; key?: string; value?: string }> = {};
-      if (run.variables_snapshot) {
-        const vars = run.variables_snapshot as unknown as Array<{
-          key: string; value: string | null; sensitive: boolean;
-          hcl: boolean; category: string; secret_ref: string | null;
-        }>;
-        for (const v of vars) {
-          const envName = v.category === 'terraform' ? `TF_VAR_${v.key}` : v.key;
-          if (v.sensitive && v.secret_ref) {
-            const colonIdx = v.secret_ref.indexOf(':');
-            const refPath = colonIdx >= 0 ? v.secret_ref.substring(0, colonIdx) : v.secret_ref;
-            const secretKey = colonIdx >= 0 ? v.secret_ref.substring(colonIdx + 1) : v.key;
-            envVars[envName] = { source: 'secret', ref: refPath, key: secretKey };
-          } else {
-            envVars[envName] = { source: 'literal', value: v.value ?? '' };
-          }
-        }
-      }
+      // Generate callback token for this run
+      const { token: callbackToken, tokenHash } = generateCallbackToken();
+      const secretName = `butler-run-${run.id.substring(0, 8)}`;
 
-      // Build TF_WORKSPACE for pg backend
-      const stateBackend = run.state_backend_snapshot;
-      if (stateBackend?.type === 'pg') {
-        envVars['TF_WORKSPACE'] = {
-          source: 'literal',
-          value: getTfWorkspaceName(run.environment_id, run.module_id),
-        };
-      }
+      const butlerUrl = this.config.butlerUrl ?? '';
 
-      // Adapt ModuleRunRow to RunRow-like shape for buildJobSpec
-      const jobSpec = buildJobSpec({
-        run: {
-          id: run.id,
-          artifact_id: '',
-          version_id: null,
-          artifact_namespace: run.artifact_namespace,
-          artifact_name: run.artifact_name,
-          version: run.module_version,
-          operation: run.operation as any,
-          mode: 'peaas' as any,
-          status: run.status as any,
-          triggered_by: run.triggered_by,
-          team: null,
-          ci_provider: null,
-          pipeline_config: null,
-          callback_token_hash: null,
-          k8s_job_name: null,
-          k8s_namespace: null,
-          tf_version: run.tf_version,
-          variables: null,
-          env_vars: envVars as any,
-          working_directory: null,
-          exit_code: null,
-          resources_to_add: null,
-          resources_to_change: null,
-          resources_to_destroy: null,
-          queued_at: run.queued_at,
-          started_at: run.started_at,
-          completed_at: run.completed_at,
-          duration_seconds: run.duration_seconds,
-          created_at: run.created_at,
-          updated_at: run.updated_at,
-        },
+      // Build per-run Secret spec (stores the callback token)
+      const secretSpec = buildRunSecretSpec({
+        runId: run.id,
+        callbackToken,
+        namespace: this.config.namespace,
+      });
+
+      // Build butler-runner Job spec
+      const jobSpec = buildModuleRunJobSpec({
+        runId: run.id,
+        butlerUrl,
+        callbackSecretName: secretName,
         namespace: this.config.namespace,
         serviceAccount: this.config.serviceAccount,
         timeoutSeconds: this.config.timeoutSeconds,
-        defaultTerraformVersion: this.config.defaultTerraformVersion,
+        runnerImage: this.config.runnerImage,
       });
 
       const jobName = (jobSpec as any).metadata?.name ?? `butler-modrun-${run.id.substring(0, 8)}`;
@@ -228,16 +190,26 @@ export class ModuleRunExecutor {
         jobName,
       });
 
+      // In production: create Secret and Job via K8s API
+      // await k8sClient.createNamespacedSecret(this.config.namespace, secretSpec);
+      // await k8sClient.createNamespacedJob(this.config.namespace, jobSpec);
+
       const now = new Date().toISOString();
       await this.db.updateModuleRunStatus(run.id, 'running', {
         started_at: now,
+        callback_token_hash: tokenHash,
       });
 
-      // Store the job spec for debugging
+      // Store specs for debugging (not the token)
       await this.db.saveModuleRunOutput({
         run_id: run.id,
         output_type: 'job_spec',
         content: JSON.stringify(jobSpec, null, 2),
+      });
+      await this.db.saveModuleRunOutput({
+        run_id: run.id,
+        output_type: 'secret_spec',
+        content: JSON.stringify({ ...secretSpec, stringData: { 'callback-token': '***' } }, null, 2),
       });
 
       this.logger.info('PeaaS module run started', { runId: run.id, jobName });

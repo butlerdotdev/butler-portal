@@ -1881,6 +1881,7 @@ export class RegistryDatabase {
       auto_confirmed: boolean;
       skip_reason: string;
       queue_position: number | null;
+      callback_token_hash: string;
     }>,
   ): Promise<ModuleRunRow | null> {
     const update: Record<string, any> = {

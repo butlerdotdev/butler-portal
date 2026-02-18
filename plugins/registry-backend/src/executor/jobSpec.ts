@@ -16,6 +16,8 @@
 
 import { RunRow } from '../database/types';
 
+const BUTLER_RUNNER_IMAGE = 'ghcr.io/butlerdotdev/butler-runner:latest';
+
 /**
  * Resolved environment variable — either a literal value or a K8s secret reference.
  */
@@ -73,15 +75,8 @@ export interface JobSpecOptions {
 }
 
 /**
- * Builds a security-hardened Kubernetes Job spec for a PeaaS Terraform/OpenTofu run.
- *
- * Security measures:
- * - runAsNonRoot: true (UID 65534 = nobody)
- * - automountServiceAccountToken: false — runner cannot access K8s API
- * - readOnlyRootFilesystem: true — /tmp and /workspace are emptyDir mounts
- * - capabilities: drop ALL
- * - seccompProfile: RuntimeDefault
- * - Resource limits: 2 CPU, 2Gi memory
+ * @deprecated Use buildModuleRunJobSpec for new module runs.
+ * Retained for artifact-level PeaaS runs.
  */
 export function buildJobSpec(options: JobSpecOptions): Record<string, unknown> {
   const { run, namespace, serviceAccount, timeoutSeconds, defaultTerraformVersion } = options;
@@ -230,6 +225,159 @@ export function buildJobSpec(options: JobSpecOptions): Record<string, unknown> {
           ],
         },
       },
+    },
+  };
+}
+
+// ── Module Run Job Spec (butler-runner) ─────────────────────────────────
+
+export interface ModuleRunJobSpecOptions {
+  runId: string;
+  butlerUrl: string;
+  callbackSecretName: string;
+  namespace: string;
+  serviceAccount?: string;
+  timeoutSeconds: number;
+  runnerImage?: string;
+}
+
+/**
+ * Builds a security-hardened K8s Job spec for a module run using butler-runner.
+ *
+ * Single container, three env vars (BUTLER_URL, BUTLER_RUN_ID, BUTLER_TOKEN).
+ * The runner fetches everything else from the /config endpoint.
+ *
+ * Security measures:
+ * - runAsNonRoot: true (UID 65534 = nobody)
+ * - automountServiceAccountToken: false
+ * - readOnlyRootFilesystem: true (/tmp, /workspace, /home/runner are emptyDir)
+ * - capabilities: drop ALL
+ * - seccompProfile: RuntimeDefault
+ */
+export function buildModuleRunJobSpec(
+  options: ModuleRunJobSpecOptions,
+): Record<string, unknown> {
+  const {
+    runId,
+    butlerUrl,
+    callbackSecretName,
+    namespace,
+    serviceAccount,
+    timeoutSeconds,
+    runnerImage,
+  } = options;
+
+  const image = runnerImage ?? BUTLER_RUNNER_IMAGE;
+
+  return {
+    apiVersion: 'batch/v1',
+    kind: 'Job',
+    metadata: {
+      name: `butler-modrun-${runId.substring(0, 8)}`,
+      namespace,
+      labels: {
+        'butler.butlerlabs.dev/run-id': runId,
+        'butler.butlerlabs.dev/managed-by': 'butler-registry',
+      },
+    },
+    spec: {
+      backoffLimit: 0,
+      activeDeadlineSeconds: timeoutSeconds,
+      ttlSecondsAfterFinished: 300,
+      template: {
+        metadata: {
+          labels: {
+            'butler.butlerlabs.dev/run-id': runId,
+          },
+        },
+        spec: {
+          restartPolicy: 'Never',
+          automountServiceAccountToken: false,
+          ...(serviceAccount ? { serviceAccountName: serviceAccount } : {}),
+          securityContext: {
+            runAsNonRoot: true,
+            runAsUser: 65534,
+            fsGroup: 65534,
+            seccompProfile: {
+              type: 'RuntimeDefault',
+            },
+          },
+          containers: [
+            {
+              name: 'runner',
+              image,
+              command: ['butler-runner', 'exec'],
+              env: [
+                { name: 'BUTLER_URL', value: butlerUrl },
+                { name: 'BUTLER_RUN_ID', value: runId },
+                {
+                  name: 'BUTLER_TOKEN',
+                  valueFrom: {
+                    secretKeyRef: {
+                      name: callbackSecretName,
+                      key: 'callback-token',
+                    },
+                  },
+                },
+              ],
+              securityContext: {
+                allowPrivilegeEscalation: false,
+                readOnlyRootFilesystem: true,
+                capabilities: {
+                  drop: ['ALL'],
+                },
+              },
+              resources: {
+                limits: {
+                  cpu: '2',
+                  memory: '2Gi',
+                },
+                requests: {
+                  cpu: '500m',
+                  memory: '512Mi',
+                },
+              },
+              volumeMounts: [
+                { name: 'workspace', mountPath: '/workspace' },
+                { name: 'tmp', mountPath: '/tmp' },
+                { name: 'tf-cache', mountPath: '/home/runner/.butler-runner' },
+              ],
+            },
+          ],
+          volumes: [
+            { name: 'workspace', emptyDir: {} },
+            { name: 'tmp', emptyDir: {} },
+            { name: 'tf-cache', emptyDir: {} },
+          ],
+        },
+      },
+    },
+  };
+}
+
+/**
+ * Build a K8s Secret spec for storing a per-run callback token.
+ * The Secret is created before the Job and referenced via secretKeyRef.
+ */
+export function buildRunSecretSpec(options: {
+  runId: string;
+  callbackToken: string;
+  namespace: string;
+}): Record<string, unknown> {
+  return {
+    apiVersion: 'v1',
+    kind: 'Secret',
+    metadata: {
+      name: `butler-run-${options.runId.substring(0, 8)}`,
+      namespace: options.namespace,
+      labels: {
+        'butler.butlerlabs.dev/run-id': options.runId,
+        'butler.butlerlabs.dev/managed-by': 'butler-registry',
+      },
+    },
+    type: 'Opaque',
+    stringData: {
+      'callback-token': options.callbackToken,
     },
   };
 }
