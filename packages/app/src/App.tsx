@@ -43,6 +43,7 @@ import { butlerPortalTheme } from './themes/butlerPortalTheme';
 import { HomePage } from './components/home';
 import { ButlerPage } from '@internal/plugin-butler';
 import { WorkspacesPluginPage } from '@internal/plugin-workspaces';
+import { RegistryPage } from '@internal/plugin-registry';
 
 const app = createApp({
 	apis,
@@ -131,6 +132,7 @@ const routes = (
 		<Route path="/notifications" element={<NotificationsPage />} />
 		<Route path="/butler/*" element={<ButlerPage />} />
 		<Route path="/workspaces/*" element={<WorkspacesPluginPage />} />
+		<Route path="/registry/*" element={<RegistryPage />} />
 	</FlatRoutes>
 );
 
