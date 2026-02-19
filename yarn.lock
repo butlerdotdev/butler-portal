@@ -8500,6 +8500,12 @@ __metadata:
   languageName: unknown
   linkType: soft
 
+"@internal/plugin-registry-common@link:../../plugins/registry-common::locator=backend%40workspace%3Apackages%2Fbackend":
+  version: 0.0.0-use.local
+  resolution: "@internal/plugin-registry-common@link:../../plugins/registry-common::locator=backend%40workspace%3Apackages%2Fbackend"
+  languageName: node
+  linkType: soft
+
 "@internal/plugin-registry-common@link:../registry-common::locator=%40internal%2Fplugin-registry%40workspace%3Aplugins%2Fregistry":
   version: 0.0.0-use.local
   resolution: "@internal/plugin-registry-common@link:../registry-common::locator=%40internal%2Fplugin-registry%40workspace%3Aplugins%2Fregistry"
@@ -18805,6 +18811,7 @@ __metadata:
     "@backstage/plugin-techdocs-backend": "npm:^2.1.2"
     "@internal/plugin-butler-backend": "link:../../plugins/butler-backend"
     "@internal/plugin-registry-backend": "link:../../plugins/registry-backend"
+    "@internal/plugin-registry-common": "link:../../plugins/registry-common"
     app: "link:../app"
     better-sqlite3: "npm:^12.0.0"
     node-gyp: "npm:^10.0.0"
