@@ -88,6 +88,7 @@ export const Root = ({ children }: PropsWithChildren<{}>) => (
 				<SidebarScrollWrapper>
 					<SidebarItem icon={ButlerIcon} to="butler" text="Butler" />
 					<SidebarItem icon={WorkspacesIcon} to="workspaces" text="Workspaces" />
+					<SidebarItem icon={StorageIcon} to="registry" text="Registry" />
 				</SidebarScrollWrapper>
 			</SidebarGroup>
 

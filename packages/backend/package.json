@@ -45,6 +45,8 @@
     "@backstage/plugin-signals-backend": "^0.3.10",
     "@backstage/plugin-techdocs-backend": "^2.1.2",
     "@internal/plugin-butler-backend": "link:../../plugins/butler-backend",
+    "@internal/plugin-registry-backend": "link:../../plugins/registry-backend",
+    "@internal/plugin-registry-common": "link:../../plugins/registry-common",
     "app": "link:../app",
     "better-sqlite3": "^12.0.0",
     "node-gyp": "^10.0.0",

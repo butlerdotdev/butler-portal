@@ -2,12 +2,89 @@
 apiVersion: backstage.io/v1alpha1
 kind: Group
 metadata:
+  name: platform-admins
+  title: Platform Administrators
+  description: Registry platform administrators with full cross-team access
+spec:
+  type: role
+  children: []
+  members: [founder]
+
+---
+apiVersion: backstage.io/v1alpha1
+kind: Group
+metadata:
   name: platform-team
   title: Platform Engineering Team
   description: Butler Labs platform engineering
 spec:
   type: team
   children: []
+  members: [founder, user:development/guest]
+
+---
+apiVersion: backstage.io/v1alpha1
+kind: Group
+metadata:
+  name: platform-team-admins
+  title: Platform Team Admins
+spec:
+  type: role
+  children: []
+  members: [founder]
+
+---
+apiVersion: backstage.io/v1alpha1
+kind: Group
+metadata:
+  name: platform-team-operators
+  title: Platform Team Operators
+spec:
+  type: role
+  children: []
+  members: [user:development/guest]
+
+---
+apiVersion: backstage.io/v1alpha1
+kind: Group
+metadata:
+  name: dev-team
+  title: Development Team
+  description: Butler Labs application development
+spec:
+  type: team
+  children: []
+  members: [founder, user:development/guest]
+
+---
+apiVersion: backstage.io/v1alpha1
+kind: Group
+metadata:
+  name: dev-team-operators
+  title: Dev Team Operators
+spec:
+  type: role
+  children: []
+  members: [user:development/guest]
+
+---
+apiVersion: backstage.io/v1alpha1
+kind: User
+metadata:
+  name: founder
+  title: Andrew Bagan
+spec:
+  memberOf: [platform-admins, platform-team, platform-team-admins, dev-team]
+
+---
+apiVersion: backstage.io/v1alpha1
+kind: User
+metadata:
+  namespace: development
+  name: guest
+  title: Guest User
+spec:
+  memberOf: [platform-team, platform-team-operators, dev-team, dev-team-operators]
 
 ---
 apiVersion: backstage.io/v1alpha1

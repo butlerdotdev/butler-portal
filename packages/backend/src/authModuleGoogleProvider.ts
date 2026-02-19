@@ -11,9 +11,9 @@ import { googleAuthenticator } from '@backstage/plugin-auth-backend-module-googl
 /**
  * Custom Google auth module for Butler Portal.
  *
- * Issues Backstage tokens directly from the Google profile email
- * without requiring User entities in the catalog. The user entity ref
- * is derived from the email local part (e.g., abagan@butlerlabs.dev → user:default/abagan).
+ * Resolves the signed-in user against the Backstage catalog to pick up
+ * group memberships (ownershipEntityRefs). Falls back to a bare token
+ * if the user entity doesn't exist in the catalog yet.
  */
 export default createBackendModule({
   pluginId: 'auth',
@@ -38,14 +38,23 @@ export default createBackendModule({
               }
 
               const localPart = profile.email.split('@')[0];
-              const userEntityRef = `user:default/${localPart}`;
 
-              return ctx.issueToken({
-                claims: {
-                  sub: userEntityRef,
-                  ent: [userEntityRef],
-                },
-              });
+              // Try catalog lookup first — resolves group memberships
+              // into the token's ownershipEntityRefs (ent claim).
+              try {
+                return await ctx.signInWithCatalogUser({
+                  entityRef: { name: localPart },
+                });
+              } catch {
+                // User not in catalog — issue token without group memberships
+                const userEntityRef = `user:default/${localPart}`;
+                return ctx.issueToken({
+                  claims: {
+                    sub: userEntityRef,
+                    ent: [userEntityRef],
+                  },
+                });
+              }
             },
           }),
         });
