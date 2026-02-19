@@ -7,6 +7,16 @@ metadata:
 spec:
   memberOf: [guests]
 ---
+apiVersion: backstage.io/v1alpha1
+kind: User
+metadata:
+  name: founder
+spec:
+  profile:
+    displayName: Andrew Bagan
+    email: founder@butlerlabs.dev
+  memberOf: [platform-admins, butlerlabs, butlerlabs-admins]
+---
 # https://backstage.io/docs/features/software-catalog/descriptor-format#kind-group
 apiVersion: backstage.io/v1alpha1
 kind: Group
@@ -15,3 +25,34 @@ metadata:
 spec:
   type: team
   children: []
+---
+apiVersion: backstage.io/v1alpha1
+kind: Group
+metadata:
+  name: platform-admins
+  description: Cross-team super-admins with full registry access
+spec:
+  type: team
+  children: []
+  members: [founder]
+---
+apiVersion: backstage.io/v1alpha1
+kind: Group
+metadata:
+  name: butlerlabs
+  description: Butler Labs team
+spec:
+  type: team
+  children: []
+  members: [founder]
+---
+apiVersion: backstage.io/v1alpha1
+kind: Group
+metadata:
+  name: butlerlabs-admins
+  description: Butler Labs team administrators
+spec:
+  type: team
+  parent: butlerlabs
+  children: []
+  members: [founder]
