@@ -22,6 +22,8 @@ import { resolvePackagePath } from '@backstage/backend-plugin-api';
 import { RegistryDatabase } from './database/RegistryDatabase';
 import { createRouter } from './router';
 import { PeaasExecutor } from './executor';
+import { RunDispatcher } from './runs/runDispatcher';
+import { DagExecutor } from './orchestration/dagExecutor';
 
 const migrationsDir = resolvePackagePath(
   '@internal/plugin-registry-backend',
@@ -137,7 +139,26 @@ export const registryPlugin = createBackendPlugin({
 
         await executor.start();
 
+        // Initialize run dispatcher (PeaaS + BYOC module run execution)
+        const byocEnabled = config.getOptionalBoolean('registry.iac.byoc.enabled') ?? false;
+        const dagExecutor = new DagExecutor(db, logger.child({ service: 'dag-executor' }));
+        const baseUrl = config.getOptionalString('registry.baseUrl') ?? '';
+
+        const runDispatcher = new RunDispatcher(db, {
+          enabled: peaasEnabled || byocEnabled,
+          butlerUrl: baseUrl ? `${baseUrl}/api/registry` : '',
+          githubToken: config.getOptionalString('registry.storage.git.github.token'),
+          peaasOwner: config.getOptionalString('registry.iac.peaas.github.owner') ?? 'butlerdotdev',
+          peaasRepo: config.getOptionalString('registry.iac.peaas.github.repo') ?? 'butler-runner',
+          maxConcurrentRuns: config.getOptionalNumber('registry.iac.peaas.maxConcurrentRuns') ?? 10,
+          timeoutSeconds: config.getOptionalNumber('registry.iac.peaas.timeoutSeconds') ?? 1800,
+          confirmationTimeoutSeconds: config.getOptionalNumber('registry.iac.confirmationTimeoutSeconds') ?? 3600,
+        }, logger.child({ service: 'run-dispatcher' }), dagExecutor);
+
+        await runDispatcher.start();
+
         lifecycle.addShutdownHook(async () => {
+          await runDispatcher.stop();
           await executor.stop();
           logger.info('Registry backend plugin shut down');
         });
