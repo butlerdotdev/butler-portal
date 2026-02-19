@@ -56,6 +56,13 @@ export class DagExecutor {
 
       const variablesSnapshot = await this.db.snapshotModuleVariables(mod.id);
 
+      // Generate callback token for BYOC module runs
+      const callbackToken = `brce_${crypto.randomBytes(32).toString('hex')}`;
+      const callbackTokenHash = crypto
+        .createHash('sha256')
+        .update(callbackToken)
+        .digest('hex');
+
       await this.db.createModuleRun({
         id: crypto.randomUUID(),
         module_id: mod.id,
@@ -74,6 +81,7 @@ export class DagExecutor {
         tf_version: mod.tf_version ?? undefined,
         variables_snapshot: variablesSnapshot,
         state_backend_snapshot: mod.state_backend ?? undefined,
+        callback_token_hash: callbackTokenHash,
       });
     }
 
