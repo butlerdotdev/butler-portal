@@ -155,10 +155,10 @@ export function EnvironmentDetail() {
   const { allowed: canLock } = usePermission({ permission: registryEnvironmentLockPermission });
   const { allowed: canRun } = usePermission({ permission: registryRunCreatePermission });
 
-  const fetchData = useCallback(async () => {
+  const fetchData = useCallback(async (silent = false) => {
     if (!envId) return;
     try {
-      setLoading(true);
+      if (!silent) setLoading(true);
       const [envData, modulesData, graphData, runsData] = await Promise.all([
         api.getEnvironment(envId),
         api.listEnvironmentModules(envId),
@@ -171,11 +171,13 @@ export function EnvironmentDetail() {
       setEnvRuns(runsData.runs);
       setError(null);
     } catch (err) {
-      setError(
-        err instanceof Error ? err.message : 'Failed to load environment',
-      );
+      if (!silent) {
+        setError(
+          err instanceof Error ? err.message : 'Failed to load environment',
+        );
+      }
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   }, [api, envId]);
 
@@ -190,7 +192,7 @@ export function EnvironmentDetail() {
     );
     if (!activeRun) return;
 
-    const interval = setInterval(fetchData, 5000);
+    const interval = setInterval(() => fetchData(true), 5000);
     return () => clearInterval(interval);
   }, [envRuns, fetchData]);
 
@@ -238,7 +240,7 @@ export function EnvironmentDetail() {
         description={error}
         missing="data"
         action={
-          <Button variant="outlined" onClick={fetchData}>
+          <Button variant="outlined" onClick={() => fetchData()}>
             Retry
           </Button>
         }

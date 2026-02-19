@@ -71,16 +71,18 @@ export function ModuleRunsList({ envId, moduleId }: ModuleRunsListProps) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const fetchRuns = useCallback(async () => {
+  const fetchRuns = useCallback(async (silent = false) => {
     try {
-      setLoading(true);
+      if (!silent) setLoading(true);
       const data = await api.listModuleRuns(envId, moduleId);
       setRuns(data.items);
       setError(null);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load runs');
+      if (!silent) {
+        setError(err instanceof Error ? err.message : 'Failed to load runs');
+      }
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   }, [api, envId, moduleId]);
 
@@ -100,7 +102,7 @@ export function ModuleRunsList({ envId, moduleId }: ModuleRunsListProps) {
         r.status === 'applying',
     );
     if (!hasActive) return;
-    const interval = setInterval(fetchRuns, 3000);
+    const interval = setInterval(() => fetchRuns(true), 3000);
     return () => clearInterval(interval);
   }, [runs, fetchRuns]);
 
@@ -113,7 +115,7 @@ export function ModuleRunsList({ envId, moduleId }: ModuleRunsListProps) {
         description={error}
         missing="data"
         action={
-          <Button variant="outlined" onClick={fetchRuns}>
+          <Button variant="outlined" onClick={() => fetchRuns()}>
             Retry
           </Button>
         }
