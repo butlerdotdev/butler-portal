@@ -8,7 +8,7 @@ import { buildStateBackendConfig } from '../runs/envVarBuilder';
 import type { RouterOptions } from '../router';
 
 export function createModuleRunCallbackRouter(options: RouterOptions) {
-  const { db, logger } = options;
+  const { db, logger, dagExecutor } = options;
   const router = Router();
 
   // Verify module-run callback token
@@ -140,6 +140,16 @@ export function createModuleRunCallbackRouter(options: RouterOptions) {
       // Dequeue next run on terminal status
       if (['succeeded', 'failed'].includes(status)) {
         await db.dequeueNextModuleRun(run.module_id);
+      }
+
+      // Progress DAG — notify environment run orchestrator
+      if (isTerminal && dagExecutor && run.environment_run_id) {
+        const updated = await db.getModuleRun(run.id);
+        if (updated) {
+          await dagExecutor.onModuleRunComplete(updated).catch(err => {
+            logger.error('DAG progression failed', { runId: run.id, error: String(err) });
+          });
+        }
       }
 
       logger.info('Module run status updated via callback', {

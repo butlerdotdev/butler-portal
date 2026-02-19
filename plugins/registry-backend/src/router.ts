@@ -1729,7 +1729,7 @@ export async function createRouter(options: RouterOptions): Promise<express.Rout
   router.use(createModuleRouter(options));
   router.use(createModuleRunRouter(options));
   router.use(createEnvironmentRunRouter(routerOptions));
-  router.use(createModuleRunCallbackRouter(options));
+  router.use(createModuleRunCallbackRouter(routerOptions));
   router.use(createCloudIntegrationRouter(options));
   router.use(createVariableSetRouter(options));
   router.use(createBindingRouter(options));
