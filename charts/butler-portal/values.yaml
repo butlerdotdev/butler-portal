@@ -78,6 +78,17 @@ postgresql:
       cpu: "1"
       memory: 512Mi
 
+# Registry configuration
+registry:
+  # Base URL for the registry (e.g. https://portal.butlerlabs.dev)
+  baseUrl: ""
+  # GitHub token secret reference for repository_dispatch and commit status
+  github:
+    # Name of the K8s Secret containing the GitHub PAT
+    secretName: ""
+    # Key within the Secret
+    secretKey: "token"
+
 # Extra environment variables to add to the deployment
 extraEnv: []
 # - name: AUTH_GOOGLE_CLIENT_ID

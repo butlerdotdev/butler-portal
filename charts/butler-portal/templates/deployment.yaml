@@ -54,6 +54,18 @@ spec:
                   name: {{ include "butler-portal.dbSecretName" . }}
                   key: password
             {{- end }}
+            - name: REGISTRY_BASE_URL
+              value: {{ .Values.registry.baseUrl | quote }}
+            {{- if .Values.registry.github.secretName }}
+            - name: GITHUB_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.registry.github.secretName }}
+                  key: {{ .Values.registry.github.secretKey | default "token" }}
+            {{- else }}
+            - name: GITHUB_TOKEN
+              value: ""
+            {{- end }}
             {{- with .Values.extraEnv }}
             {{- toYaml . | nindent 12 }}
             {{- end }}

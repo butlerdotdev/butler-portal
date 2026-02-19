@@ -32,6 +32,22 @@ auth:
   providers:
     guest: {}
 
+# IaC Registry configuration
+registry:
+  baseUrl: ${REGISTRY_BASE_URL}
+  storage:
+    git:
+      github:
+        token: ${GITHUB_TOKEN}
+  iac:
+    peaas:
+      enabled: true
+      github:
+        owner: butlerdotdev
+        repo: butler-runner
+    byoc:
+      enabled: true
+
 catalog:
   # Overrides the default list locations from app-config.yaml as these contain example data.
   # See https://backstage.io/docs/features/software-catalog/#adding-components-to-the-catalog for more details
