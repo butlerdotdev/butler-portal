@@ -57,6 +57,7 @@ import { createCloudIntegrationRouter } from './routes/cloudIntegrationRoutes';
 import { createVariableSetRouter } from './routes/variableSetRoutes';
 import { createBindingRouter } from './routes/bindingRoutes';
 import { createPolicyRouter } from './routes/policyRoutes';
+import { DagExecutor } from './orchestration/dagExecutor';
 import { evaluateDownloadPolicy } from './governance/downloadPolicyEvaluator';
 import { CascadeManager } from './orchestration/cascadeManager';
 import { createWebhookRoutes } from './webhooks/webhookRoutes';
@@ -80,6 +81,7 @@ export interface RouterOptions {
   auth: AuthService;
   db: RegistryDatabase;
   permissions: PermissionsService;
+  dagExecutor?: DagExecutor;
 }
 
 /** Check a Backstage permission. Throws 403 if denied. */
@@ -109,6 +111,8 @@ export async function createRouter(options: RouterOptions): Promise<express.Rout
   const { config, logger, httpAuth, userInfo, auth, db, permissions } = options;
 
   const cascadeManager = new CascadeManager(db, logger);
+  const dagExecutor = new DagExecutor(db, logger);
+  const routerOptions = { ...options, dagExecutor };
 
   const router = Router();
   router.use(express.json());
@@ -1724,7 +1728,7 @@ export async function createRouter(options: RouterOptions): Promise<express.Rout
   router.use(createEnvironmentRouter(options));
   router.use(createModuleRouter(options));
   router.use(createModuleRunRouter(options));
-  router.use(createEnvironmentRunRouter(options));
+  router.use(createEnvironmentRunRouter(routerOptions));
   router.use(createModuleRunCallbackRouter(options));
   router.use(createCloudIntegrationRouter(options));
   router.use(createVariableSetRouter(options));

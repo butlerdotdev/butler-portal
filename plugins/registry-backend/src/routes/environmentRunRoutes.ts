@@ -2,13 +2,14 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import Router from 'express-promise-router';
+import crypto from 'crypto';
 import { sendError, notFound, badRequest, forbidden, assertTeamAccess, requireMinRole } from '../util/errors';
 import { AuthorizeResult } from '@backstage/plugin-permission-common';
 import { registryRunCreatePermission } from '@internal/plugin-registry-common';
 import type { RouterOptions } from '../router';
 
 export function createEnvironmentRunRouter(options: RouterOptions) {
-  const { db, logger, httpAuth, permissions } = options;
+  const { db, logger, httpAuth, permissions, dagExecutor } = options;
   const router = Router();
 
   // ── Environment Runs (DAG-wide execution) ─────────────────────────
@@ -90,6 +91,11 @@ export function createEnvironmentRunRouter(options: RouterOptions) {
         operation,
         totalModules: activeModules.length,
       });
+
+      // Start the DAG — creates individual module runs in topological order
+      if (dagExecutor) {
+        await dagExecutor.startEnvironmentRun(envRun.id);
+      }
 
       res.status(201).json(envRun);
     } catch (err) {
