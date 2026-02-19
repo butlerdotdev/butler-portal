@@ -11,6 +11,7 @@ on:
     paths:
       - 'packages/**'
       - 'plugins/**'
+      - 'examples/**'
       - 'app-config*.yaml'
       - 'package.json'
       - 'yarn.lock'
@@ -21,6 +22,7 @@ on:
     paths:
       - 'packages/**'
       - 'plugins/**'
+      - 'examples/**'
       - 'app-config*.yaml'
       - 'package.json'
       - 'yarn.lock'
