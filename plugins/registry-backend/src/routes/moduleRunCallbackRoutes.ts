@@ -8,7 +8,7 @@ import { buildStateBackendConfig } from '../runs/envVarBuilder';
 import type { RouterOptions } from '../router';
 
 export function createModuleRunCallbackRouter(options: RouterOptions) {
-  const { config, db, logger } = options;
+  const { db, logger } = options;
   const router = Router();
 
   // Verify module-run callback token
@@ -344,12 +344,10 @@ export function createModuleRunCallbackRouter(options: RouterOptions) {
         },
       );
 
-      // Build callback URLs
-      const callbackBaseUrl =
-        config.getOptionalString('registry.iac.byoc.callbackBaseUrl') ??
-        config.getOptionalString('registry.baseUrl') ??
-        '';
-      const cbBase = `${callbackBaseUrl}/api/registry/v1/ci/module-runs/${run.id}`;
+      // Build callback URLs — paths are relative to the plugin base URL.
+      // butler-runner prepends BUTLER_URL (e.g. https://portal.example.com/api/registry)
+      // so callback paths must NOT include the /api/registry prefix.
+      const cbBase = `/v1/ci/module-runs/${run.id}`;
 
       const configResponse = {
         runId: run.id,
