@@ -92,6 +92,10 @@ export async function up(knex: Knex): Promise<void> {
   const client = knex.client.config.client;
   const isPg = client === 'pg' || client === 'postgresql';
   if (isPg) {
+    // Ensure columns are jsonb (may be json from earlier migration)
+    await knex.raw(`ALTER TABLE artifacts ALTER COLUMN source_config TYPE jsonb USING source_config::jsonb`);
+    await knex.raw(`ALTER TABLE artifacts ALTER COLUMN tags TYPE jsonb USING tags::jsonb`);
+
     // Webhook-to-artifact lookup via source_config JSONB
     await knex.raw(`
       CREATE INDEX idx_artifacts_source_repo

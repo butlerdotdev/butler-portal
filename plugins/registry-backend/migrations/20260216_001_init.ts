@@ -30,8 +30,8 @@ export async function up(knex: Knex): Promise<void> {
     table.string('status', 32).notNullable().defaultTo('active');
     table.json('storage_config').notNullable();
     table.json('approval_policy').nullable();
-    table.json('source_config').nullable();
-    table.json('tags').defaultTo('[]');
+    table.jsonb('source_config').nullable();
+    table.jsonb('tags').defaultTo('[]');
     table.string('category', 128).nullable();
     table.bigInteger('download_count').notNullable().defaultTo(0);
     table.string('created_by', 256).nullable();
