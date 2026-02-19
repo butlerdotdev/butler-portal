@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import { Knex } from 'knex';
+import type { Knex } from 'knex';
 
 export async function up(knex: Knex): Promise<void> {
   const isSqlite = knex.client.config.client === 'better-sqlite3' || knex.client.config.client === 'sqlite3';

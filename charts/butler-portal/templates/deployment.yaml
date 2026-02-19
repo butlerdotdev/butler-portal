@@ -54,6 +54,9 @@ spec:
                   name: {{ include "butler-portal.dbSecretName" . }}
                   key: password
             {{- end }}
+            {{- with .Values.extraEnv }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
           livenessProbe:
             httpGet:
               path: /healthcheck

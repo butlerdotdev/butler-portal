@@ -32,6 +32,7 @@ auth:
       development:
         clientId: ${AUTH_GOOGLE_CLIENT_ID}
         clientSecret: ${AUTH_GOOGLE_CLIENT_SECRET}
+        prompt: select_account
 
 catalog:
   import:

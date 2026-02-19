@@ -77,3 +77,11 @@ postgresql:
     limits:
       cpu: "1"
       memory: 512Mi
+
+# Extra environment variables to add to the deployment
+extraEnv: []
+# - name: AUTH_GOOGLE_CLIENT_ID
+#   valueFrom:
+#     secretKeyRef:
+#       name: google-auth
+#       key: clientId

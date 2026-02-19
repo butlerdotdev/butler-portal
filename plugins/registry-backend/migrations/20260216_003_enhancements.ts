@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import { Knex } from 'knex';
+import type { Knex } from 'knex';
 
 export async function up(knex: Knex): Promise<void> {
   // Add yank_reason to artifact_versions

@@ -26,6 +26,8 @@ spec:
     initdb:
       database: {{ .Values.postgresql.database }}
       owner: {{ .Values.postgresql.owner }}
+      postInitApplicationSQL:
+        - ALTER USER {{ .Values.postgresql.owner }} CREATEDB
 
   {{- with .Values.postgresql.resources }}
   resources:
