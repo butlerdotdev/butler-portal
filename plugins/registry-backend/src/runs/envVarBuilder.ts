@@ -86,8 +86,9 @@ export function resolveModuleVariablesToEnv(
 /**
  * Build state backend config for Terraform init.
  *
- * For PeaaS + pg backend: generates pg connection string config
- * For BYOC: passes through user's backend config as-is
+ * For PeaaS with no explicit backend: generates S3 backend pointing at
+ * platform-managed SeaweedFS. Each module gets a unique state key.
+ * For BYOC: passes through user's backend config as-is.
  */
 export function buildStateBackendConfig(
   backend: StateBackendConfig | null | undefined,
@@ -95,29 +96,48 @@ export function buildStateBackendConfig(
     mode: 'byoc' | 'peaas';
     environmentId: string;
     moduleId: string;
-    pgSchemaName?: string;
+    peaasStateBackend?: PeaasStateBackendConfig;
   },
-): { type: string; config: Record<string, string> } | null {
-  if (!backend) return null;
-
-  if (backend.type === 'pg' && options.mode === 'peaas') {
-    // Platform-managed PostgreSQL state
-    // The actual connection string is injected via environment variable PG_CONN_STR
-    // by the PeaaS executor at Job creation time
+): { type: string; config: Record<string, unknown> } | null {
+  // BYOC with explicit backend — pass through user config
+  if (backend) {
     return {
-      type: 'pg',
+      type: backend.type,
+      config: (backend.config ?? {}) as Record<string, unknown>,
+    };
+  }
+
+  // PeaaS without explicit backend — use platform-managed S3 (SeaweedFS)
+  if (options.mode === 'peaas' && options.peaasStateBackend) {
+    const s3 = options.peaasStateBackend;
+    const stateKey = `env/${options.environmentId}/mod/${options.moduleId}/terraform.tfstate`;
+    return {
+      type: 's3',
       config: {
-        schema_name: options.pgSchemaName ?? 'butler_tfstate',
-        // TF_WORKSPACE env var set to workspace name
+        bucket: s3.bucket,
+        key: stateKey,
+        region: s3.region ?? 'us-east-1',
+        endpoint: s3.endpoint,
+        skip_credentials_validation: true,
+        skip_requesting_account_id: true,
+        skip_metadata_api_check: true,
+        skip_region_validation: true,
+        use_path_style: true,
+        ...(s3.accessKey ? { access_key: s3.accessKey } : {}),
+        ...(s3.secretKey ? { secret_key: s3.secretKey } : {}),
       },
     };
   }
 
-  // BYOC or non-pg backend — pass through user config
-  return {
-    type: backend.type,
-    config: (backend.config ?? {}) as Record<string, string>,
-  };
+  return null;
+}
+
+export interface PeaasStateBackendConfig {
+  endpoint: string;
+  bucket: string;
+  region?: string;
+  accessKey?: string;
+  secretKey?: string;
 }
 
 /**

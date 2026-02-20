@@ -45,6 +45,9 @@ registry:
       github:
         owner: butlerdotdev
         repo: butler-runner
+      stateBackend:
+        endpoint: ${PEAAS_STATE_S3_ENDPOINT}
+        bucket: ${PEAAS_STATE_S3_BUCKET}
     byoc:
       enabled: true
 

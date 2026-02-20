@@ -657,7 +657,7 @@ describe('Registry Backend - Phase 3: IaC Environments', () => {
       expect(result).toBeNull();
     });
 
-    it('should generate pg config for peaas mode', () => {
+    it('should pass through explicit pg backend in peaas mode', () => {
       const result = buildStateBackendConfig(
         { type: 'pg' },
         {
@@ -668,23 +668,26 @@ describe('Registry Backend - Phase 3: IaC Environments', () => {
       );
       expect(result).toEqual({
         type: 'pg',
-        config: {
-          schema_name: 'butler_tfstate',
-        },
+        config: {},
       });
     });
 
-    it('should use custom schema name for peaas pg', () => {
+    it('should generate S3 config for peaas mode with peaasStateBackend', () => {
       const result = buildStateBackendConfig(
-        { type: 'pg' },
+        null,
         {
           mode: 'peaas',
           environmentId: 'env-1',
           moduleId: 'mod-1',
-          pgSchemaName: 'custom_schema',
+          peaasStateBackend: {
+            endpoint: 'http://10.40.2.20:8333',
+            bucket: 'butler-tfstate',
+          },
         },
       );
-      expect(result!.config.schema_name).toBe('custom_schema');
+      expect(result!.type).toBe('s3');
+      expect(result!.config.bucket).toBe('butler-tfstate');
+      expect(result!.config.key).toBe('env/env-1/mod/mod-1/terraform.tfstate');
     });
 
     it('should pass through s3 config for byoc mode', () => {

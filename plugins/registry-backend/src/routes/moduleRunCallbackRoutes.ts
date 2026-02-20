@@ -5,11 +5,26 @@ import Router from 'express-promise-router';
 import crypto from 'crypto';
 import { sendError, notFound, badRequest, unauthorized, conflict } from '../util/errors';
 import { buildStateBackendConfig } from '../runs/envVarBuilder';
+import type { PeaasStateBackendConfig } from '../runs/envVarBuilder';
 import type { RouterOptions } from '../router';
 
 export function createModuleRunCallbackRouter(options: RouterOptions) {
-  const { db, logger, dagExecutor } = options;
+  const { db, logger, dagExecutor, config } = options;
   const router = Router();
+
+  // Read platform-managed state backend config (SeaweedFS S3)
+  const peaasStateBackend: PeaasStateBackendConfig | undefined = (() => {
+    const endpoint = config.getOptionalString('registry.iac.peaas.stateBackend.endpoint');
+    const bucket = config.getOptionalString('registry.iac.peaas.stateBackend.bucket');
+    if (!endpoint || !bucket) return undefined;
+    return {
+      endpoint,
+      bucket,
+      region: config.getOptionalString('registry.iac.peaas.stateBackend.region') ?? 'us-east-1',
+      accessKey: config.getOptionalString('registry.iac.peaas.stateBackend.accessKey'),
+      secretKey: config.getOptionalString('registry.iac.peaas.stateBackend.secretKey'),
+    };
+  })();
 
   // Verify module-run callback token
   const verifyModuleRunCallbackToken = async (
@@ -417,6 +432,7 @@ export function createModuleRunCallbackRouter(options: RouterOptions) {
           mode: run.mode,
           environmentId: run.environment_id,
           moduleId: run.module_id,
+          peaasStateBackend,
         },
       );
 

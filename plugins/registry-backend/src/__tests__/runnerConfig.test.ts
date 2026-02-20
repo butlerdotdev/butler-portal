@@ -58,33 +58,42 @@ describe('Registry Backend - Runner Config (Phase 2c)', () => {
       });
     });
 
-    it('configures pg backend for PeaaS mode', () => {
-      const backend: StateBackendConfig = { type: 'pg' };
-      const result = buildStateBackendConfig(backend, {
+    it('generates S3 backend for PeaaS mode with peaasStateBackend', () => {
+      const result = buildStateBackendConfig(null, {
         mode: 'peaas',
         environmentId: 'env-1',
         moduleId: 'mod-1',
+        peaasStateBackend: {
+          endpoint: 'http://10.40.2.20:8333',
+          bucket: 'butler-tfstate',
+        },
       });
       expect(result).toEqual({
-        type: 'pg',
+        type: 's3',
         config: {
-          schema_name: 'butler_tfstate',
+          bucket: 'butler-tfstate',
+          key: 'env/env-1/mod/mod-1/terraform.tfstate',
+          region: 'us-east-1',
+          endpoint: 'http://10.40.2.20:8333',
+          skip_credentials_validation: true,
+          skip_requesting_account_id: true,
+          skip_metadata_api_check: true,
+          skip_region_validation: true,
+          use_path_style: true,
         },
       });
     });
 
-    it('uses custom pgSchemaName when provided', () => {
-      const backend: StateBackendConfig = { type: 'pg' };
-      const result = buildStateBackendConfig(backend, {
+    it('returns null for PeaaS mode without peaasStateBackend', () => {
+      const result = buildStateBackendConfig(null, {
         mode: 'peaas',
         environmentId: 'env-1',
         moduleId: 'mod-1',
-        pgSchemaName: 'custom_schema',
       });
-      expect(result?.config.schema_name).toBe('custom_schema');
+      expect(result).toBeNull();
     });
 
-    it('passes through non-pg backend in PeaaS mode', () => {
+    it('passes through explicit backend in PeaaS mode', () => {
       const backend: StateBackendConfig = {
         type: 'gcs',
         config: { bucket: 'my-bucket' },
