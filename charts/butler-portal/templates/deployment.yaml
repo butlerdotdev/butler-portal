@@ -62,9 +62,6 @@ spec:
                 secretKeyRef:
                   name: {{ .Values.registry.github.secretName }}
                   key: {{ .Values.registry.github.secretKey | default "token" }}
-            {{- else }}
-            - name: GITHUB_TOKEN
-              value: ""
             {{- end }}
             {{- with .Values.extraEnv }}
             {{- toYaml . | nindent 12 }}
