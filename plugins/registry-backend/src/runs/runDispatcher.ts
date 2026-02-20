@@ -166,6 +166,42 @@ export class RunDispatcher {
         callback_token_hash: tokenHash,
       });
 
+      // Resolve cloud integration OIDC details for the workflow
+      // (GitHub Actions needs auth steps BEFORE the runner container starts)
+      const oidcPayload: Record<string, string> = {};
+      try {
+        const cloudInts = await this.db.getEffectiveCloudIntegrations(
+          run.module_id,
+          run.environment_id,
+        );
+        for (const ci of cloudInts) {
+          const config = ci.credential_config as Record<string, any>;
+          if (ci.provider === 'gcp' && ci.auth_method === 'oidc') {
+            if (config.workloadIdentityProvider) {
+              oidcPayload.gcp_wif_provider = config.workloadIdentityProvider;
+            }
+            if (config.serviceAccount) {
+              oidcPayload.gcp_service_account = config.serviceAccount;
+            }
+            if (config.projectId) {
+              oidcPayload.gcp_project_id = config.projectId;
+            }
+          } else if (ci.provider === 'aws' && ci.auth_method === 'oidc') {
+            if (config.roleArn) {
+              oidcPayload.aws_role_arn = config.roleArn;
+            }
+            if (config.region) {
+              oidcPayload.aws_region = config.region;
+            }
+          }
+        }
+      } catch (err) {
+        this.logger.warn('Failed to resolve cloud integrations for dispatch payload', {
+          runId: run.id,
+          error: String(err),
+        });
+      }
+
       // Dispatch via GitHub repository_dispatch
       const response = await fetch(
         `https://api.github.com/repos/${target.owner}/${target.repo}/dispatches`,
@@ -185,6 +221,7 @@ export class RunDispatcher {
               callback_token: callbackToken,
               operation: run.operation,
               module_name: run.module_name,
+              ...oidcPayload,
             },
           }),
         },
