@@ -118,13 +118,13 @@ export function buildStateBackendConfig(
         key: stateKey,
         region: s3.region ?? 'us-east-1',
         endpoint: s3.endpoint,
+        access_key: s3.accessKey ?? 'unused',
+        secret_key: s3.secretKey ?? 'unused',
         skip_credentials_validation: true,
         skip_requesting_account_id: true,
         skip_metadata_api_check: true,
         skip_region_validation: true,
         use_path_style: true,
-        ...(s3.accessKey ? { access_key: s3.accessKey } : {}),
-        ...(s3.secretKey ? { secret_key: s3.secretKey } : {}),
       },
     };
   }

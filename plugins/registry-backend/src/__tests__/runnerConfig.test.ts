@@ -75,6 +75,8 @@ describe('Registry Backend - Runner Config (Phase 2c)', () => {
           key: 'env/env-1/mod/mod-1/terraform.tfstate',
           region: 'us-east-1',
           endpoint: 'http://10.40.2.20:8333',
+          access_key: 'unused',
+          secret_key: 'unused',
           skip_credentials_validation: true,
           skip_requesting_account_id: true,
           skip_metadata_api_check: true,
