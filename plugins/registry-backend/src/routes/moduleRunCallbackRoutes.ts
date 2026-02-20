@@ -329,6 +329,72 @@ export function createModuleRunCallbackRouter(options: RouterOptions) {
         };
       }
 
+      // Resolve cloud integration + variable set env vars for the runner.
+      // These are environment variables (GOOGLE_PROJECT, AWS_REGION, etc.)
+      // that must be set before running terraform.
+      const envVars: Record<string, { value: string; sensitive: boolean }> = {};
+      const cloudInts = await db.getEffectiveCloudIntegrations(
+        run.module_id,
+        run.environment_id,
+      );
+      for (const ci of cloudInts) {
+        const config = ci.credential_config as Record<string, any>;
+        if (ci.provider === 'gcp') {
+          if (config.projectId) {
+            envVars['GOOGLE_PROJECT'] = { value: config.projectId, sensitive: false };
+          }
+          if (ci.auth_method !== 'oidc' && config.credentials) {
+            envVars['GOOGLE_CREDENTIALS'] = { value: config.credentials, sensitive: true };
+          }
+          if (ci.auth_method === 'oidc' && config.workloadIdentityProvider) {
+            envVars['GOOGLE_WORKLOAD_IDENTITY_PROVIDER'] = { value: config.workloadIdentityProvider, sensitive: false };
+            if (config.serviceAccount) {
+              envVars['GOOGLE_SERVICE_ACCOUNT'] = { value: config.serviceAccount, sensitive: false };
+            }
+          }
+        } else if (ci.provider === 'aws') {
+          if (config.region) {
+            envVars['AWS_REGION'] = { value: config.region, sensitive: false };
+            envVars['AWS_DEFAULT_REGION'] = { value: config.region, sensitive: false };
+          }
+          if (ci.auth_method === 'oidc' && config.roleArn) {
+            envVars['AWS_ROLE_ARN'] = { value: config.roleArn, sensitive: false };
+          } else {
+            if (config.accessKeyId) {
+              envVars['AWS_ACCESS_KEY_ID'] = { value: config.accessKeyId, sensitive: true };
+            }
+            if (config.secretAccessKey) {
+              envVars['AWS_SECRET_ACCESS_KEY'] = { value: config.secretAccessKey, sensitive: true };
+            }
+          }
+        } else if (ci.provider === 'azure') {
+          if (config.clientId) envVars['ARM_CLIENT_ID'] = { value: config.clientId, sensitive: false };
+          if (config.tenantId) envVars['ARM_TENANT_ID'] = { value: config.tenantId, sensitive: false };
+          if (config.subscriptionId) envVars['ARM_SUBSCRIPTION_ID'] = { value: config.subscriptionId, sensitive: false };
+          if (ci.auth_method !== 'oidc' && config.clientSecret) {
+            envVars['ARM_CLIENT_SECRET'] = { value: config.clientSecret, sensitive: true };
+          }
+        } else if (ci.provider === 'custom') {
+          const customVars = (config.envVars ?? {}) as Record<string, { source: string; value: string }>;
+          for (const [key, varCfg] of Object.entries(customVars)) {
+            envVars[key] = { value: varCfg.value, sensitive: varCfg.source === 'ci_secret' };
+          }
+        }
+      }
+
+      // Variable set entries as env vars
+      const varSets = await db.getEffectiveVariableSets(run.module_id, run.environment_id);
+      for (const vs of varSets) {
+        const entries = await db.listVariableSetEntries(vs.id);
+        for (const entry of entries) {
+          const envName = entry.category === 'terraform' ? `TF_VAR_${entry.key}` : entry.key;
+          envVars[envName] = {
+            value: entry.sensitive ? (entry.ci_secret_name ?? '') : (entry.value ?? ''),
+            sensitive: entry.sensitive,
+          };
+        }
+      }
+
       // Resolve upstream outputs from dependencies
       const deps = await db.getModuleDependencies(run.module_id);
       const upstreamOutputs: Record<string, unknown> = {};
@@ -365,6 +431,7 @@ export function createModuleRunCallbackRouter(options: RouterOptions) {
         terraformVersion: run.tf_version ?? mod.tf_version ?? '1.9.0',
         source,
         variables,
+        envVars,
         upstreamOutputs,
         stateBackend,
         callbacks: {
