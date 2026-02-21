@@ -31,9 +31,11 @@ import {
 import { useRegistryApi } from '../../hooks/useRegistryApi';
 import { ModuleBindings } from './ModuleBindings';
 import { ResolvedVariablesViewer } from './ResolvedVariablesViewer';
+import { StateBackendForm } from './StateBackendForm';
 import type {
   EnvironmentModule,
   ModuleDependency,
+  StateBackendConfig,
 } from '../../api/types/environments';
 
 const useStyles = makeStyles(theme => ({
@@ -87,6 +89,7 @@ export function ModuleSettings({
   const [tfVersion, setTfVersion] = useState(mod.tf_version ?? '');
   const [autoPlan, setAutoPlan] = useState(mod.auto_plan_on_module_update);
   const [saving, setSaving] = useState(false);
+  const [savingBackend, setSavingBackend] = useState(false);
 
   // Dependencies
   const [deps, setDeps] = useState<ModuleDependency[]>([]);
@@ -159,6 +162,20 @@ export function ModuleSettings({
       fetchDeps();
     } catch {
       // Silent
+    }
+  };
+
+  const handleSaveBackend = async (backend: StateBackendConfig | null) => {
+    try {
+      setSavingBackend(true);
+      await api.updateModule(envId, moduleId, {
+        state_backend: backend ?? undefined,
+      });
+      onRefresh();
+    } catch {
+      // Silent
+    } finally {
+      setSavingBackend(false);
     }
   };
 
@@ -336,35 +353,17 @@ export function ModuleSettings({
           State Backend
         </Typography>
         <Paper variant="outlined" style={{ padding: 16 }}>
-          {mod.state_backend ? (
-            <>
-              <Typography variant="body2">
-                Type: <strong>{mod.state_backend.type}</strong>
-              </Typography>
-              {mod.state_backend.type === 'pg' && (
-                <Typography variant="caption" color="textSecondary">
-                  Platform-managed PostgreSQL state
-                </Typography>
-              )}
-              {mod.state_backend.config && (
-                <Box mt={1}>
-                  <Typography
-                    variant="caption"
-                    component="pre"
-                    style={{
-                      fontFamily: 'monospace',
-                      whiteSpace: 'pre-wrap',
-                    }}
-                  >
-                    {JSON.stringify(mod.state_backend.config, null, 2)}
-                  </Typography>
-                </Box>
-              )}
-            </>
-          ) : (
+          {mod.execution_mode === 'peaas' ? (
             <Typography variant="body2" color="textSecondary">
-              No state backend configured. Configure one before running applies.
+              State is managed by Butler Labs. Your Terraform state is stored
+              securely and persisted across runs.
             </Typography>
+          ) : (
+            <StateBackendForm
+              value={mod.state_backend}
+              saving={savingBackend}
+              onSave={handleSaveBackend}
+            />
           )}
         </Paper>
       </Box>

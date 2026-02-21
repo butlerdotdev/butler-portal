@@ -60,7 +60,7 @@ export interface VcsTrigger {
 }
 
 export interface StateBackendConfig {
-  type: 'pg' | 's3' | 'gcs' | 'azurerm';
+  type: 's3' | 'gcs' | 'azurerm' | 'consul' | 'http' | string;
   config?: Record<string, unknown>;
 }
 

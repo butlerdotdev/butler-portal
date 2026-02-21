@@ -60,6 +60,11 @@ const EnvironmentDetail = lazy(() =>
     default: m.EnvironmentDetail,
   })),
 );
+const EnvironmentRunDetail = lazy(() =>
+  import('../environments/EnvironmentRunDetail').then(m => ({
+    default: m.EnvironmentRunDetail,
+  })),
+);
 
 // Module pages
 const ModuleDetail = lazy(() =>
@@ -300,6 +305,10 @@ function RegistryPageContent() {
               <Route
                 path="/environments/:envId"
                 element={<EnvironmentDetail />}
+              />
+              <Route
+                path="/environments/:envId/runs/:runId"
+                element={<EnvironmentRunDetail />}
               />
               <Route
                 path="/environments/:envId/modules/:moduleId"

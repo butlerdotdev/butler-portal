@@ -150,7 +150,7 @@ export function ModuleDetail() {
           <Box className={classes.headerLeft}>
             <IconButton
               size="small"
-              onClick={() => navigate(`../../`)}
+              onClick={() => navigate(-1)}
             >
               <ArrowBackIcon />
             </IconButton>

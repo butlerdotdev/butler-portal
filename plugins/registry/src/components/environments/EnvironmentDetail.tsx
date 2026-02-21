@@ -262,7 +262,7 @@ export function EnvironmentDetail() {
       <Box className={classes.header}>
         <Box>
           <Box className={classes.headerLeft}>
-            <IconButton size="small" onClick={() => navigate('..')}>
+            <IconButton size="small" onClick={() => navigate(-1)}>
               <ArrowBackIcon />
             </IconButton>
             <Typography variant="h5">{environment.name}</Typography>
@@ -312,7 +312,7 @@ export function EnvironmentDetail() {
               size="small"
               disabled={environment.locked || !!activeEnvRun}
             >
-              Plan All
+              Run Actions
             </Button>
           )}
           {canLock && environment.locked ? (
@@ -507,7 +507,11 @@ export function EnvironmentDetail() {
               </TableHead>
               <TableBody>
                 {envRuns.map(run => (
-                  <TableRow key={run.id}>
+                  <TableRow
+                    key={run.id}
+                    className={classes.clickableRow}
+                    onClick={() => navigate(`runs/${run.id}`)}
+                  >
                     <TableCell>{run.operation}</TableCell>
                     <TableCell>
                       <Chip

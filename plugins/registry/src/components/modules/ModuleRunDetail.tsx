@@ -302,7 +302,7 @@ export function ModuleRunDetail() {
       <Box className={classes.header}>
         <Box>
           <Box className={classes.headerLeft}>
-            <IconButton size="small" onClick={() => navigate('..')}>
+            <IconButton size="small" onClick={() => navigate(-1)}>
               <ArrowBackIcon />
             </IconButton>
             <Typography variant="h5">
