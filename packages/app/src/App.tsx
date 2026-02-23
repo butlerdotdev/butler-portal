@@ -44,6 +44,7 @@ import { HomePage } from './components/home';
 import { ButlerPage } from '@internal/plugin-butler';
 import { WorkspacesPluginPage } from '@internal/plugin-workspaces';
 import { RegistryPage } from '@internal/plugin-registry';
+import { PipelinePage } from '@internal/plugin-pipeline';
 
 const app = createApp({
 	apis,
@@ -133,6 +134,7 @@ const routes = (
 		<Route path="/butler/*" element={<ButlerPage />} />
 		<Route path="/workspaces/*" element={<WorkspacesPluginPage />} />
 		<Route path="/registry/*" element={<RegistryPage />} />
+		<Route path="/pipeline/*" element={<PipelinePage />} />
 	</FlatRoutes>
 );
 

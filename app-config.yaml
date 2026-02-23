@@ -62,6 +62,12 @@ butler:
     username: ${BUTLER_SERVICE_ACCOUNT_USER:-admin}
     password: ${BUTLER_SERVICE_ACCOUNT_PASSWORD:-admin}
 
+pipeline:
+  vectorBinaryPath: vector
+  vrl:
+    timeoutMs: 5000
+    maxInputEvents: 100
+
 search:
   collators:
     catalog:

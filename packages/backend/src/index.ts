@@ -73,4 +73,7 @@ backend.add(import('@internal/plugin-butler-backend'));
 backend.add(import('@internal/plugin-registry-backend'));
 backend.add(import('@internal/plugin-registry-backend/catalog'));
 
+// pipeline plugin
+backend.add(import('@internal/plugin-pipeline-backend'));
+
 backend.start();
