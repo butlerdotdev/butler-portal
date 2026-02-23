@@ -6,6 +6,7 @@ import ExtensionIcon from '@material-ui/icons/Extension';
 import LibraryBooks from '@material-ui/icons/LibraryBooks';
 import CreateComponentIcon from '@material-ui/icons/AddCircleOutline';
 import StorageIcon from '@material-ui/icons/Storage';
+import TimelineIcon from '@material-ui/icons/Timeline';
 import LogoFull from './LogoFull';
 import LogoIcon from './LogoIcon';
 import ButlerIcon from './ButlerIcon';
@@ -89,6 +90,7 @@ export const Root = ({ children }: PropsWithChildren<{}>) => (
 					<SidebarItem icon={ButlerIcon} to="butler" text="Butler" />
 					<SidebarItem icon={WorkspacesIcon} to="workspaces" text="Workspaces" />
 					<SidebarItem icon={StorageIcon} to="registry" text="Registry" />
+					<SidebarItem icon={TimelineIcon} to="pipeline" text="Pipelines" />
 				</SidebarScrollWrapper>
 			</SidebarGroup>
 

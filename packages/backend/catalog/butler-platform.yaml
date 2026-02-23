@@ -60,6 +60,17 @@ spec:
 apiVersion: backstage.io/v1alpha1
 kind: Group
 metadata:
+  name: dev-team-admins
+  title: Dev Team Admins
+spec:
+  type: role
+  children: []
+  members: [user:development/guest]
+
+---
+apiVersion: backstage.io/v1alpha1
+kind: Group
+metadata:
   name: dev-team-operators
   title: Dev Team Operators
 spec:
@@ -84,7 +95,7 @@ metadata:
   name: guest
   title: Guest User
 spec:
-  memberOf: [platform-team, platform-team-operators, dev-team, dev-team-operators]
+  memberOf: [platform-team, platform-team-operators, dev-team, dev-team-operators, dev-team-admins]
 
 ---
 apiVersion: backstage.io/v1alpha1
