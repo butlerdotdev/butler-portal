@@ -171,7 +171,7 @@ export class RunDispatcher {
       const oidcPayload: Record<string, string> = {};
       try {
         const cloudInts = await this.db.getEffectiveCloudIntegrations(
-          run.module_id,
+          run.project_module_id,
           run.environment_id,
         );
         for (const ci of cloudInts) {
@@ -255,7 +255,7 @@ export class RunDispatcher {
       });
 
       // Dequeue next and notify DAG
-      await this.db.dequeueNextModuleRun(run.module_id);
+      await this.db.dequeueNextModuleRun(run.project_module_id, run.environment_id);
       if (run.environment_run_id && this.dagExecutor) {
         const updated = await this.db.getModuleRun(run.id);
         if (updated) {
@@ -287,11 +287,11 @@ export class RunDispatcher {
     }
 
     // BYOC — resolve from module's vcs_trigger
-    const mod = await this.db.getModule(run.module_id);
+    const mod = await this.db.getProjectModule(run.project_module_id);
     if (!mod?.vcs_trigger?.repositoryUrl) {
       this.logger.warn(
         'BYOC module has no vcs_trigger.repositoryUrl — cannot dispatch',
-        { runId: run.id, moduleId: run.module_id },
+        { runId: run.id, moduleId: run.project_module_id },
       );
       return null;
     }
@@ -344,7 +344,7 @@ export class RunDispatcher {
           }
 
           // Dequeue next
-          await this.db.dequeueNextModuleRun(run.module_id);
+          await this.db.dequeueNextModuleRun(run.project_module_id, run.environment_id);
         } else {
           this.logger.info('Module run still within timeout, waiting', {
             runId: run.id,

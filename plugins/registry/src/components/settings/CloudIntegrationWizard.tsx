@@ -13,8 +13,12 @@ import {
   MenuItem,
   Paper,
   Grid,
+  Chip,
+  CircularProgress,
   makeStyles,
 } from '@material-ui/core';
+import CheckCircleIcon from '@material-ui/icons/CheckCircle';
+import ErrorIcon from '@material-ui/icons/Error';
 import { useNavigate, useParams } from 'react-router-dom';
 import { Progress } from '@backstage/core-components';
 import { useRegistryApi } from '../../hooks/useRegistryApi';
@@ -23,6 +27,7 @@ import type {
   CloudProvider,
   AuthMethod,
   CreateCloudIntegrationRequest,
+  TestCloudIntegrationResult,
 } from '../../api/types/cloudIntegrations';
 
 const useStyles = makeStyles(theme => ({
@@ -57,6 +62,12 @@ const useStyles = makeStyles(theme => ({
   reviewSection: {
     padding: theme.spacing(2),
     marginBottom: theme.spacing(2),
+  },
+  testResult: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: theme.spacing(1),
+    marginTop: theme.spacing(1),
   },
 }));
 
@@ -210,6 +221,7 @@ export function CloudIntegrationWizard() {
             provider={provider}
             authMethod={authMethod}
             config={config}
+            api={api}
           />
         )}
       </Box>
@@ -394,6 +406,7 @@ function StepReview({
   provider,
   authMethod,
   config,
+  api,
 }: {
   classes: ReturnType<typeof useStyles>;
   name: string;
@@ -401,7 +414,29 @@ function StepReview({
   provider: CloudProvider;
   authMethod: AuthMethod;
   config: Record<string, string>;
+  api: import('../../api/RegistryApi').RegistryApi;
 }) {
+  const [testing, setTesting] = useState(false);
+  const [testResult, setTestResult] = useState<TestCloudIntegrationResult | null>(null);
+
+  const handleTest = async () => {
+    setTesting(true);
+    setTestResult(null);
+    try {
+      const credentialConfig = buildCredentialConfig(provider, authMethod, config);
+      const result = await api.testCloudIntegration({
+        provider,
+        auth_method: authMethod,
+        credential_config: credentialConfig,
+      });
+      setTestResult(result);
+    } catch {
+      setTestResult({ ok: false, message: 'Failed to run connection test' });
+    } finally {
+      setTesting(false);
+    }
+  };
+
   return (
     <Box>
       <Paper className={classes.reviewSection} variant="outlined">
@@ -433,6 +468,44 @@ function StepReview({
               {k}: {v}
             </Typography>
           ))}
+      </Paper>
+      <Paper className={classes.reviewSection} variant="outlined">
+        <Typography variant="subtitle2" gutterBottom>
+          Connection Test
+        </Typography>
+        <Typography variant="body2" color="textSecondary" gutterBottom>
+          Verify that the provider endpoint is reachable and configuration is valid.
+        </Typography>
+        <Box display="flex" alignItems="center" style={{ gap: 8 }}>
+          <Button
+            variant="outlined"
+            size="small"
+            onClick={handleTest}
+            disabled={testing}
+            startIcon={testing ? <CircularProgress size={16} /> : undefined}
+          >
+            {testing ? 'Testing...' : 'Test Connection'}
+          </Button>
+          {testResult && testResult.latencyMs != null && (
+            <Chip label={`${testResult.latencyMs}ms`} size="small" variant="outlined" />
+          )}
+        </Box>
+        {testResult && (
+          <Box className={classes.testResult}>
+            {testResult.ok ? (
+              <CheckCircleIcon style={{ color: '#4caf50' }} fontSize="small" />
+            ) : (
+              <ErrorIcon color="error" fontSize="small" />
+            )}
+            <Typography
+              variant="body2"
+              style={{ color: testResult.ok ? '#4caf50' : undefined }}
+              color={testResult.ok ? undefined : 'error'}
+            >
+              {testResult.message}
+            </Typography>
+          </Box>
+        )}
       </Paper>
     </Box>
   );

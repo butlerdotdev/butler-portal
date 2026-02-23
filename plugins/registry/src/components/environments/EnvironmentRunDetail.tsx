@@ -104,7 +104,7 @@ function formatDuration(seconds: number | null): string {
 export function EnvironmentRunDetail() {
   const classes = useStyles();
   const navigate = useNavigate();
-  const { envId, runId } = useParams<{ envId: string; runId: string }>();
+  const { projectId, envId, runId } = useParams<{ projectId: string; envId: string; runId: string }>();
   const api = useRegistryApi();
 
   const [envRun, setEnvRun] = useState<EnvironmentRun | null>(null);
@@ -341,7 +341,9 @@ export function EnvironmentRunDetail() {
                     className={classes.clickableRow}
                     onClick={() =>
                       navigate(
-                        `/registry/environments/${envId}/modules/${mr.module_id}/runs/${mr.id}`,
+                        projectId
+                          ? `/registry/projects/${projectId}/environments/${envId}/modules/${mr.project_module_id}/runs/${mr.id}`
+                          : `modules/${mr.project_module_id}/runs/${mr.id}`,
                       )
                     }
                   >

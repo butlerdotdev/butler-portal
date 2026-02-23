@@ -8,6 +8,7 @@ import { RegistryDatabase } from '../database/RegistryDatabase';
  *
  * Before starting a dependent module's run, the output resolver:
  * 1. For each upstream dependency, queries the latest successful apply run's tf_outputs
+ *    within the same environment
  * 2. Maps upstream outputs to downstream variables using the dependency's output_mapping
  * 3. Returns resolved values to be written as terraform.tfvars.json
  */
@@ -15,15 +16,17 @@ export class OutputResolver {
   constructor(private readonly db: RegistryDatabase) {}
 
   /**
-   * Resolve all upstream outputs for a module, mapped to downstream variable names.
+   * Resolve all upstream outputs for a module in a specific environment,
+   * mapped to downstream variable names.
    *
    * @returns A record of { downstreamVariable: value } to inject as tfvars.
    * @throws If an upstream has no outputs or a mapped key is missing.
    */
   async resolveUpstreamOutputs(
     moduleId: string,
+    environmentId: string,
   ): Promise<Record<string, unknown>> {
-    const deps = await this.db.getModuleDependencies(moduleId);
+    const deps = await this.db.getProjectModuleDependencies(moduleId);
     const resolved: Record<string, unknown> = {};
 
     for (const dep of deps) {
@@ -31,6 +34,7 @@ export class OutputResolver {
 
       const upstreamRun = await this.db.getLatestSuccessfulModuleRun(
         dep.depends_on_id,
+        environmentId,
       );
       if (!upstreamRun?.tf_outputs) {
         const depName = (dep as any).depends_on_name ?? dep.depends_on_id;
@@ -57,15 +61,20 @@ export class OutputResolver {
   }
 
   /**
-   * Check if all upstream dependencies for a module have outputs available.
-   * Used during plan-all to determine if a module can proceed.
+   * Check if all upstream dependencies for a module have outputs available
+   * within a specific environment. Used during plan-all to determine if a
+   * module can proceed.
    */
-  async hasUpstreamOutputs(moduleId: string): Promise<boolean> {
-    const deps = await this.db.getModuleDependencies(moduleId);
+  async hasUpstreamOutputs(
+    moduleId: string,
+    environmentId: string,
+  ): Promise<boolean> {
+    const deps = await this.db.getProjectModuleDependencies(moduleId);
     for (const dep of deps) {
       if (!dep.output_mapping || dep.output_mapping.length === 0) continue;
       const upstreamRun = await this.db.getLatestSuccessfulModuleRun(
         dep.depends_on_id,
+        environmentId,
       );
       if (!upstreamRun?.tf_outputs) return false;
     }

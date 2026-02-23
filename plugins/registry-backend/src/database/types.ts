@@ -347,10 +347,11 @@ export interface RunLogRow {
   created_at: string;
 }
 
-// ── IaC Environments ─────────────────────────────────────────────────
+// ── Projects + Environments ──────────────────────────────────────────
 
+export type ProjectStatus = 'active' | 'paused' | 'archived';
+export type ProjectModuleStatus = 'active' | 'archived';
 export type EnvironmentStatus = 'active' | 'paused' | 'archived';
-export type EnvironmentModuleStatus = 'active' | 'destroyed' | 'archived';
 export type ModuleRunOperation = 'plan' | 'apply' | 'destroy' | 'refresh' | 'drift-check';
 export type ModuleRunStatus =
   | 'pending'
@@ -385,7 +386,7 @@ export interface VcsTrigger {
 }
 
 export interface StateBackendConfig {
-  type: 'pg' | 's3' | 'gcs' | 'azurerm';
+  type: 'pg' | 's3' | 'gcs' | 'azurerm' | 'consul' | 'http' | string;
   config?: Record<string, unknown>;
 }
 
@@ -394,16 +395,15 @@ export interface OutputMappingEntry {
   downstream_variable: string;
 }
 
-export interface EnvironmentRow {
+// ── Project ─────────────────────────────────────────────────────────
+
+export interface ProjectRow {
   id: string;
   name: string;
   description: string | null;
   team: string | null;
-  status: EnvironmentStatus;
-  locked: boolean;
-  locked_by: string | null;
-  locked_at: string | null;
-  lock_reason: string | null;
+  execution_mode: RunMode;
+  status: ProjectStatus;
   module_count: number;
   total_resources: number;
   last_run_at: string | null;
@@ -412,34 +412,28 @@ export interface EnvironmentRow {
   updated_at: string;
 }
 
-export interface EnvironmentModuleRow {
+// ── Project Module ──────────────────────────────────────────────────
+
+export interface ProjectModuleRow {
   id: string;
-  environment_id: string;
+  project_id: string;
   name: string;
   description: string | null;
   artifact_id: string;
   artifact_namespace: string;
   artifact_name: string;
   pinned_version: string | null;
-  current_version: string | null;
   auto_plan_on_module_update: boolean;
   vcs_trigger: VcsTrigger | null;
   auto_plan_on_push: boolean;
-  execution_mode: RunMode;
   tf_version: string | null;
   working_directory: string | null;
-  state_backend: StateBackendConfig | null;
-  last_run_id: string | null;
-  last_run_status: string | null;
-  last_run_at: string | null;
-  resource_count: number;
-  drift_status: string;
-  status: EnvironmentModuleStatus;
+  status: ProjectModuleStatus;
   created_at: string;
   updated_at: string;
 }
 
-export interface ModuleDependencyRow {
+export interface ProjectModuleDependencyRow {
   id: string;
   module_id: string;
   depends_on_id: string;
@@ -447,9 +441,49 @@ export interface ModuleDependencyRow {
   created_at: string;
 }
 
+// ── Environment (belongs to a project) ──────────────────────────────
+
+export interface EnvironmentRow {
+  id: string;
+  name: string;
+  description: string | null;
+  project_id: string;
+  team: string | null;
+  status: EnvironmentStatus;
+  locked: boolean;
+  locked_by: string | null;
+  locked_at: string | null;
+  lock_reason: string | null;
+  state_backend: StateBackendConfig | null;
+  total_resources: number;
+  last_run_at: string | null;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+// ── Environment Module State (per-env per-module deployment tracking) ─
+
+export interface EnvironmentModuleStateRow {
+  id: string;
+  environment_id: string;
+  project_module_id: string;
+  current_version: string | null;
+  last_run_id: string | null;
+  last_run_status: string | null;
+  last_run_at: string | null;
+  resource_count: number;
+  drift_status: string;
+  created_at: string;
+  updated_at: string;
+}
+
+// ── Environment Module Variables (per-env per-module) ────────────────
+
 export interface EnvironmentModuleVariableRow {
   id: string;
-  module_id: string;
+  environment_id: string;
+  project_module_id: string;
   key: string;
   value: string | null;
   sensitive: boolean;
@@ -461,9 +495,11 @@ export interface EnvironmentModuleVariableRow {
   updated_at: string;
 }
 
+// ── Module Run ──────────────────────────────────────────────────────
+
 export interface ModuleRunRow {
   id: string;
-  module_id: string;
+  project_module_id: string;
   environment_id: string;
   environment_run_id: string | null;
   module_name: string;
@@ -545,7 +581,8 @@ export interface ModuleRunLogRow {
 
 export interface TerraformStateRow {
   id: string;
-  module_id: string;
+  environment_id: string;
+  project_module_id: string;
   workspace: string;
   lock_id: string | null;
   locked_by: string | null;

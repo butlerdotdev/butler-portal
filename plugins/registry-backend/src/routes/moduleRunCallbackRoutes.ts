@@ -136,25 +136,29 @@ export function createModuleRunCallbackRouter(options: RouterOptions) {
         });
       }
 
-      // Update module last_run fields on terminal status
+      // Update environment_module_state on terminal status
       if (isTerminal) {
-        const updates: Record<string, unknown> = {
+        const stateUpdates: Record<string, unknown> = {
           last_run_id: run.id,
           last_run_status: status,
           last_run_at: now,
         };
         if (resource_count_after !== undefined) {
-          updates.resource_count = resource_count_after;
+          stateUpdates.resource_count = resource_count_after;
         }
         if (status === 'succeeded' && run.module_version) {
-          updates.current_version = run.module_version;
+          stateUpdates.current_version = run.module_version;
         }
-        await db.updateModule(run.module_id, updates);
+        await db.updateEnvironmentModuleState(
+          run.environment_id,
+          run.project_module_id,
+          stateUpdates,
+        );
       }
 
       // Dequeue next run on terminal status
       if (['succeeded', 'failed'].includes(status)) {
-        await db.dequeueNextModuleRun(run.module_id);
+        await db.dequeueNextModuleRun(run.project_module_id, run.environment_id);
       }
 
       // Progress DAG — notify environment run orchestrator
@@ -296,11 +300,13 @@ export function createModuleRunCallbackRouter(options: RouterOptions) {
         req.params.runId,
       );
 
-      // Load module, environment, and artifact
-      const mod = await db.getModule(run.module_id);
+      // Load module and environment
+      const mod = await db.getProjectModule(run.project_module_id);
       if (!mod) {
         throw notFound('RUN_NOT_FOUND', 'Module not found');
       }
+
+      const env = await db.getEnvironment(run.environment_id);
 
       const artifact = await db.getArtifact(
         mod.artifact_namespace,
@@ -334,8 +340,8 @@ export function createModuleRunCallbackRouter(options: RouterOptions) {
         source.workingDirectory = artifact.storage_config.git.path ?? mod.working_directory ?? undefined;
       }
 
-      // Resolve variables — merge all three layers
-      const moduleVars = await db.listModuleVariables(run.module_id);
+      // Resolve variables — from environment-scoped module variables
+      const moduleVars = await db.listModuleVariables(run.environment_id, run.project_module_id);
       const variables: Record<string, { value: string; sensitive: boolean }> = {};
       for (const v of moduleVars) {
         variables[v.key] = {
@@ -345,52 +351,50 @@ export function createModuleRunCallbackRouter(options: RouterOptions) {
       }
 
       // Resolve cloud integration + variable set env vars for the runner.
-      // These are environment variables (GOOGLE_PROJECT, AWS_REGION, etc.)
-      // that must be set before running terraform.
       const envVars: Record<string, { value: string; sensitive: boolean }> = {};
       const cloudInts = await db.getEffectiveCloudIntegrations(
-        run.module_id,
+        run.project_module_id,
         run.environment_id,
       );
       for (const ci of cloudInts) {
-        const config = ci.credential_config as Record<string, any>;
+        const ciConfig = ci.credential_config as Record<string, any>;
         if (ci.provider === 'gcp') {
-          if (config.projectId) {
-            envVars['GOOGLE_PROJECT'] = { value: config.projectId, sensitive: false };
+          if (ciConfig.projectId) {
+            envVars['GOOGLE_PROJECT'] = { value: ciConfig.projectId, sensitive: false };
           }
-          if (ci.auth_method !== 'oidc' && config.credentials) {
-            envVars['GOOGLE_CREDENTIALS'] = { value: config.credentials, sensitive: true };
+          if (ci.auth_method !== 'oidc' && ciConfig.credentials) {
+            envVars['GOOGLE_CREDENTIALS'] = { value: ciConfig.credentials, sensitive: true };
           }
-          if (ci.auth_method === 'oidc' && config.workloadIdentityProvider) {
-            envVars['GOOGLE_WORKLOAD_IDENTITY_PROVIDER'] = { value: config.workloadIdentityProvider, sensitive: false };
-            if (config.serviceAccount) {
-              envVars['GOOGLE_SERVICE_ACCOUNT'] = { value: config.serviceAccount, sensitive: false };
+          if (ci.auth_method === 'oidc' && ciConfig.workloadIdentityProvider) {
+            envVars['GOOGLE_WORKLOAD_IDENTITY_PROVIDER'] = { value: ciConfig.workloadIdentityProvider, sensitive: false };
+            if (ciConfig.serviceAccount) {
+              envVars['GOOGLE_SERVICE_ACCOUNT'] = { value: ciConfig.serviceAccount, sensitive: false };
             }
           }
         } else if (ci.provider === 'aws') {
-          if (config.region) {
-            envVars['AWS_REGION'] = { value: config.region, sensitive: false };
-            envVars['AWS_DEFAULT_REGION'] = { value: config.region, sensitive: false };
+          if (ciConfig.region) {
+            envVars['AWS_REGION'] = { value: ciConfig.region, sensitive: false };
+            envVars['AWS_DEFAULT_REGION'] = { value: ciConfig.region, sensitive: false };
           }
-          if (ci.auth_method === 'oidc' && config.roleArn) {
-            envVars['AWS_ROLE_ARN'] = { value: config.roleArn, sensitive: false };
+          if (ci.auth_method === 'oidc' && ciConfig.roleArn) {
+            envVars['AWS_ROLE_ARN'] = { value: ciConfig.roleArn, sensitive: false };
           } else {
-            if (config.accessKeyId) {
-              envVars['AWS_ACCESS_KEY_ID'] = { value: config.accessKeyId, sensitive: true };
+            if (ciConfig.accessKeyId) {
+              envVars['AWS_ACCESS_KEY_ID'] = { value: ciConfig.accessKeyId, sensitive: true };
             }
-            if (config.secretAccessKey) {
-              envVars['AWS_SECRET_ACCESS_KEY'] = { value: config.secretAccessKey, sensitive: true };
+            if (ciConfig.secretAccessKey) {
+              envVars['AWS_SECRET_ACCESS_KEY'] = { value: ciConfig.secretAccessKey, sensitive: true };
             }
           }
         } else if (ci.provider === 'azure') {
-          if (config.clientId) envVars['ARM_CLIENT_ID'] = { value: config.clientId, sensitive: false };
-          if (config.tenantId) envVars['ARM_TENANT_ID'] = { value: config.tenantId, sensitive: false };
-          if (config.subscriptionId) envVars['ARM_SUBSCRIPTION_ID'] = { value: config.subscriptionId, sensitive: false };
-          if (ci.auth_method !== 'oidc' && config.clientSecret) {
-            envVars['ARM_CLIENT_SECRET'] = { value: config.clientSecret, sensitive: true };
+          if (ciConfig.clientId) envVars['ARM_CLIENT_ID'] = { value: ciConfig.clientId, sensitive: false };
+          if (ciConfig.tenantId) envVars['ARM_TENANT_ID'] = { value: ciConfig.tenantId, sensitive: false };
+          if (ciConfig.subscriptionId) envVars['ARM_SUBSCRIPTION_ID'] = { value: ciConfig.subscriptionId, sensitive: false };
+          if (ci.auth_method !== 'oidc' && ciConfig.clientSecret) {
+            envVars['ARM_CLIENT_SECRET'] = { value: ciConfig.clientSecret, sensitive: true };
           }
         } else if (ci.provider === 'custom') {
-          const customVars = (config.envVars ?? {}) as Record<string, { source: string; value: string }>;
+          const customVars = (ciConfig.envVars ?? {}) as Record<string, { source: string; value: string }>;
           for (const [key, varCfg] of Object.entries(customVars)) {
             envVars[key] = { value: varCfg.value, sensitive: varCfg.source === 'ci_secret' };
           }
@@ -398,7 +402,7 @@ export function createModuleRunCallbackRouter(options: RouterOptions) {
       }
 
       // Variable set entries as env vars
-      const varSets = await db.getEffectiveVariableSets(run.module_id, run.environment_id);
+      const varSets = await db.getEffectiveVariableSets(run.project_module_id, run.environment_id);
       for (const vs of varSets) {
         const entries = await db.listVariableSetEntries(vs.id);
         for (const entry of entries) {
@@ -411,11 +415,11 @@ export function createModuleRunCallbackRouter(options: RouterOptions) {
       }
 
       // Resolve upstream outputs from dependencies
-      const deps = await db.getModuleDependencies(run.module_id);
+      const deps = await db.getProjectModuleDependencies(run.project_module_id);
       const upstreamOutputs: Record<string, unknown> = {};
       for (const dep of deps) {
         if (!dep.output_mapping) continue;
-        const upstreamRun = await db.getLatestSuccessfulModuleRun(dep.depends_on_id);
+        const upstreamRun = await db.getLatestSuccessfulModuleRun(dep.depends_on_id, run.environment_id);
         if (!upstreamRun?.tf_outputs) continue;
         for (const mapping of dep.output_mapping) {
           const val = (upstreamRun.tf_outputs as Record<string, unknown>)[mapping.upstream_output];
@@ -425,20 +429,18 @@ export function createModuleRunCallbackRouter(options: RouterOptions) {
         }
       }
 
-      // State backend config
+      // State backend config — from environment, not module
       const stateBackend = buildStateBackendConfig(
-        run.state_backend_snapshot ?? mod.state_backend,
+        run.state_backend_snapshot ?? env?.state_backend,
         {
           mode: run.mode,
           environmentId: run.environment_id,
-          moduleId: run.module_id,
+          moduleId: run.project_module_id,
           peaasStateBackend,
         },
       );
 
-      // Build callback URLs — paths are relative to the plugin base URL.
-      // butler-runner prepends BUTLER_URL (e.g. https://portal.example.com/api/registry)
-      // so callback paths must NOT include the /api/registry prefix.
+      // Build callback URLs
       const cbBase = `/v1/ci/module-runs/${run.id}`;
 
       const configResponse = {
@@ -461,7 +463,7 @@ export function createModuleRunCallbackRouter(options: RouterOptions) {
       // Log run/module only — NEVER log response body (contains secrets)
       logger.info('Config fetched for module run', {
         runId: run.id,
-        moduleId: run.module_id,
+        moduleId: run.project_module_id,
       });
 
       res.setHeader('Cache-Control', 'no-store, no-cache');

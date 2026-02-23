@@ -35,27 +35,37 @@ import type {
 } from './types/runs';
 import type {
   Environment,
-  EnvironmentModule,
   EnvironmentRun,
   ModuleRun,
-  ModuleDependency,
   ModuleVariable,
-  EnvironmentGraph,
   EnvironmentListResponse,
   ModuleRunListResponse,
-  CreateEnvironmentRequest,
-  AddModuleRequest,
-  SetDependenciesRequest,
   CreateModuleRunRequest,
   CreateModuleRunResponse,
   CreateEnvironmentRunRequest,
   RunLogEntry as ModuleRunLogEntry,
+  TestStateBackendRequest,
+  TestStateBackendResult,
 } from './types/environments';
+import type {
+  Project,
+  ProjectModule,
+  ProjectModuleDependency,
+  EnvironmentModuleState,
+  ProjectGraph,
+  ProjectListResponse,
+  CreateProjectRequest,
+  AddProjectModuleRequest,
+  SetProjectModuleDependenciesRequest,
+  CreateEnvironmentInProjectRequest,
+} from './types/projects';
 import type {
   CloudIntegration,
   CreateCloudIntegrationRequest,
   CloudIntegrationBinding,
   ValidateCloudIntegrationResponse,
+  TestCloudIntegrationRequest,
+  TestCloudIntegrationResult,
 } from './types/cloudIntegrations';
 import type {
   VariableSet,
@@ -161,7 +171,7 @@ export interface RegistryApi {
   createToken(data: CreateTokenRequest): Promise<CreateTokenResponse>;
   revokeToken(tokenId: string): Promise<void>;
 
-  // Runs
+  // Runs (artifact-level)
   listRuns(namespace: string, name: string, options?: { status?: string }): Promise<RunListResponse>;
   createRun(namespace: string, name: string, data: CreateRunRequest): Promise<CreateRunResponse>;
   getRun(runId: string): Promise<IacRun>;
@@ -171,35 +181,52 @@ export interface RegistryApi {
   confirmRun(runId: string): Promise<IacRun>;
   generatePipeline(namespace: string, name: string, ciProvider: string, operation: string): Promise<{ pipeline_config: string; ci_provider: string }>;
 
-  // Environments
+  // ── Projects ──────────────────────────────────────────────────────
+
+  listProjects(options?: { status?: string; limit?: number; cursor?: string }): Promise<ProjectListResponse>;
+  createProject(data: CreateProjectRequest): Promise<Project>;
+  getProject(projectId: string): Promise<Project>;
+  updateProject(projectId: string, data: Partial<CreateProjectRequest>): Promise<Project>;
+  deleteProject(projectId: string): Promise<void>;
+  getProjectGraph(projectId: string): Promise<ProjectGraph>;
+
+  // ── Project Modules ───────────────────────────────────────────────
+
+  listProjectModules(projectId: string): Promise<{ modules: ProjectModule[] }>;
+  addProjectModule(projectId: string, data: AddProjectModuleRequest): Promise<ProjectModule>;
+  getProjectModule(projectId: string, moduleId: string): Promise<ProjectModule>;
+  updateProjectModule(projectId: string, moduleId: string, data: Partial<AddProjectModuleRequest>): Promise<ProjectModule>;
+  removeProjectModule(projectId: string, moduleId: string): Promise<void>;
+
+  // ── Project Module Dependencies ───────────────────────────────────
+
+  getProjectModuleDependencies(projectId: string, moduleId: string): Promise<{ dependencies: ProjectModuleDependency[] }>;
+  setProjectModuleDependencies(projectId: string, moduleId: string, data: SetProjectModuleDependenciesRequest): Promise<{ dependencies: ProjectModuleDependency[] }>;
+
+  // ── Environments (project-scoped creation, flat access) ───────────
+
+  listProjectEnvironments(projectId: string): Promise<EnvironmentListResponse>;
+  createProjectEnvironment(projectId: string, data: CreateEnvironmentInProjectRequest): Promise<Environment>;
   listEnvironments(options?: { status?: string; limit?: number; cursor?: string }): Promise<EnvironmentListResponse>;
-  createEnvironment(data: CreateEnvironmentRequest): Promise<Environment>;
-  getEnvironment(envId: string): Promise<Environment>;
-  updateEnvironment(envId: string, data: Partial<CreateEnvironmentRequest>): Promise<Environment>;
+  getEnvironment(envId: string): Promise<Environment & { module_states?: EnvironmentModuleState[] }>;
+  updateEnvironment(envId: string, data: Partial<{ name: string; description: string; state_backend: object }>): Promise<Environment>;
   deleteEnvironment(envId: string): Promise<void>;
   lockEnvironment(envId: string, reason?: string): Promise<Environment>;
   unlockEnvironment(envId: string): Promise<Environment>;
-  getEnvironmentGraph(envId: string): Promise<EnvironmentGraph>;
 
-  // Environment Modules
-  listEnvironmentModules(envId: string): Promise<{ modules: EnvironmentModule[] }>;
-  addModule(envId: string, data: AddModuleRequest): Promise<EnvironmentModule>;
-  getModule(envId: string, moduleId: string): Promise<EnvironmentModule>;
-  updateModule(envId: string, moduleId: string, data: Partial<AddModuleRequest>): Promise<EnvironmentModule>;
-  removeModule(envId: string, moduleId: string): Promise<void>;
-  getModuleLatestOutputs(envId: string, moduleId: string): Promise<{ outputs: Record<string, unknown> }>;
-  forceUnlockModule(envId: string, moduleId: string): Promise<void>;
+  // ── Module Variables (env-scoped) ─────────────────────────────────
 
-  // Module Dependencies
-  getModuleDependencies(envId: string, moduleId: string): Promise<{ dependencies: ModuleDependency[] }>;
-  setModuleDependencies(envId: string, moduleId: string, data: SetDependenciesRequest): Promise<{ dependencies: ModuleDependency[] }>;
-
-  // Module Variables
   listModuleVariables(envId: string, moduleId: string): Promise<{ variables: ModuleVariable[] }>;
   updateModuleVariables(envId: string, moduleId: string, variables: ModuleVariable[]): Promise<{ variables: ModuleVariable[] }>;
   deleteModuleVariable(envId: string, moduleId: string, key: string, category?: string): Promise<void>;
 
-  // Module Runs
+  // ── Module Outputs & State (env-scoped) ───────────────────────────
+
+  getModuleLatestOutputs(envId: string, moduleId: string): Promise<{ outputs: Record<string, unknown> }>;
+  forceUnlockModule(envId: string, moduleId: string): Promise<void>;
+
+  // ── Module Runs (env-scoped) ──────────────────────────────────────
+
   listModuleRuns(envId: string, moduleId: string, options?: { status?: string }): Promise<ModuleRunListResponse>;
   createModuleRun(envId: string, moduleId: string, data: CreateModuleRunRequest): Promise<CreateModuleRunResponse>;
   getModuleRun(runId: string): Promise<ModuleRun>;
@@ -210,25 +237,34 @@ export interface RegistryApi {
   discardModuleRun(runId: string): Promise<ModuleRun>;
   cancelModuleRun(runId: string): Promise<ModuleRun>;
 
-  // Environment Runs (DAG-wide)
+  // ── Environment Runs (DAG-wide) ──────────────────────────────────
+
   listEnvironmentRuns(envId: string): Promise<{ runs: EnvironmentRun[] }>;
   createEnvironmentRun(envId: string, data: CreateEnvironmentRunRequest): Promise<EnvironmentRun>;
   getEnvironmentRun(runId: string): Promise<EnvironmentRun>;
   confirmEnvironmentRun(runId: string, excludeModules?: string[]): Promise<EnvironmentRun>;
   cancelEnvironmentRun(runId: string): Promise<EnvironmentRun>;
 
-  // Cross-reference
-  listModulesForArtifact(namespace: string, name: string): Promise<{ modules: EnvironmentModule[] }>;
+  // ── State Backend ────────────────────────────────────────────────
 
-  // Cloud Integrations
+  testStateBackend(data: TestStateBackendRequest): Promise<TestStateBackendResult>;
+
+  // ── Cross-reference ──────────────────────────────────────────────
+
+  listProjectsForArtifact(namespace: string, name: string): Promise<{ projects: Array<{ project_id: string; project_name: string; module_id: string; module_name: string }> }>;
+
+  // ── Cloud Integrations ───────────────────────────────────────────
+
   listCloudIntegrations(options?: { provider?: string }): Promise<{ integrations: CloudIntegration[] }>;
   createCloudIntegration(data: CreateCloudIntegrationRequest): Promise<CloudIntegration>;
   getCloudIntegration(id: string): Promise<CloudIntegration>;
   updateCloudIntegration(id: string, data: Partial<CreateCloudIntegrationRequest>): Promise<CloudIntegration>;
   deleteCloudIntegration(id: string): Promise<void>;
   validateCloudIntegration(id: string): Promise<ValidateCloudIntegrationResponse>;
+  testCloudIntegration(data: TestCloudIntegrationRequest): Promise<TestCloudIntegrationResult>;
 
-  // Variable Sets
+  // ── Variable Sets ────────────────────────────────────────────────
+
   listVariableSets(): Promise<{ variableSets: VariableSet[] }>;
   createVariableSet(data: CreateVariableSetRequest): Promise<VariableSet>;
   getVariableSet(id: string): Promise<VariableSet>;
@@ -238,30 +274,36 @@ export interface RegistryApi {
   updateVariableSetEntries(setId: string, entries: VariableSetEntry[]): Promise<{ entries: VariableSetEntry[] }>;
   deleteVariableSetEntry(setId: string, key: string): Promise<void>;
 
-  // Environment Cloud Integration Bindings
+  // ── Environment Cloud Integration Bindings ───────────────────────
+
   listEnvCloudIntegrations(envId: string): Promise<{ bindings: CloudIntegrationBinding[] }>;
   bindCloudIntegrationToEnv(envId: string, integrationId: string, priority?: number): Promise<void>;
   unbindCloudIntegrationFromEnv(envId: string, bindingId: string): Promise<void>;
 
-  // Environment Variable Set Bindings
+  // ── Environment Variable Set Bindings ────────────────────────────
+
   listEnvVariableSets(envId: string): Promise<{ bindings: VariableSetBinding[] }>;
   bindVariableSetToEnv(envId: string, setId: string, priority?: number): Promise<void>;
   unbindVariableSetFromEnv(envId: string, bindingId: string): Promise<void>;
 
-  // Module Cloud Integration Bindings
-  listModuleCloudIntegrations(envId: string, moduleId: string): Promise<{ bindings: CloudIntegrationBinding[] }>;
-  bindCloudIntegrationToModule(envId: string, moduleId: string, integrationId: string, priority?: number): Promise<void>;
-  unbindCloudIntegrationFromModule(envId: string, moduleId: string, bindingId: string): Promise<void>;
+  // ── Module Cloud Integration Bindings (project-scoped) ───────────
 
-  // Module Variable Set Bindings
-  listModuleVariableSets(envId: string, moduleId: string): Promise<{ bindings: VariableSetBinding[] }>;
-  bindVariableSetToModule(envId: string, moduleId: string, setId: string, priority?: number): Promise<void>;
-  unbindVariableSetFromModule(envId: string, moduleId: string, bindingId: string): Promise<void>;
+  listModuleCloudIntegrations(projectId: string, moduleId: string): Promise<{ bindings: CloudIntegrationBinding[] }>;
+  bindCloudIntegrationToModule(projectId: string, moduleId: string, integrationId: string, priority?: number): Promise<void>;
+  unbindCloudIntegrationFromModule(projectId: string, moduleId: string, bindingId: string): Promise<void>;
 
-  // Resolved Variables
+  // ── Module Variable Set Bindings (project-scoped) ────────────────
+
+  listModuleVariableSets(projectId: string, moduleId: string): Promise<{ bindings: VariableSetBinding[] }>;
+  bindVariableSetToModule(projectId: string, moduleId: string, setId: string, priority?: number): Promise<void>;
+  unbindVariableSetFromModule(projectId: string, moduleId: string, bindingId: string): Promise<void>;
+
+  // ── Resolved Variables ───────────────────────────────────────────
+
   getResolvedVariables(envId: string, moduleId: string): Promise<{ variables: ResolvedVariable[] }>;
 
-  // Policies
+  // ── Policies ─────────────────────────────────────────────────────
+
   listPolicies(): Promise<{ policies: PolicyTemplate[] }>;
   createPolicy(data: CreatePolicyTemplateRequest): Promise<PolicyTemplate>;
   getPolicy(id: string): Promise<PolicyTemplate>;

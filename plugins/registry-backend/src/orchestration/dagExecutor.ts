@@ -6,8 +6,8 @@ import { LoggerService } from '@backstage/backend-plugin-api';
 import { RegistryDatabase } from '../database/RegistryDatabase';
 import { OutputResolver } from './outputResolver';
 import type {
-  EnvironmentModuleRow,
-  ModuleDependencyRow,
+  ProjectModuleRow,
+  ProjectModuleDependencyRow,
   ModuleRunRow,
 } from '../database/types';
 
@@ -17,6 +17,9 @@ import type {
  * Uses Kahn's algorithm for topological sort with in-degree tracking
  * to support diamond dependencies (A→B, A→C, B→D, C→D — D starts
  * when BOTH B and C complete).
+ *
+ * Modules are defined at the project level. Environment runs execute
+ * all active project modules within a specific environment.
  */
 export class DagExecutor {
   readonly outputResolver: OutputResolver;
@@ -36,11 +39,16 @@ export class DagExecutor {
     const envRun = await this.db.getEnvironmentRun(envRunId);
     if (!envRun) throw new Error(`Environment run ${envRunId} not found`);
 
-    const modules = await this.db.listModules(envRun.environment_id);
+    const env = await this.db.getEnvironment(envRun.environment_id);
+    if (!env) throw new Error(`Environment ${envRun.environment_id} not found`);
+
+    const project = await this.db.getProject(env.project_id);
+    if (!project) throw new Error(`Project ${env.project_id} not found`);
+
+    // Get modules and deps from the project
+    const modules = await this.db.listProjectModules(env.project_id);
     const activeModules = modules.filter(m => m.status === 'active');
-    const deps = (
-      await this.db.getEnvironmentGraph(envRun.environment_id)
-    ).deps;
+    const { deps } = await this.db.getProjectGraph(env.project_id);
 
     // Build adjacency and in-degree maps
     const { inDegree } = this.buildGraph(activeModules, deps);
@@ -54,9 +62,12 @@ export class DagExecutor {
     for (const mod of activeModules) {
       const hasNoDeps = (inDegree.get(mod.id) ?? 0) === 0;
 
-      const variablesSnapshot = await this.db.snapshotModuleVariables(mod.id);
+      const variablesSnapshot = await this.db.snapshotModuleVariables(
+        envRun.environment_id,
+        mod.id,
+      );
 
-      // Generate callback token for BYOC module runs
+      // Generate callback token for module runs
       const callbackToken = `brce_${crypto.randomBytes(32).toString('hex')}`;
       const callbackTokenHash = crypto
         .createHash('sha256')
@@ -65,7 +76,7 @@ export class DagExecutor {
 
       await this.db.createModuleRun({
         id: crypto.randomUUID(),
-        module_id: mod.id,
+        project_module_id: mod.id,
         environment_id: envRun.environment_id,
         environment_run_id: envRunId,
         module_name: mod.name,
@@ -73,14 +84,14 @@ export class DagExecutor {
         artifact_name: mod.artifact_name,
         module_version: mod.pinned_version ?? undefined,
         operation: moduleOp,
-        mode: mod.execution_mode,
+        mode: project.execution_mode,
         status: hasNoDeps ? 'queued' : 'pending',
         triggered_by: envRun.triggered_by ?? undefined,
         trigger_source: 'env_run',
         priority: 'user',
         tf_version: mod.tf_version ?? undefined,
         variables_snapshot: variablesSnapshot,
-        state_backend_snapshot: mod.state_backend ?? undefined,
+        state_backend_snapshot: env.state_backend ?? undefined,
         callback_token_hash: callbackTokenHash,
       });
     }
@@ -111,11 +122,11 @@ export class DagExecutor {
     );
     if (!envRun) return;
 
+    const env = await this.db.getEnvironment(envRun.environment_id);
+    if (!env) return;
+
     const allModuleRuns = await this.db.getModuleRunsForEnvRun(envRun.id);
-    await this.db.listModules(envRun.environment_id);
-    const { deps } = await this.db.getEnvironmentGraph(
-      envRun.environment_id,
-    );
+    const { deps } = await this.db.getProjectGraph(env.project_id);
 
     // Build reverse adjacency: module_id → [depends_on_id, ...]
     const upstreamOf = new Map<string, string[]>();
@@ -134,14 +145,14 @@ export class DagExecutor {
 
     const moduleRunByModuleId = new Map<string, ModuleRunRow>();
     for (const mr of allModuleRuns) {
-      moduleRunByModuleId.set(mr.module_id, mr);
+      moduleRunByModuleId.set(mr.project_module_id, mr);
     }
 
     const now = new Date().toISOString();
 
     if (moduleRun.status === 'succeeded' || moduleRun.status === 'planned') {
       // Check downstream modules — queue those with ALL deps satisfied
-      const downstream = downstreamOf.get(moduleRun.module_id) ?? [];
+      const downstream = downstreamOf.get(moduleRun.project_module_id) ?? [];
       for (const downstreamModuleId of downstream) {
         const downstreamRun = moduleRunByModuleId.get(downstreamModuleId);
         if (!downstreamRun || downstreamRun.status !== 'pending') continue;
@@ -172,7 +183,7 @@ export class DagExecutor {
     ) {
       // Propagate failure to transitive dependents
       await this.propagateFailure(
-        moduleRun.module_id,
+        moduleRun.project_module_id,
         moduleRun.module_name,
         downstreamOf,
         moduleRunByModuleId,
@@ -195,10 +206,11 @@ export class DagExecutor {
     const envRun = await this.db.getEnvironmentRun(envRunId);
     if (!envRun) throw new Error(`Environment run ${envRunId} not found`);
 
+    const env = await this.db.getEnvironment(envRun.environment_id);
+    if (!env) throw new Error(`Environment ${envRun.environment_id} not found`);
+
     const allModuleRuns = await this.db.getModuleRunsForEnvRun(envRunId);
-    const { deps } = await this.db.getEnvironmentGraph(
-      envRun.environment_id,
-    );
+    const { deps } = await this.db.getProjectGraph(env.project_id);
 
     const excludeSet = new Set(excludeModuleIds);
     const now = new Date().toISOString();
@@ -229,7 +241,7 @@ export class DagExecutor {
     // Skip excluded modules
     const moduleRunByModuleId = new Map<string, ModuleRunRow>();
     for (const mr of allModuleRuns) {
-      moduleRunByModuleId.set(mr.module_id, mr);
+      moduleRunByModuleId.set(mr.project_module_id, mr);
     }
 
     for (const moduleId of toExclude) {
@@ -271,8 +283,8 @@ export class DagExecutor {
   // ── Private helpers ─────────────────────────────────────────────────
 
   private buildGraph(
-    modules: EnvironmentModuleRow[],
-    deps: ModuleDependencyRow[],
+    modules: ProjectModuleRow[],
+    deps: ProjectModuleDependencyRow[],
   ): {
     adjacency: Map<string, string[]>;
     inDegree: Map<string, number>;

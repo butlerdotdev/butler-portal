@@ -44,15 +44,27 @@ const TokenManagement = lazy(() =>
   })),
 );
 
-// Environment pages
-const EnvironmentsList = lazy(() =>
-  import('../environments/EnvironmentsList').then(m => ({
-    default: m.EnvironmentsList,
+// Project pages
+const ProjectsList = lazy(() =>
+  import('../projects/ProjectsList').then(m => ({
+    default: m.ProjectsList,
   })),
 );
-const CreateEnvironmentWizard = lazy(() =>
-  import('../environments/CreateEnvironmentWizard').then(m => ({
-    default: m.CreateEnvironmentWizard,
+const CreateProjectWizard = lazy(() =>
+  import('../projects/CreateProjectWizard').then(m => ({
+    default: m.CreateProjectWizard,
+  })),
+);
+const ProjectDetail = lazy(() =>
+  import('../projects/ProjectDetail').then(m => ({
+    default: m.ProjectDetail,
+  })),
+);
+
+// Environment pages
+const CreateEnvironmentInProject = lazy(() =>
+  import('../environments/CreateEnvironmentInProject').then(m => ({
+    default: m.CreateEnvironmentInProject,
   })),
 );
 const EnvironmentDetail = lazy(() =>
@@ -177,29 +189,31 @@ const useStyles = makeStyles(() => ({
 // ── Admin mode: platform-wide tabs ──────────────────────────────────
 const adminTabs = [
   { id: 'catalog', label: 'Catalog' },
-  { id: 'environments', label: 'Environments' },
+  { id: 'projects', label: 'Projects' },
   { id: 'governance', label: 'Governance' },
   { id: 'tokens', label: 'Registry Tokens' },
+  { id: 'settings', label: 'Settings' },
 ];
-const adminTabPaths = ['', 'environments', 'governance', 'tokens'];
+const adminTabPaths = ['', 'projects', 'governance', 'tokens', 'settings'];
 
 // ── Team mode: team-scoped tabs ─────────────────────────────────────
 const teamTabs = [
   { id: 'catalog', label: 'Catalog' },
-  { id: 'environments', label: 'Environments' },
+  { id: 'projects', label: 'Projects' },
   { id: 'tokens', label: 'Registry Tokens' },
   { id: 'settings', label: 'Settings' },
 ];
-const teamTabPaths = ['', 'environments', 'tokens', 'settings'];
+const teamTabPaths = ['', 'projects', 'tokens', 'settings'];
 
 function tabIndexFromPath(pathname: string, isAdminMode: boolean): number {
   if (isAdminMode) {
-    if (pathname.includes('/environments')) return 1;
+    if (pathname.includes('/projects')) return 1;
     if (pathname.includes('/governance')) return 2;
     if (pathname.includes('/tokens')) return 3;
+    if (pathname.includes('/settings')) return 4;
     return 0;
   }
-  if (pathname.includes('/environments')) return 1;
+  if (pathname.includes('/projects')) return 1;
   if (pathname.includes('/tokens')) return 2;
   if (pathname.includes('/settings')) return 3;
   return 0;
@@ -227,10 +241,7 @@ function RegistryPageContent() {
   useEffect(() => {
     const p = location.pathname;
     const inAdminOnlyTab = p.includes('/governance');
-    const inTeamOnlyTab = p.includes('/settings');
-    if (isAdminMode && inTeamOnlyTab) {
-      navigate('.', { replace: true });
-    } else if (!isAdminMode && inAdminOnlyTab) {
+    if (!isAdminMode && inAdminOnlyTab) {
       navigate('.', { replace: true });
     }
   }, [isAdminMode, location.pathname, navigate]);
@@ -296,26 +307,38 @@ function RegistryPageContent() {
                 element={<ArtifactDetail />}
               />
 
-              {/* Environments */}
-              <Route path="/environments" element={<EnvironmentsList />} />
+              {/* Projects */}
+              <Route path="/projects" element={<ProjectsList />} />
               <Route
-                path="/environments/create"
-                element={<CreateEnvironmentWizard />}
+                path="/projects/create"
+                element={<CreateProjectWizard />}
               />
               <Route
-                path="/environments/:envId"
-                element={<EnvironmentDetail />}
+                path="/projects/:projectId"
+                element={<ProjectDetail />}
               />
               <Route
-                path="/environments/:envId/runs/:runId"
-                element={<EnvironmentRunDetail />}
-              />
-              <Route
-                path="/environments/:envId/modules/:moduleId"
+                path="/projects/:projectId/modules/:moduleId"
                 element={<ModuleDetail />}
               />
               <Route
-                path="/environments/:envId/modules/:moduleId/runs/:runId"
+                path="/projects/:projectId/environments/create"
+                element={<CreateEnvironmentInProject />}
+              />
+              <Route
+                path="/projects/:projectId/environments/:envId"
+                element={<EnvironmentDetail />}
+              />
+              <Route
+                path="/projects/:projectId/environments/:envId/runs/:runId"
+                element={<EnvironmentRunDetail />}
+              />
+              <Route
+                path="/projects/:projectId/environments/:envId/modules/:moduleId"
+                element={<ModuleDetail />}
+              />
+              <Route
+                path="/projects/:projectId/environments/:envId/modules/:moduleId/runs/:runId"
                 element={<ModuleRunDetail />}
               />
 

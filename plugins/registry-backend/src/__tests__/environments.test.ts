@@ -431,7 +431,8 @@ describe('Registry Backend - Phase 3: IaC Environments', () => {
       overrides: Partial<EnvironmentModuleVariableRow>,
     ): EnvironmentModuleVariableRow => ({
       id: 'var-1',
-      module_id: 'mod-1',
+      environment_id: 'env-1',
+      project_module_id: 'mod-1',
       key: 'test_key',
       value: 'test_value',
       sensitive: false,
@@ -563,7 +564,8 @@ describe('Registry Backend - Phase 3: IaC Environments', () => {
       overrides: Partial<EnvironmentModuleVariableRow>,
     ): EnvironmentModuleVariableRow => ({
       id: 'var-1',
-      module_id: 'mod-1',
+      environment_id: 'env-1',
+      project_module_id: 'mod-1',
       key: 'test_key',
       value: 'test_value',
       sensitive: false,

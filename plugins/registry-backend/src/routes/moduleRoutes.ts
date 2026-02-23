@@ -4,39 +4,42 @@
 import Router from 'express-promise-router';
 import { sendError, notFound, badRequest, forbidden, assertTeamAccess, requireMinRole } from '../util/errors';
 import { AuthorizeResult } from '@backstage/plugin-permission-common';
-import { registryEnvironmentUpdatePermission } from '@internal/plugin-registry-common';
+import {
+  registryProjectUpdatePermission,
+  registryEnvironmentLockPermission,
+} from '@internal/plugin-registry-common';
 import type { RouterOptions } from '../router';
 
 export function createModuleRouter(options: RouterOptions) {
   const { db, httpAuth, permissions } = options;
   const router = Router();
 
-  // ── Module CRUD ─────────────────────────────────────────────────────
+  // ── Project Module CRUD ───────────────────────────────────────────
 
-  // List modules in environment
-  router.get('/v1/environments/:envId/modules', async (req, res) => {
+  // List modules in project
+  router.get('/v1/projects/:projectId/modules', async (req, res) => {
     try {
-      const env = await db.getEnvironment(req.params.envId);
-      if (!env) throw notFound('ARTIFACT_NOT_FOUND', 'Environment not found');
-      assertTeamAccess(env, req.activeTeam);
-      const modules = await db.listModules(req.params.envId);
+      const project = await db.getProject(req.params.projectId);
+      if (!project) throw notFound('ARTIFACT_NOT_FOUND', 'Project not found');
+      assertTeamAccess(project, req.activeTeam);
+      const modules = await db.listProjectModules(req.params.projectId);
       res.json({ modules });
     } catch (err) {
       sendError(res, err);
     }
   });
 
-  // Add module to environment
-  router.post('/v1/environments/:envId/modules', async (req, res) => {
+  // Add module to project
+  router.post('/v1/projects/:projectId/modules', async (req, res) => {
     try {
       const credentials = await httpAuth.credentials(req);
-      const [decision] = await permissions.authorize([{ permission: registryEnvironmentUpdatePermission }], { credentials });
+      const [decision] = await permissions.authorize([{ permission: registryProjectUpdatePermission }], { credentials });
       if (decision.result !== AuthorizeResult.ALLOW) throw forbidden('Permission denied');
       requireMinRole(req, 'operator');
 
-      const env = await db.getEnvironment(req.params.envId);
-      if (!env) throw notFound('ARTIFACT_NOT_FOUND', 'Environment not found');
-      assertTeamAccess(env, req.activeTeam);
+      const project = await db.getProject(req.params.projectId);
+      if (!project) throw notFound('ARTIFACT_NOT_FOUND', 'Project not found');
+      assertTeamAccess(project, req.activeTeam);
 
       const {
         name,
@@ -45,10 +48,8 @@ export function createModuleRouter(options: RouterOptions) {
         artifact_name,
         pinned_version,
         auto_plan_on_module_update,
-        execution_mode,
         tf_version,
         working_directory,
-        state_backend,
       } = req.body;
 
       if (!name) throw badRequest('name is required');
@@ -60,7 +61,7 @@ export function createModuleRouter(options: RouterOptions) {
       const artifact = await db.getArtifact(artifact_namespace, artifact_name);
       if (!artifact) throw notFound('ARTIFACT_NOT_FOUND', 'Artifact not found');
 
-      const mod = await db.addModule(req.params.envId, {
+      const mod = await db.addProjectModule(req.params.projectId, {
         name,
         description,
         artifact_id: artifact.id,
@@ -68,19 +69,17 @@ export function createModuleRouter(options: RouterOptions) {
         artifact_name,
         pinned_version,
         auto_plan_on_module_update,
-        execution_mode,
         tf_version,
         working_directory,
-        state_backend,
       });
 
       await db.writeAuditLog({
         actor: req.registryUser?.email ?? 'unknown',
         action: 'module.added',
-        resource_type: 'environment_module',
+        resource_type: 'project_module',
         resource_id: mod.id,
-        resource_name: `${env.name}/${name}`,
-        resource_namespace: env.name,
+        resource_name: `${project.name}/${name}`,
+        resource_namespace: project.name,
       });
 
       res.status(201).json(mod);
@@ -90,10 +89,10 @@ export function createModuleRouter(options: RouterOptions) {
   });
 
   // Get module detail
-  router.get('/v1/environments/:envId/modules/:moduleId', async (req, res) => {
+  router.get('/v1/projects/:projectId/modules/:moduleId', async (req, res) => {
     try {
-      const mod = await db.getModule(req.params.moduleId);
-      if (!mod || mod.environment_id !== req.params.envId) {
+      const mod = await db.getProjectModule(req.params.moduleId);
+      if (!mod || mod.project_id !== req.params.projectId) {
         throw notFound('RUN_NOT_FOUND', 'Module not found');
       }
       res.json(mod);
@@ -104,20 +103,20 @@ export function createModuleRouter(options: RouterOptions) {
 
   // Update module config
   router.patch(
-    '/v1/environments/:envId/modules/:moduleId',
+    '/v1/projects/:projectId/modules/:moduleId',
     async (req, res) => {
       try {
         const credentials = await httpAuth.credentials(req);
-        const [decision] = await permissions.authorize([{ permission: registryEnvironmentUpdatePermission }], { credentials });
+        const [decision] = await permissions.authorize([{ permission: registryProjectUpdatePermission }], { credentials });
         if (decision.result !== AuthorizeResult.ALLOW) throw forbidden('Permission denied');
         requireMinRole(req, 'operator');
 
-        const mod = await db.getModule(req.params.moduleId);
-        if (!mod || mod.environment_id !== req.params.envId) {
+        const mod = await db.getProjectModule(req.params.moduleId);
+        if (!mod || mod.project_id !== req.params.projectId) {
           throw notFound('RUN_NOT_FOUND', 'Module not found');
         }
 
-        const updated = await db.updateModule(req.params.moduleId, req.body);
+        const updated = await db.updateProjectModule(req.params.moduleId, req.body);
         res.json(updated);
       } catch (err) {
         sendError(res, err);
@@ -125,32 +124,27 @@ export function createModuleRouter(options: RouterOptions) {
     },
   );
 
-  // Remove module (must destroy first)
+  // Remove module (must have no active resources in any env)
   router.delete(
-    '/v1/environments/:envId/modules/:moduleId',
+    '/v1/projects/:projectId/modules/:moduleId',
     async (req, res) => {
       try {
         const credentials = await httpAuth.credentials(req);
-        const [decision] = await permissions.authorize([{ permission: registryEnvironmentUpdatePermission }], { credentials });
+        const [decision] = await permissions.authorize([{ permission: registryProjectUpdatePermission }], { credentials });
         if (decision.result !== AuthorizeResult.ALLOW) throw forbidden('Permission denied');
         requireMinRole(req, 'operator');
 
-        const mod = await db.getModule(req.params.moduleId);
-        if (!mod || mod.environment_id !== req.params.envId) {
+        const mod = await db.getProjectModule(req.params.moduleId);
+        if (!mod || mod.project_id !== req.params.projectId) {
           throw notFound('RUN_NOT_FOUND', 'Module not found');
         }
-        if (mod.status === 'active' && mod.resource_count > 0) {
-          throw badRequest(
-            'Module has managed resources — destroy before removing',
-          );
-        }
 
-        await db.removeModule(req.params.moduleId);
+        await db.removeProjectModule(req.params.moduleId);
 
         await db.writeAuditLog({
           actor: req.registryUser?.email ?? 'unknown',
           action: 'module.removed',
-          resource_type: 'environment_module',
+          resource_type: 'project_module',
           resource_id: mod.id,
           resource_name: mod.name,
         });
@@ -162,67 +156,18 @@ export function createModuleRouter(options: RouterOptions) {
     },
   );
 
-  // Get latest Terraform outputs from most recent successful apply
-  router.get(
-    '/v1/environments/:envId/modules/:moduleId/latest-outputs',
-    async (req, res) => {
-      try {
-        const mod = await db.getModule(req.params.moduleId);
-        if (!mod || mod.environment_id !== req.params.envId) {
-          throw notFound('RUN_NOT_FOUND', 'Module not found');
-        }
-
-        const run = await db.getLatestSuccessfulModuleRun(req.params.moduleId);
-        res.json({ outputs: run?.tf_outputs ?? {} });
-      } catch (err) {
-        sendError(res, err);
-      }
-    },
-  );
-
-  // Force-unlock state (admin-only)
-  router.post(
-    '/v1/environments/:envId/modules/:moduleId/force-unlock',
-    async (req, res) => {
-      try {
-        const mod = await db.getModule(req.params.moduleId);
-        if (!mod || mod.environment_id !== req.params.envId) {
-          throw notFound('RUN_NOT_FOUND', 'Module not found');
-        }
-
-        const state = await db.forceUnlockTerraformState(req.params.moduleId);
-
-        await db.writeAuditLog({
-          actor: req.registryUser?.email ?? 'unknown',
-          action: 'state.force_unlocked',
-          resource_type: 'environment_module',
-          resource_id: mod.id,
-          resource_name: mod.name,
-          details: {
-            previous_lock_id: state?.lock_id,
-            previous_locked_by: state?.locked_by,
-          },
-        });
-
-        res.json({ status: 'unlocked' });
-      } catch (err) {
-        sendError(res, err);
-      }
-    },
-  );
-
-  // ── Module Dependencies ──────────────────────────────────────────────
+  // ── Project Module Dependencies ───────────────────────────────────
 
   // List dependencies
   router.get(
-    '/v1/environments/:envId/modules/:moduleId/dependencies',
+    '/v1/projects/:projectId/modules/:moduleId/dependencies',
     async (req, res) => {
       try {
-        const mod = await db.getModule(req.params.moduleId);
-        if (!mod || mod.environment_id !== req.params.envId) {
+        const mod = await db.getProjectModule(req.params.moduleId);
+        if (!mod || mod.project_id !== req.params.projectId) {
           throw notFound('RUN_NOT_FOUND', 'Module not found');
         }
-        const dependencies = await db.getModuleDependencies(
+        const dependencies = await db.getProjectModuleDependencies(
           req.params.moduleId,
         );
         res.json({ dependencies });
@@ -234,11 +179,11 @@ export function createModuleRouter(options: RouterOptions) {
 
   // Set dependencies (replace all) — validates cycle detection at write time
   router.put(
-    '/v1/environments/:envId/modules/:moduleId/dependencies',
+    '/v1/projects/:projectId/modules/:moduleId/dependencies',
     async (req, res) => {
       try {
-        const mod = await db.getModule(req.params.moduleId);
-        if (!mod || mod.environment_id !== req.params.envId) {
+        const mod = await db.getProjectModule(req.params.moduleId);
+        if (!mod || mod.project_id !== req.params.projectId) {
           throw notFound('RUN_NOT_FOUND', 'Module not found');
         }
 
@@ -247,15 +192,15 @@ export function createModuleRouter(options: RouterOptions) {
           throw badRequest('dependencies array is required');
         }
 
-        // Validate all depend_on_ids are in the same environment
+        // Validate all depends_on_ids are in the same project
         for (const dep of dependencies) {
           if (!dep.depends_on_id) {
             throw badRequest('each dependency must have a depends_on_id');
           }
-          const target = await db.getModule(dep.depends_on_id);
-          if (!target || target.environment_id !== req.params.envId) {
+          const target = await db.getProjectModule(dep.depends_on_id);
+          if (!target || target.project_id !== req.params.projectId) {
             throw badRequest(
-              `Dependency target ${dep.depends_on_id} not found in this environment`,
+              `Dependency target ${dep.depends_on_id} not found in this project`,
             );
           }
         }
@@ -265,7 +210,7 @@ export function createModuleRouter(options: RouterOptions) {
           (d: any) => d.depends_on_id as string,
         );
         const cyclePath = await db.detectCycle(
-          req.params.envId,
+          req.params.projectId,
           req.params.moduleId,
           dependsOnIds,
         );
@@ -273,7 +218,7 @@ export function createModuleRouter(options: RouterOptions) {
           throw badRequest(cyclePath);
         }
 
-        const result = await db.setModuleDependencies(
+        const result = await db.setProjectModuleDependencies(
           req.params.moduleId,
           dependencies.map((d: any) => ({
             depends_on_id: d.depends_on_id,
@@ -288,19 +233,23 @@ export function createModuleRouter(options: RouterOptions) {
     },
   );
 
-  // ── Module Variables ─────────────────────────────────────────────────
+  // ── Environment-scoped Module Variables ────────────────────────────
 
   // List variables (sensitive values masked)
   router.get(
     '/v1/environments/:envId/modules/:moduleId/variables',
     async (req, res) => {
       try {
-        const mod = await db.getModule(req.params.moduleId);
-        if (!mod || mod.environment_id !== req.params.envId) {
-          throw notFound('RUN_NOT_FOUND', 'Module not found');
+        const env = await db.getEnvironment(req.params.envId);
+        if (!env) throw notFound('ARTIFACT_NOT_FOUND', 'Environment not found');
+        assertTeamAccess(env, req.activeTeam);
+
+        const mod = await db.getProjectModule(req.params.moduleId);
+        if (!mod || mod.project_id !== env.project_id) {
+          throw notFound('RUN_NOT_FOUND', 'Module not found in this project');
         }
-        const variables = await db.listModuleVariables(req.params.moduleId);
-        // Mask sensitive values in response
+
+        const variables = await db.listModuleVariables(req.params.envId, req.params.moduleId);
         const masked = variables.map(v => ({
           ...v,
           value: v.sensitive ? null : v.value,
@@ -317,19 +266,24 @@ export function createModuleRouter(options: RouterOptions) {
     '/v1/environments/:envId/modules/:moduleId/variables',
     async (req, res) => {
       try {
-        const mod = await db.getModule(req.params.moduleId);
-        if (!mod || mod.environment_id !== req.params.envId) {
-          throw notFound('RUN_NOT_FOUND', 'Module not found');
+        const env = await db.getEnvironment(req.params.envId);
+        if (!env) throw notFound('ARTIFACT_NOT_FOUND', 'Environment not found');
+        assertTeamAccess(env, req.activeTeam);
+
+        const mod = await db.getProjectModule(req.params.moduleId);
+        if (!mod || mod.project_id !== env.project_id) {
+          throw notFound('RUN_NOT_FOUND', 'Module not found in this project');
         }
+
         const { variables } = req.body;
         if (!Array.isArray(variables)) {
           throw badRequest('variables array is required');
         }
         const result = await db.upsertModuleVariables(
+          req.params.envId,
           req.params.moduleId,
           variables,
         );
-        // Mask sensitive values in response
         const masked = result.map(v => ({
           ...v,
           value: v.sensitive ? null : v.value,
@@ -346,15 +300,21 @@ export function createModuleRouter(options: RouterOptions) {
     '/v1/environments/:envId/modules/:moduleId/variables',
     async (req, res) => {
       try {
-        const mod = await db.getModule(req.params.moduleId);
-        if (!mod || mod.environment_id !== req.params.envId) {
-          throw notFound('RUN_NOT_FOUND', 'Module not found');
+        const env = await db.getEnvironment(req.params.envId);
+        if (!env) throw notFound('ARTIFACT_NOT_FOUND', 'Environment not found');
+        assertTeamAccess(env, req.activeTeam);
+
+        const mod = await db.getProjectModule(req.params.moduleId);
+        if (!mod || mod.project_id !== env.project_id) {
+          throw notFound('RUN_NOT_FOUND', 'Module not found in this project');
         }
+
         const { variables } = req.body;
         if (!Array.isArray(variables)) {
           throw badRequest('variables array is required');
         }
         const result = await db.upsertModuleVariables(
+          req.params.envId,
           req.params.moduleId,
           variables,
         );
@@ -374,12 +334,18 @@ export function createModuleRouter(options: RouterOptions) {
     '/v1/environments/:envId/modules/:moduleId/variables/:key',
     async (req, res) => {
       try {
-        const mod = await db.getModule(req.params.moduleId);
-        if (!mod || mod.environment_id !== req.params.envId) {
-          throw notFound('RUN_NOT_FOUND', 'Module not found');
+        const env = await db.getEnvironment(req.params.envId);
+        if (!env) throw notFound('ARTIFACT_NOT_FOUND', 'Environment not found');
+        assertTeamAccess(env, req.activeTeam);
+
+        const mod = await db.getProjectModule(req.params.moduleId);
+        if (!mod || mod.project_id !== env.project_id) {
+          throw notFound('RUN_NOT_FOUND', 'Module not found in this project');
         }
+
         const category = (req.query.category as string) ?? 'terraform';
         await db.deleteModuleVariable(
+          req.params.envId,
           req.params.moduleId,
           req.params.key,
           category,
@@ -391,11 +357,75 @@ export function createModuleRouter(options: RouterOptions) {
     },
   );
 
-  // ── Cross-reference ──────────────────────────────────────────────────
+  // ── Environment-scoped Module Actions ─────────────────────────────
 
-  // List environment modules using a given artifact
+  // Get latest Terraform outputs from most recent successful apply in this env
   router.get(
-    '/v1/artifacts/:namespace/:name/environments',
+    '/v1/environments/:envId/modules/:moduleId/latest-outputs',
+    async (req, res) => {
+      try {
+        const env = await db.getEnvironment(req.params.envId);
+        if (!env) throw notFound('ARTIFACT_NOT_FOUND', 'Environment not found');
+        assertTeamAccess(env, req.activeTeam);
+
+        const mod = await db.getProjectModule(req.params.moduleId);
+        if (!mod || mod.project_id !== env.project_id) {
+          throw notFound('RUN_NOT_FOUND', 'Module not found in this project');
+        }
+
+        const run = await db.getLatestSuccessfulModuleRun(req.params.moduleId, req.params.envId);
+        res.json({ outputs: run?.tf_outputs ?? {} });
+      } catch (err) {
+        sendError(res, err);
+      }
+    },
+  );
+
+  // Force-unlock state (admin-only)
+  router.post(
+    '/v1/environments/:envId/modules/:moduleId/force-unlock',
+    async (req, res) => {
+      try {
+        const credentials = await httpAuth.credentials(req);
+        const [decision] = await permissions.authorize([{ permission: registryEnvironmentLockPermission }], { credentials });
+        if (decision.result !== AuthorizeResult.ALLOW) throw forbidden('Permission denied');
+
+        const env = await db.getEnvironment(req.params.envId);
+        if (!env) throw notFound('ARTIFACT_NOT_FOUND', 'Environment not found');
+        assertTeamAccess(env, req.activeTeam);
+
+        const mod = await db.getProjectModule(req.params.moduleId);
+        if (!mod || mod.project_id !== env.project_id) {
+          throw notFound('RUN_NOT_FOUND', 'Module not found in this project');
+        }
+
+        const state = await db.forceUnlockTerraformState(req.params.envId, req.params.moduleId);
+
+        await db.writeAuditLog({
+          actor: req.registryUser?.email ?? 'unknown',
+          action: 'state.force_unlocked',
+          resource_type: 'project_module',
+          resource_id: mod.id,
+          resource_name: mod.name,
+          details: {
+            environment_id: req.params.envId,
+            previous_lock_id: state?.lock_id,
+            previous_locked_by: state?.locked_by,
+          },
+        });
+
+        res.json({ status: 'unlocked' });
+      } catch (err) {
+        sendError(res, err);
+      }
+    },
+  );
+
+  // ── Cross-reference ──────────────────────────────────────────────
+
+  // List project modules using a given artifact
+  router.get(
+    '/v1/artifacts/:namespace/:name/projects',
     async (req, res) => {
       try {
         const artifact = await db.getArtifact(
@@ -403,7 +433,7 @@ export function createModuleRouter(options: RouterOptions) {
           req.params.name,
         );
         if (!artifact) throw notFound('ARTIFACT_NOT_FOUND', 'Artifact not found');
-        const modules = await db.listModulesForArtifact(artifact.id);
+        const modules = await db.listProjectModulesForArtifact(artifact.id);
         res.json({ modules });
       } catch (err) {
         sendError(res, err);

@@ -25,18 +25,16 @@ import DeleteIcon from '@material-ui/icons/Delete';
 import { Progress } from '@backstage/core-components';
 import { usePermission } from '@backstage/plugin-permission-react';
 import {
-  registryEnvironmentUpdatePermission,
+  registryProjectUpdatePermission,
   registryEnvironmentLockPermission,
 } from '@internal/plugin-registry-common';
 import { useRegistryApi } from '../../hooks/useRegistryApi';
 import { ModuleBindings } from './ModuleBindings';
 import { ResolvedVariablesViewer } from './ResolvedVariablesViewer';
-import { StateBackendForm } from './StateBackendForm';
 import type {
-  EnvironmentModule,
-  ModuleDependency,
-  StateBackendConfig,
-} from '../../api/types/environments';
+  ProjectModule,
+  ProjectModuleDependency,
+} from '../../api/types/projects';
 
 const useStyles = makeStyles(theme => ({
   section: {
@@ -64,36 +62,36 @@ const useStyles = makeStyles(theme => ({
 }));
 
 interface ModuleSettingsProps {
-  envId: string;
+  projectId: string;
   moduleId: string;
-  mod: EnvironmentModule;
+  mod: ProjectModule;
   onRefresh: () => void;
+  envId?: string;
 }
 
 export function ModuleSettings({
-  envId,
+  projectId,
   moduleId,
   mod,
   onRefresh,
+  envId,
 }: ModuleSettingsProps) {
   const classes = useStyles();
   const api = useRegistryApi();
 
   // Permissions
-  const { allowed: canUpdate } = usePermission({ permission: registryEnvironmentUpdatePermission });
+  const { allowed: canUpdate } = usePermission({ permission: registryProjectUpdatePermission });
   const { allowed: canForceUnlock } = usePermission({ permission: registryEnvironmentLockPermission });
 
   // Editable fields
   const [pinnedVersion, setPinnedVersion] = useState(mod.pinned_version ?? '');
-  const [execMode, setExecMode] = useState(mod.execution_mode);
   const [tfVersion, setTfVersion] = useState(mod.tf_version ?? '');
   const [autoPlan, setAutoPlan] = useState(mod.auto_plan_on_module_update);
   const [saving, setSaving] = useState(false);
-  const [savingBackend, setSavingBackend] = useState(false);
 
   // Dependencies
-  const [deps, setDeps] = useState<ModuleDependency[]>([]);
-  const [allModules, setAllModules] = useState<EnvironmentModule[]>([]);
+  const [deps, setDeps] = useState<ProjectModuleDependency[]>([]);
+  const [allModules, setAllModules] = useState<ProjectModule[]>([]);
   const [depsLoading, setDepsLoading] = useState(true);
   const [newDepId, setNewDepId] = useState('');
 
@@ -101,17 +99,17 @@ export function ModuleSettings({
     try {
       setDepsLoading(true);
       const [depsData, modulesData] = await Promise.all([
-        api.getModuleDependencies(envId, moduleId),
-        api.listEnvironmentModules(envId),
+        api.getProjectModuleDependencies(projectId, moduleId),
+        api.listProjectModules(projectId),
       ]);
       setDeps(depsData.dependencies);
-      setAllModules(modulesData.modules.filter(m => m.id !== moduleId));
+      setAllModules(modulesData.modules.filter((m: ProjectModule) => m.id !== moduleId));
     } catch {
       // Silent
     } finally {
       setDepsLoading(false);
     }
-  }, [api, envId, moduleId]);
+  }, [api, projectId, moduleId]);
 
   useEffect(() => {
     fetchDeps();
@@ -120,9 +118,8 @@ export function ModuleSettings({
   const handleSaveSettings = async () => {
     try {
       setSaving(true);
-      await api.updateModule(envId, moduleId, {
+      await api.updateProjectModule(projectId, moduleId, {
         pinned_version: pinnedVersion.trim() || undefined,
-        execution_mode: execMode,
         tf_version: tfVersion.trim() || undefined,
         auto_plan_on_module_update: autoPlan,
       });
@@ -138,7 +135,7 @@ export function ModuleSettings({
     if (!newDepId) return;
     try {
       const existingIds = deps.map(d => d.depends_on_id);
-      await api.setModuleDependencies(envId, moduleId, {
+      await api.setProjectModuleDependencies(projectId, moduleId, {
         dependencies: [
           ...existingIds.map(id => ({ depends_on_id: id })),
           { depends_on_id: newDepId },
@@ -156,7 +153,7 @@ export function ModuleSettings({
       const remaining = deps
         .filter(d => d.depends_on_id !== depId)
         .map(d => ({ depends_on_id: d.depends_on_id }));
-      await api.setModuleDependencies(envId, moduleId, {
+      await api.setProjectModuleDependencies(projectId, moduleId, {
         dependencies: remaining,
       });
       fetchDeps();
@@ -165,21 +162,8 @@ export function ModuleSettings({
     }
   };
 
-  const handleSaveBackend = async (backend: StateBackendConfig | null) => {
-    try {
-      setSavingBackend(true);
-      await api.updateModule(envId, moduleId, {
-        state_backend: backend ?? undefined,
-      });
-      onRefresh();
-    } catch {
-      // Silent
-    } finally {
-      setSavingBackend(false);
-    }
-  };
-
   const handleForceUnlock = async () => {
+    if (!envId) return;
     try {
       await api.forceUnlockModule(envId, moduleId);
       onRefresh();
@@ -210,20 +194,6 @@ export function ModuleSettings({
             placeholder="Leave empty for latest"
             helperText="Exact (1.2.3) or constraint (~> 1.2)"
           />
-          <TextField
-            select
-            variant="outlined"
-            label="Execution Mode"
-            value={execMode}
-            onChange={e =>
-              setExecMode(e.target.value as 'byoc' | 'peaas')
-            }
-            size="small"
-            style={{ minWidth: 200 }}
-          >
-            <MenuItem value="byoc">BYOC</MenuItem>
-            <MenuItem value="peaas">PeaaS</MenuItem>
-          </TextField>
           <TextField
             variant="outlined"
             label="Terraform Version"
@@ -282,7 +252,7 @@ export function ModuleSettings({
                         <TableCell>{dep.depends_on_name}</TableCell>
                         <TableCell>
                           {dep.output_mapping && dep.output_mapping.length > 0
-                            ? dep.output_mapping.map(m => (
+                            ? dep.output_mapping.map((m: { upstream_output: string; downstream_variable: string }) => (
                                 <Chip
                                   key={m.upstream_output}
                                   label={`${m.upstream_output} -> ${m.downstream_variable}`}
@@ -341,51 +311,32 @@ export function ModuleSettings({
         )}
       </Box>
 
-      {/* Cloud Integrations & Variable Sets */}
-      <ModuleBindings envId={envId} moduleId={moduleId} />
+      {/* Cloud Integrations & Variable Sets (project-scoped) */}
+      <ModuleBindings envId={projectId} moduleId={moduleId} />
 
-      {/* Resolved Variables Preview */}
-      <ResolvedVariablesViewer envId={envId} moduleId={moduleId} />
+      {/* Resolved Variables Preview (only in environment context) */}
+      {envId && <ResolvedVariablesViewer envId={envId} moduleId={moduleId} />}
 
-      {/* State Backend */}
-      <Box className={classes.section}>
-        <Typography variant="subtitle1" className={classes.sectionTitle}>
-          State Backend
-        </Typography>
-        <Paper variant="outlined" style={{ padding: 16 }}>
-          {mod.execution_mode === 'peaas' ? (
-            <Typography variant="body2" color="textSecondary">
-              State is managed by Butler Labs. Your Terraform state is stored
-              securely and persisted across runs.
-            </Typography>
-          ) : (
-            <StateBackendForm
-              value={mod.state_backend}
-              saving={savingBackend}
-              onSave={handleSaveBackend}
-            />
-          )}
-        </Paper>
-      </Box>
-
-      {/* Admin Actions */}
-      <Box className={classes.section}>
-        <Typography variant="subtitle1" className={classes.sectionTitle}>
-          Admin Actions
-        </Typography>
-        <Button
-          variant="outlined"
-          color="secondary"
-          size="small"
-          onClick={handleForceUnlock}
-          disabled={!canForceUnlock}
-        >
-          Force Unlock State
-        </Button>
-        <Typography variant="caption" color="textSecondary" display="block" style={{ marginTop: 4 }}>
-          Use only if Terraform state is stuck locked after a crash. This action is audit-logged.
-        </Typography>
-      </Box>
+      {/* Admin Actions (only in environment context) */}
+      {envId && (
+        <Box className={classes.section}>
+          <Typography variant="subtitle1" className={classes.sectionTitle}>
+            Admin Actions
+          </Typography>
+          <Button
+            variant="outlined"
+            color="secondary"
+            size="small"
+            onClick={handleForceUnlock}
+            disabled={!canForceUnlock}
+          >
+            Force Unlock State
+          </Button>
+          <Typography variant="caption" color="textSecondary" display="block" style={{ marginTop: 4 }}>
+            Use only if Terraform state is stuck locked after a crash. This action is audit-logged.
+          </Typography>
+        </Box>
+      )}
     </>
   );
 }

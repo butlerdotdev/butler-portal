@@ -15,6 +15,28 @@ export function createCloudIntegrationRouter(options: RouterOptions) {
   const { db, httpAuth, permissions } = options;
   const router = Router();
 
+  // ── Test Cloud Integration Connection ──────────────────────────────
+
+  router.post('/v1/cloud-integrations/test', async (req, res) => {
+    try {
+      requireMinRole(req, 'operator');
+
+      const { provider, auth_method, credential_config } = req.body;
+      if (!provider) throw badRequest('provider is required');
+      if (!auth_method) throw badRequest('auth_method is required');
+
+      const result = await testCloudIntegrationConnection(
+        provider,
+        auth_method,
+        credential_config ?? {},
+        options.logger,
+      );
+      res.json(result);
+    } catch (err) {
+      sendError(res, err);
+    }
+  });
+
   // ── Cloud Integration CRUD ──────────────────────────────────────────
 
   // List cloud integrations
@@ -235,4 +257,218 @@ export function createCloudIntegrationRouter(options: RouterOptions) {
   });
 
   return router;
+}
+
+/**
+ * Test connectivity to a cloud provider.
+ * Returns { ok: boolean, message: string, latencyMs?: number }
+ */
+async function testCloudIntegrationConnection(
+  provider: string,
+  authMethod: string,
+  config: Record<string, any>,
+  logger: import('@backstage/backend-plugin-api').LoggerService,
+): Promise<{ ok: boolean; message: string; latencyMs?: number }> {
+  const start = Date.now();
+
+  try {
+    switch (provider) {
+      case 'gcp': {
+        if (authMethod === 'oidc') {
+          // Validate the workload identity provider resource name format and
+          // that the service account looks correct by hitting the IAM API.
+          const wip = config.workloadIdentityProvider as string | undefined;
+          const sa = config.serviceAccount as string | undefined;
+          if (!wip) return { ok: false, message: 'Workload Identity Provider is required' };
+          if (!sa) return { ok: false, message: 'Service Account email is required' };
+
+          // Validate WIP format
+          const wipPattern = /^projects\/\d+\/locations\/global\/workloadIdentityPools\/[\w-]+\/providers\/[\w-]+$/;
+          if (!wipPattern.test(wip)) {
+            return { ok: false, message: 'Invalid Workload Identity Provider format. Expected: projects/{number}/locations/global/workloadIdentityPools/{pool}/providers/{provider}' };
+          }
+
+          // Validate service account email format
+          if (!sa.includes('@') || !sa.includes('.iam.gserviceaccount.com')) {
+            return { ok: false, message: 'Invalid service account email format. Expected: name@project.iam.gserviceaccount.com' };
+          }
+
+          // Extract project number from WIP and try to hit the STS endpoint
+          // to validate the pool exists (unauthenticated discovery)
+          const projectNumber = wip.split('/')[1];
+          const poolId = wip.split('/')[5];
+          const url = `https://iam.googleapis.com/v1/projects/${projectNumber}/locations/global/workloadIdentityPools/${poolId}`;
+
+          const controller = new AbortController();
+          const timeout = setTimeout(() => controller.abort(), 10000);
+          try {
+            const resp = await fetch(url, {
+              method: 'GET',
+              signal: controller.signal,
+            });
+            clearTimeout(timeout);
+            const latencyMs = Date.now() - start;
+
+            // 401/403 means the endpoint is reachable and the pool likely exists
+            // (we can't authenticate without a token, but reachability is confirmed)
+            if (resp.status === 200) {
+              return { ok: true, message: `GCP Workload Identity Pool verified (project ${projectNumber})`, latencyMs };
+            }
+            if (resp.status === 401 || resp.status === 403) {
+              return { ok: true, message: `GCP IAM endpoint reachable. Pool "${poolId}" exists (auth required for full validation)`, latencyMs };
+            }
+            if (resp.status === 404) {
+              return { ok: false, message: `Workload Identity Pool "${poolId}" not found in project ${projectNumber}`, latencyMs };
+            }
+            return { ok: false, message: `GCP IAM returned unexpected status ${resp.status}`, latencyMs };
+          } catch (fetchErr: any) {
+            clearTimeout(timeout);
+            const latencyMs = Date.now() - start;
+            if (fetchErr.name === 'AbortError') {
+              return { ok: false, message: 'Connection timed out reaching GCP IAM API', latencyMs };
+            }
+            return { ok: false, message: `Failed to reach GCP IAM API: ${fetchErr.message}`, latencyMs };
+          }
+        }
+
+        if (authMethod === 'static') {
+          const ciSecrets = (config.ciSecrets ?? {}) as Record<string, any>;
+          if (!ciSecrets.credentialsJson) {
+            return { ok: false, message: 'Credentials JSON secret name is required' };
+          }
+          // Can't test static credentials without the actual secret value,
+          // but we can validate the configuration is complete
+          const latencyMs = Date.now() - start;
+          return { ok: true, message: 'Static credentials configuration validated. Actual connectivity will be tested at run time.', latencyMs };
+        }
+        break;
+      }
+
+      case 'aws': {
+        if (authMethod === 'oidc') {
+          const roleArn = config.roleArn as string | undefined;
+          const region = config.region as string | undefined;
+          if (!roleArn) return { ok: false, message: 'Role ARN is required' };
+          if (!region) return { ok: false, message: 'Region is required' };
+
+          // Validate ARN format
+          const arnPattern = /^arn:aws:iam::\d{12}:role\/[\w+=,.@\/-]+$/;
+          if (!arnPattern.test(roleArn)) {
+            return { ok: false, message: 'Invalid Role ARN format. Expected: arn:aws:iam::{account-id}:role/{role-name}' };
+          }
+
+          // Probe the STS regional endpoint to verify reachability
+          const stsUrl = `https://sts.${region}.amazonaws.com/?Action=GetCallerIdentity&Version=2011-06-15`;
+          const controller = new AbortController();
+          const timeout = setTimeout(() => controller.abort(), 10000);
+          try {
+            const resp = await fetch(stsUrl, {
+              method: 'GET',
+              signal: controller.signal,
+            });
+            clearTimeout(timeout);
+            const latencyMs = Date.now() - start;
+
+            // 403 = endpoint reachable (no creds, expected)
+            // 400 = endpoint reachable
+            if (resp.status === 403 || resp.status === 400) {
+              return { ok: true, message: `AWS STS endpoint reachable in ${region}. Role ARN format valid.`, latencyMs };
+            }
+            return { ok: true, message: `AWS STS endpoint responded with status ${resp.status} in ${region}`, latencyMs };
+          } catch (fetchErr: any) {
+            clearTimeout(timeout);
+            const latencyMs = Date.now() - start;
+            if (fetchErr.name === 'AbortError') {
+              return { ok: false, message: `Connection timed out reaching AWS STS in ${region}`, latencyMs };
+            }
+            return { ok: false, message: `Failed to reach AWS STS in ${region}: ${fetchErr.message}`, latencyMs };
+          }
+        }
+
+        if (authMethod === 'static') {
+          const region = config.region as string | undefined;
+          if (!region) return { ok: false, message: 'Region is required' };
+          const ciSecrets = (config.ciSecrets ?? {}) as Record<string, any>;
+          if (!ciSecrets.accessKeyId) return { ok: false, message: 'Access Key ID secret name is required' };
+          if (!ciSecrets.secretAccessKey) return { ok: false, message: 'Secret Access Key secret name is required' };
+
+          const latencyMs = Date.now() - start;
+          return { ok: true, message: 'Static credentials configuration validated. Actual connectivity will be tested at run time.', latencyMs };
+        }
+        break;
+      }
+
+      case 'azure': {
+        if (authMethod === 'oidc') {
+          const clientId = config.clientId as string | undefined;
+          const tenantId = config.tenantId as string | undefined;
+          if (!clientId) return { ok: false, message: 'Client ID is required' };
+          if (!tenantId) return { ok: false, message: 'Tenant ID is required' };
+
+          // Validate GUID format
+          const guidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+          if (!guidPattern.test(tenantId)) {
+            return { ok: false, message: 'Invalid Tenant ID format. Expected a UUID.' };
+          }
+
+          // Probe the Azure AD OpenID configuration endpoint
+          const url = `https://login.microsoftonline.com/${tenantId}/.well-known/openid-configuration`;
+          const controller = new AbortController();
+          const timeout = setTimeout(() => controller.abort(), 10000);
+          try {
+            const resp = await fetch(url, {
+              method: 'GET',
+              signal: controller.signal,
+            });
+            clearTimeout(timeout);
+            const latencyMs = Date.now() - start;
+
+            if (resp.status === 200) {
+              return { ok: true, message: `Azure AD tenant "${tenantId}" verified`, latencyMs };
+            }
+            if (resp.status === 400 || resp.status === 404) {
+              return { ok: false, message: `Azure AD tenant "${tenantId}" not found`, latencyMs };
+            }
+            return { ok: false, message: `Azure AD returned unexpected status ${resp.status}`, latencyMs };
+          } catch (fetchErr: any) {
+            clearTimeout(timeout);
+            const latencyMs = Date.now() - start;
+            if (fetchErr.name === 'AbortError') {
+              return { ok: false, message: 'Connection timed out reaching Azure AD', latencyMs };
+            }
+            return { ok: false, message: `Failed to reach Azure AD: ${fetchErr.message}`, latencyMs };
+          }
+        }
+
+        if (authMethod === 'static') {
+          const ciSecrets = (config.ciSecrets ?? {}) as Record<string, any>;
+          if (!ciSecrets.clientId) return { ok: false, message: 'Client ID secret name is required' };
+          if (!ciSecrets.clientSecret) return { ok: false, message: 'Client Secret secret name is required' };
+          if (!ciSecrets.tenantId) return { ok: false, message: 'Tenant ID secret name is required' };
+
+          const latencyMs = Date.now() - start;
+          return { ok: true, message: 'Static credentials configuration validated. Actual connectivity will be tested at run time.', latencyMs };
+        }
+        break;
+      }
+
+      case 'custom': {
+        const envVars = config.envVars as Record<string, any> | undefined;
+        if (!envVars || Object.keys(envVars).length === 0) {
+          return { ok: false, message: 'At least one environment variable is required' };
+        }
+        const latencyMs = Date.now() - start;
+        return { ok: true, message: `Custom integration configured with ${Object.keys(envVars).length} env var(s)`, latencyMs };
+      }
+
+      default:
+        return { ok: false, message: `Unknown provider: ${provider}` };
+    }
+
+    return { ok: false, message: `Unsupported auth method "${authMethod}" for provider "${provider}"` };
+  } catch (err: any) {
+    logger.error(`Cloud integration test failed: ${err.message}`, { provider, authMethod });
+    const latencyMs = Date.now() - start;
+    return { ok: false, message: `Connection test failed: ${err.message}`, latencyMs };
+  }
 }

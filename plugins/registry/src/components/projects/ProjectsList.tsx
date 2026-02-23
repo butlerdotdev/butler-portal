@@ -19,13 +19,12 @@ import {
   makeStyles,
 } from '@material-ui/core';
 import AddIcon from '@material-ui/icons/Add';
-import LockIcon from '@material-ui/icons/Lock';
 import { Progress, EmptyState } from '@backstage/core-components';
 import { useNavigate } from 'react-router-dom';
 import { useRegistryApi } from '../../hooks/useRegistryApi';
 import { useRegistryTeam } from '../../hooks/useRegistryTeam';
-import { AdminEnvironmentsView } from './AdminEnvironmentsView';
-import type { Environment } from '../../api/types/environments';
+import { hasMinRole } from '@internal/plugin-registry-common';
+import type { Project } from '../../api/types/projects';
 
 const useStyles = makeStyles(theme => ({
   header: {
@@ -45,12 +44,6 @@ const useStyles = makeStyles(theme => ({
       backgroundColor: theme.palette.action.hover,
     },
   },
-  lockIcon: {
-    fontSize: '1rem',
-    verticalAlign: 'middle',
-    marginLeft: theme.spacing(0.5),
-    color: theme.palette.warning.main,
-  },
 }));
 
 function statusColor(status: string): 'default' | 'primary' | 'secondary' {
@@ -66,38 +59,41 @@ function statusColor(status: string): 'default' | 'primary' | 'secondary' {
   }
 }
 
-export function EnvironmentsList() {
+export function ProjectsList() {
   const { activeTeam, isPlatformAdmin } = useRegistryTeam();
   const isAdminMode = !activeTeam && isPlatformAdmin;
 
+  // Admin mode shows the same view for projects (no separate admin view yet)
   if (isAdminMode) {
-    return <AdminEnvironmentsView />;
+    return <TeamProjectsList />;
   }
 
-  return <TeamEnvironmentsList />;
+  return <TeamProjectsList />;
 }
 
-function TeamEnvironmentsList() {
+function TeamProjectsList() {
   const classes = useStyles();
   const navigate = useNavigate();
   const api = useRegistryApi();
+  const { activeRole } = useRegistryTeam();
+  const canCreate = hasMinRole(activeRole, 'operator');
 
-  const [environments, setEnvironments] = useState<Environment[]>([]);
+  const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState('');
 
-  const fetchEnvironments = useCallback(async () => {
+  const fetchProjects = useCallback(async () => {
     try {
       setLoading(true);
-      const data = await api.listEnvironments(
+      const data = await api.listProjects(
         statusFilter ? { status: statusFilter } : undefined,
       );
-      setEnvironments(data.items);
+      setProjects(data.items);
       setError(null);
     } catch (err) {
       setError(
-        err instanceof Error ? err.message : 'Failed to load environments',
+        err instanceof Error ? err.message : 'Failed to load projects',
       );
     } finally {
       setLoading(false);
@@ -105,19 +101,19 @@ function TeamEnvironmentsList() {
   }, [api, statusFilter]);
 
   useEffect(() => {
-    fetchEnvironments();
-  }, [fetchEnvironments]);
+    fetchProjects();
+  }, [fetchProjects]);
 
   if (loading) return <Progress />;
 
   if (error) {
     return (
       <EmptyState
-        title="Failed to load environments"
+        title="Failed to load projects"
         description={error}
         missing="data"
         action={
-          <Button variant="outlined" onClick={fetchEnvironments}>
+          <Button variant="outlined" onClick={fetchProjects}>
             Retry
           </Button>
         }
@@ -128,15 +124,17 @@ function TeamEnvironmentsList() {
   return (
     <>
       <Box className={classes.header}>
-        <Typography variant="h6">Environments</Typography>
-        <Button
-          variant="contained"
-          color="primary"
-          startIcon={<AddIcon />}
-          onClick={() => navigate('create')}
-        >
-          New Environment
-        </Button>
+        <Typography variant="h6">Projects</Typography>
+        {canCreate && (
+          <Button
+            variant="contained"
+            color="primary"
+            startIcon={<AddIcon />}
+            onClick={() => navigate('create')}
+          >
+            New Project
+          </Button>
+        )}
       </Box>
 
       <Box className={classes.toolbar}>
@@ -156,19 +154,21 @@ function TeamEnvironmentsList() {
         </TextField>
       </Box>
 
-      {environments.length === 0 ? (
+      {projects.length === 0 ? (
         <EmptyState
-          title="No environments"
-          description="Create an environment to start deploying infrastructure modules."
+          title="No projects"
+          description="Create a project to organize modules and environments together."
           missing="data"
           action={
-            <Button
-              variant="contained"
-              color="primary"
-              onClick={() => navigate('create')}
-            >
-              New Environment
-            </Button>
+            canCreate ? (
+              <Button
+                variant="contained"
+                color="primary"
+                onClick={() => navigate('create')}
+              >
+                New Project
+              </Button>
+            ) : undefined
           }
         />
       ) : (
@@ -177,45 +177,50 @@ function TeamEnvironmentsList() {
             <TableHead>
               <TableRow>
                 <TableCell>Name</TableCell>
-                <TableCell>Resources</TableCell>
+                <TableCell>Modules</TableCell>
+                <TableCell>Environments</TableCell>
                 <TableCell>Status</TableCell>
                 <TableCell>Last Run</TableCell>
                 <TableCell>Created</TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
-              {environments.map(env => (
+              {projects.map(project => (
                 <TableRow
-                  key={env.id}
+                  key={project.id}
                   className={classes.clickableRow}
-                  onClick={() => navigate(env.id)}
+                  onClick={() => navigate(project.id)}
                 >
                   <TableCell>
                     <Typography variant="body2">
-                      {env.name}
-                      {env.locked && <LockIcon className={classes.lockIcon} />}
+                      {project.name}
                     </Typography>
-                    {env.description && (
+                    {project.description && (
                       <Typography variant="caption" color="textSecondary">
-                        {env.description}
+                        {project.description}
                       </Typography>
                     )}
                   </TableCell>
-                  <TableCell>{env.total_resources}</TableCell>
+                  <TableCell>{project.module_count}</TableCell>
+                  <TableCell>
+                    {project.environments
+                      ? project.environments.length
+                      : 0}
+                  </TableCell>
                   <TableCell>
                     <Chip
-                      label={env.status}
+                      label={project.status}
                       size="small"
-                      color={statusColor(env.status)}
+                      color={statusColor(project.status)}
                     />
                   </TableCell>
                   <TableCell>
-                    {env.last_run_at
-                      ? new Date(env.last_run_at).toLocaleDateString()
+                    {project.last_run_at
+                      ? new Date(project.last_run_at).toLocaleDateString()
                       : '-'}
                   </TableCell>
                   <TableCell>
-                    {new Date(env.created_at).toLocaleDateString()}
+                    {new Date(project.created_at).toLocaleDateString()}
                   </TableCell>
                 </TableRow>
               ))}

@@ -7,15 +7,15 @@ import { LoggerService } from '@backstage/backend-plugin-api';
 import { RegistryDatabase } from '../database/RegistryDatabase';
 
 /**
- * CascadeManager — triggers speculative plan runs on environment modules
+ * CascadeManager — triggers speculative plan runs on project modules
  * when a new artifact version is approved.
  *
  * Flow:
  * 1. Version approved (manual or auto-approve)
- * 2. Query environment modules referencing that artifact
+ * 2. Query project modules referencing that artifact
  * 3. Filter by semver constraint (pinned_version)
- * 4. Skip locked/paused environments
- * 5. Create speculative plan runs with priority='cascade'
+ * 4. For each matching module, find all active unlocked environments in its project
+ * 5. Create speculative plan runs with priority='cascade' for each env
  */
 export class CascadeManager {
   constructor(
@@ -24,13 +24,14 @@ export class CascadeManager {
   ) {}
 
   /**
-   * Trigger cascade speculative plans for all matching environment modules.
+   * Trigger cascade speculative plans for all matching project modules
+   * across all their active environments.
    */
   async triggerCascade(
     artifactId: string,
     newVersion: string,
   ): Promise<void> {
-    const dependentModules = await this.db.getModulesWithVersionConstraint(
+    const dependentModules = await this.db.getProjectModulesWithVersionConstraint(
       artifactId,
     );
 
@@ -42,55 +43,69 @@ export class CascadeManager {
         mod.status === 'active',
     );
 
-    // Skip locked environments
-    const envIds = [
-      ...new Set(cascadeTargets.map(m => m.environment_id)),
-    ];
-    const lockedEnvs = new Set(
-      (await this.db.getLockedEnvironments(envIds)).map(e => e.id),
-    );
+    // Group by project and find active environments
+    const projectIds = [...new Set(cascadeTargets.map(m => m.project_id))];
 
     let created = 0;
     let skipped = 0;
 
-    for (const mod of cascadeTargets) {
-      if (lockedEnvs.has(mod.environment_id)) {
-        skipped++;
-        continue;
+    for (const projectId of projectIds) {
+      // Get project for execution_mode
+      const project = await this.db.getProject(projectId);
+      if (!project || project.status !== 'active') continue;
+
+      // Get all environments for this project
+      const envResult = await this.db.listEnvironments({ projectId });
+      const activeEnvs = envResult.items.filter(
+        e => e.status === 'active' && !e.locked,
+      );
+
+      const projectModules = cascadeTargets.filter(m => m.project_id === projectId);
+
+      for (const env of activeEnvs) {
+        for (const mod of projectModules) {
+          try {
+            const variablesSnapshot = await this.db.snapshotModuleVariables(
+              env.id,
+              mod.id,
+            );
+
+            // createModuleRun handles latest-wins cascade cancellation internally
+            await this.db.createModuleRun({
+              id: crypto.randomUUID(),
+              project_module_id: mod.id,
+              environment_id: env.id,
+              module_name: mod.name,
+              artifact_namespace: mod.artifact_namespace,
+              artifact_name: mod.artifact_name,
+              module_version: newVersion,
+              operation: 'plan',
+              mode: project.execution_mode,
+              status: 'pending',
+              triggered_by: 'system:cascade',
+              trigger_source: 'module_update',
+              priority: 'cascade',
+              tf_version: mod.tf_version ?? undefined,
+              variables_snapshot: variablesSnapshot,
+              state_backend_snapshot: env.state_backend ?? undefined,
+            });
+            created++;
+          } catch (err) {
+            this.logger.warn('Failed to create cascade run', {
+              moduleId: mod.id,
+              moduleName: mod.name,
+              environmentId: env.id,
+              error: String(err),
+            });
+          }
+        }
       }
 
-      try {
-        const variablesSnapshot = await this.db.snapshotModuleVariables(
-          mod.id,
-        );
-
-        // createModuleRun handles latest-wins cascade cancellation internally
-        await this.db.createModuleRun({
-          id: crypto.randomUUID(),
-          module_id: mod.id,
-          environment_id: mod.environment_id,
-          module_name: mod.name,
-          artifact_namespace: mod.artifact_namespace,
-          artifact_name: mod.artifact_name,
-          module_version: newVersion,
-          operation: 'plan',
-          mode: mod.execution_mode,
-          status: 'pending',
-          triggered_by: 'system:cascade',
-          trigger_source: 'module_update',
-          priority: 'cascade',
-          tf_version: mod.tf_version ?? undefined,
-          variables_snapshot: variablesSnapshot,
-          state_backend_snapshot: mod.state_backend ?? undefined,
-        });
-        created++;
-      } catch (err) {
-        this.logger.warn('Failed to create cascade run', {
-          moduleId: mod.id,
-          moduleName: mod.name,
-          error: String(err),
-        });
-      }
+      // Count skipped locked envs
+      const lockedEnvs = envResult.items.filter(
+        e => e.status === 'active' && e.locked,
+      );
+      skipped += lockedEnvs.length * projectModules.length;
     }
 
     // Audit log the cascade

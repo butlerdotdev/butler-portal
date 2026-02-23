@@ -48,3 +48,15 @@ export interface ValidateCloudIntegrationResponse {
   valid: boolean;
   error?: string;
 }
+
+export interface TestCloudIntegrationRequest {
+  provider: CloudProvider;
+  auth_method: AuthMethod;
+  credential_config: Record<string, unknown>;
+}
+
+export interface TestCloudIntegrationResult {
+  ok: boolean;
+  message: string;
+  latencyMs?: number;
+}

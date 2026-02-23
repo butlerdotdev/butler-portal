@@ -32,6 +32,23 @@ export const registryVersionYankPermission = createPermission({
   attributes: { action: 'update' },
 });
 
+// ── Project Permissions ──────────────────────────────────────────────
+
+export const registryProjectCreatePermission = createPermission({
+  name: 'registry.project.create',
+  attributes: { action: 'create' },
+});
+
+export const registryProjectUpdatePermission = createPermission({
+  name: 'registry.project.update',
+  attributes: { action: 'update' },
+});
+
+export const registryProjectDeletePermission = createPermission({
+  name: 'registry.project.delete',
+  attributes: { action: 'delete' },
+});
+
 // ── Environment Permissions ───────────────────────────────────────────
 
 export const registryEnvironmentCreatePermission = createPermission({
@@ -124,6 +141,9 @@ export const registryPermissions = [
   registryVersionPublishPermission,
   registryVersionApprovePermission,
   registryVersionYankPermission,
+  registryProjectCreatePermission,
+  registryProjectUpdatePermission,
+  registryProjectDeletePermission,
   registryEnvironmentCreatePermission,
   registryEnvironmentUpdatePermission,
   registryEnvironmentDeletePermission,

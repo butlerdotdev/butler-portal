@@ -40,9 +40,11 @@ import {
   RunOperation,
   RunMode,
   RunStatus,
+  ProjectRow,
+  ProjectModuleRow,
+  ProjectModuleDependencyRow,
   EnvironmentRow,
-  EnvironmentModuleRow,
-  ModuleDependencyRow,
+  EnvironmentModuleStateRow,
   EnvironmentModuleVariableRow,
   ModuleRunRow,
   EnvironmentRunRow,
@@ -1188,20 +1190,128 @@ export class RegistryDatabase {
     return count;
   }
 
-  // ── Environments ────────────────────────────────────────────────────
+  // ── Projects ────────────────────────────────────────────────────────
 
-  async createEnvironment(data: {
+  async createProject(data: {
     name: string;
     description?: string;
     team?: string;
+    execution_mode?: string;
     created_by?: string;
-  }): Promise<EnvironmentRow> {
-    const [row] = await this.knex('environments')
+  }): Promise<ProjectRow> {
+    const [row] = await this.knex('projects')
       .insert({
         id: uuidv4(),
         name: data.name,
         description: data.description ?? null,
         team: data.team ?? null,
+        execution_mode: data.execution_mode ?? 'byoc',
+        created_by: data.created_by ?? null,
+      })
+      .returning('*');
+    return this.parseProjectRow(row);
+  }
+
+  async getProject(id: string): Promise<ProjectRow | null> {
+    const row = await this.knex('projects').where({ id }).first();
+    return row ? this.parseProjectRow(row) : null;
+  }
+
+  async listProjects(options: {
+    team?: string;
+    status?: string;
+    cursor?: string;
+    limit?: number;
+  }): Promise<PaginatedResult<ProjectRow>> {
+    const limit = options.limit ?? 20;
+    let query = this.knex('projects');
+
+    if (options.team) query = query.where('team', options.team);
+    if (options.status) query = query.where('status', options.status);
+
+    const countResult = await query.clone().count('* as count').first();
+    const totalCount = Number(countResult?.count ?? 0);
+
+    if (options.cursor) {
+      const decoded = decodeCursor(options.cursor);
+      if (decoded) {
+        query = query.where(function () {
+          this.where('created_at', '<', decoded.value)
+            .orWhere(function () {
+              this.where('created_at', decoded.value).where('id', '<', decoded.id);
+            });
+        });
+      }
+    }
+
+    const rows = await query
+      .orderBy('created_at', 'desc')
+      .orderBy('id', 'desc')
+      .limit(limit + 1)
+      .select('*');
+
+    const hasMore = rows.length > limit;
+    const items = (hasMore ? rows.slice(0, limit) : rows).map((r: any) =>
+      this.parseProjectRow(r),
+    );
+    const nextCursor =
+      hasMore && items.length > 0
+        ? encodeCursor(
+            String(items[items.length - 1].created_at),
+            items[items.length - 1].id,
+          )
+        : null;
+
+    return { items, nextCursor, totalCount };
+  }
+
+  async updateProject(
+    id: string,
+    data: Partial<{
+      name: string;
+      description: string | null;
+      execution_mode: string;
+      status: string;
+      module_count: number;
+      total_resources: number;
+      last_run_at: string | null;
+    }>,
+  ): Promise<ProjectRow | null> {
+    const [row] = await this.knex('projects')
+      .where({ id })
+      .update({ ...data, updated_at: this.knex.fn.now() })
+      .returning('*');
+    return row ? this.parseProjectRow(row) : null;
+  }
+
+  async deleteProject(id: string): Promise<void> {
+    await this.knex('projects')
+      .where({ id })
+      .update({ status: 'archived', updated_at: this.knex.fn.now() });
+  }
+
+  // ── Environments ──────────────────────────────────────────────────────
+
+  async createEnvironment(
+    projectId: string,
+    data: {
+      name: string;
+      description?: string;
+      team?: string;
+      state_backend?: StateBackendConfig;
+      created_by?: string;
+    },
+  ): Promise<EnvironmentRow> {
+    const [row] = await this.knex('environments')
+      .insert({
+        id: uuidv4(),
+        name: data.name,
+        description: data.description ?? null,
+        project_id: projectId,
+        team: data.team ?? null,
+        state_backend: data.state_backend
+          ? JSON.stringify(data.state_backend)
+          : null,
         created_by: data.created_by ?? null,
       })
       .returning('*');
@@ -1215,6 +1325,7 @@ export class RegistryDatabase {
 
   async listEnvironments(options: {
     team?: string;
+    projectId?: string;
     status?: string;
     cursor?: string;
     limit?: number;
@@ -1223,6 +1334,7 @@ export class RegistryDatabase {
     let query = this.knex('environments');
 
     if (options.team) query = query.where('team', options.team);
+    if (options.projectId) query = query.where('project_id', options.projectId);
     if (options.status) query = query.where('status', options.status);
 
     const countResult = await query.clone().count('* as count').first();
@@ -1271,14 +1383,23 @@ export class RegistryDatabase {
       locked_by: string | null;
       locked_at: string | null;
       lock_reason: string | null;
-      module_count: number;
+      state_backend: StateBackendConfig | null;
       total_resources: number;
       last_run_at: string | null;
     }>,
   ): Promise<EnvironmentRow | null> {
+    const update: Record<string, any> = {
+      ...data,
+      updated_at: this.knex.fn.now(),
+    };
+    if (data.state_backend !== undefined) {
+      update.state_backend = data.state_backend
+        ? JSON.stringify(data.state_backend)
+        : null;
+    }
     const [row] = await this.knex('environments')
       .where({ id })
-      .update({ ...data, updated_at: this.knex.fn.now() })
+      .update(update)
       .returning('*');
     return row ? this.parseEnvironmentRow(row) : null;
   }
@@ -1287,146 +1408,6 @@ export class RegistryDatabase {
     await this.knex('environments')
       .where({ id })
       .update({ status: 'archived', updated_at: this.knex.fn.now() });
-  }
-
-  // ── Environment Modules ───────────────────────────────────────────────
-
-  async addModule(
-    environmentId: string,
-    data: {
-      name: string;
-      description?: string;
-      artifact_id: string;
-      artifact_namespace: string;
-      artifact_name: string;
-      pinned_version?: string;
-      auto_plan_on_module_update?: boolean;
-      vcs_trigger?: VcsTrigger;
-      auto_plan_on_push?: boolean;
-      execution_mode?: string;
-      tf_version?: string;
-      working_directory?: string;
-      state_backend?: StateBackendConfig;
-    },
-  ): Promise<EnvironmentModuleRow> {
-    const [row] = await this.knex('environment_modules')
-      .insert({
-        id: uuidv4(),
-        environment_id: environmentId,
-        name: data.name,
-        description: data.description ?? null,
-        artifact_id: data.artifact_id,
-        artifact_namespace: data.artifact_namespace,
-        artifact_name: data.artifact_name,
-        pinned_version: data.pinned_version ?? null,
-        auto_plan_on_module_update: data.auto_plan_on_module_update ?? true,
-        vcs_trigger: data.vcs_trigger ? JSON.stringify(data.vcs_trigger) : null,
-        auto_plan_on_push: data.auto_plan_on_push ?? false,
-        execution_mode: data.execution_mode ?? 'byoc',
-        tf_version: data.tf_version ?? null,
-        working_directory: data.working_directory ?? null,
-        state_backend: data.state_backend
-          ? JSON.stringify(data.state_backend)
-          : null,
-      })
-      .returning('*');
-
-    // Increment module count on environment
-    await this.knex('environments')
-      .where({ id: environmentId })
-      .increment('module_count', 1)
-      .update({ updated_at: this.knex.fn.now() });
-
-    return this.parseEnvironmentModuleRow(row);
-  }
-
-  async getModule(id: string): Promise<EnvironmentModuleRow | null> {
-    const row = await this.knex('environment_modules').where({ id }).first();
-    return row ? this.parseEnvironmentModuleRow(row) : null;
-  }
-
-  async listModules(environmentId: string): Promise<EnvironmentModuleRow[]> {
-    const rows = await this.knex('environment_modules')
-      .where({ environment_id: environmentId })
-      .orderBy('name', 'asc')
-      .select('*');
-    return rows.map((r: any) => this.parseEnvironmentModuleRow(r));
-  }
-
-  async updateModule(
-    id: string,
-    data: Partial<{
-      name: string;
-      description: string | null;
-      pinned_version: string | null;
-      current_version: string | null;
-      auto_plan_on_module_update: boolean;
-      vcs_trigger: VcsTrigger | null;
-      auto_plan_on_push: boolean;
-      execution_mode: string;
-      tf_version: string | null;
-      working_directory: string | null;
-      state_backend: StateBackendConfig | null;
-      last_run_id: string | null;
-      last_run_status: string | null;
-      last_run_at: string | null;
-      resource_count: number;
-      status: string;
-    }>,
-  ): Promise<EnvironmentModuleRow | null> {
-    const update: Record<string, any> = {
-      ...data,
-      updated_at: this.knex.fn.now(),
-    };
-    if (data.vcs_trigger !== undefined) {
-      update.vcs_trigger = data.vcs_trigger
-        ? JSON.stringify(data.vcs_trigger)
-        : null;
-    }
-    if (data.state_backend !== undefined) {
-      update.state_backend = data.state_backend
-        ? JSON.stringify(data.state_backend)
-        : null;
-    }
-    const [row] = await this.knex('environment_modules')
-      .where({ id })
-      .update(update)
-      .returning('*');
-    return row ? this.parseEnvironmentModuleRow(row) : null;
-  }
-
-  async removeModule(id: string): Promise<void> {
-    const mod = await this.getModule(id);
-    if (!mod) return;
-    await this.knex('environment_modules').where({ id }).del();
-    // Decrement module count on environment
-    await this.knex('environments')
-      .where({ id: mod.environment_id })
-      .decrement('module_count', 1)
-      .update({ updated_at: this.knex.fn.now() });
-  }
-
-  async listModulesForArtifact(
-    artifactId: string,
-  ): Promise<EnvironmentModuleRow[]> {
-    const rows = await this.knex('environment_modules')
-      .where({ artifact_id: artifactId, status: 'active' })
-      .select('*');
-    return rows.map((r: any) => this.parseEnvironmentModuleRow(r));
-  }
-
-  async getModulesWithVersionConstraint(
-    artifactId: string,
-  ): Promise<EnvironmentModuleRow[]> {
-    const rows = await this.knex('environment_modules as em')
-      .join('environments as e', 'em.environment_id', 'e.id')
-      .where('em.artifact_id', artifactId)
-      .where('em.auto_plan_on_module_update', true)
-      .where('em.status', 'active')
-      .where('e.status', 'active')
-      .where('e.locked', false)
-      .select('em.*');
-    return rows.map((r: any) => this.parseEnvironmentModuleRow(r));
   }
 
   async getLockedEnvironments(envIds: string[]): Promise<EnvironmentRow[]> {
@@ -1438,13 +1419,136 @@ export class RegistryDatabase {
     return rows.map((r: any) => this.parseEnvironmentRow(r));
   }
 
-  // ── Module Dependencies ──────────────────────────────────────────────
+  // ── Project Modules ───────────────────────────────────────────────────
 
-  async getModuleDependencies(
+  async addProjectModule(
+    projectId: string,
+    data: {
+      name: string;
+      description?: string;
+      artifact_id: string;
+      artifact_namespace: string;
+      artifact_name: string;
+      pinned_version?: string;
+      auto_plan_on_module_update?: boolean;
+      vcs_trigger?: VcsTrigger;
+      auto_plan_on_push?: boolean;
+      tf_version?: string;
+      working_directory?: string;
+    },
+  ): Promise<ProjectModuleRow> {
+    const [row] = await this.knex('project_modules')
+      .insert({
+        id: uuidv4(),
+        project_id: projectId,
+        name: data.name,
+        description: data.description ?? null,
+        artifact_id: data.artifact_id,
+        artifact_namespace: data.artifact_namespace,
+        artifact_name: data.artifact_name,
+        pinned_version: data.pinned_version ?? null,
+        auto_plan_on_module_update: data.auto_plan_on_module_update ?? true,
+        vcs_trigger: data.vcs_trigger ? JSON.stringify(data.vcs_trigger) : null,
+        auto_plan_on_push: data.auto_plan_on_push ?? false,
+        tf_version: data.tf_version ?? null,
+        working_directory: data.working_directory ?? null,
+      })
+      .returning('*');
+
+    // Increment module count on project
+    await this.knex('projects')
+      .where({ id: projectId })
+      .increment('module_count', 1)
+      .update({ updated_at: this.knex.fn.now() });
+
+    return this.parseProjectModuleRow(row);
+  }
+
+  async getProjectModule(id: string): Promise<ProjectModuleRow | null> {
+    const row = await this.knex('project_modules').where({ id }).first();
+    return row ? this.parseProjectModuleRow(row) : null;
+  }
+
+  async listProjectModules(projectId: string): Promise<ProjectModuleRow[]> {
+    const rows = await this.knex('project_modules')
+      .where({ project_id: projectId })
+      .orderBy('name', 'asc')
+      .select('*');
+    return rows.map((r: any) => this.parseProjectModuleRow(r));
+  }
+
+  async updateProjectModule(
+    id: string,
+    data: Partial<{
+      name: string;
+      description: string | null;
+      pinned_version: string | null;
+      auto_plan_on_module_update: boolean;
+      vcs_trigger: VcsTrigger | null;
+      auto_plan_on_push: boolean;
+      tf_version: string | null;
+      working_directory: string | null;
+      status: string;
+    }>,
+  ): Promise<ProjectModuleRow | null> {
+    const update: Record<string, any> = {
+      ...data,
+      updated_at: this.knex.fn.now(),
+    };
+    if (data.vcs_trigger !== undefined) {
+      update.vcs_trigger = data.vcs_trigger
+        ? JSON.stringify(data.vcs_trigger)
+        : null;
+    }
+    const [row] = await this.knex('project_modules')
+      .where({ id })
+      .update(update)
+      .returning('*');
+    return row ? this.parseProjectModuleRow(row) : null;
+  }
+
+  async removeProjectModule(id: string): Promise<void> {
+    const mod = await this.getProjectModule(id);
+    if (!mod) return;
+    await this.knex('project_modules').where({ id }).del();
+    await this.knex('projects')
+      .where({ id: mod.project_id })
+      .decrement('module_count', 1)
+      .update({ updated_at: this.knex.fn.now() });
+  }
+
+  async listProjectModulesForArtifact(
+    artifactId: string,
+  ): Promise<ProjectModuleRow[]> {
+    const rows = await this.knex('project_modules')
+      .where({ artifact_id: artifactId, status: 'active' })
+      .select('*');
+    return rows.map((r: any) => this.parseProjectModuleRow(r));
+  }
+
+  async getProjectModulesWithVersionConstraint(
+    artifactId: string,
+  ): Promise<Array<ProjectModuleRow & { project_execution_mode: string }>> {
+    const rows = await this.knex('project_modules as pm')
+      .join('projects as p', 'pm.project_id', 'p.id')
+      .where('pm.artifact_id', artifactId)
+      .where('pm.auto_plan_on_module_update', true)
+      .where('pm.status', 'active')
+      .where('p.status', 'active')
+      .select('pm.*', 'p.execution_mode as project_execution_mode');
+    return rows.map((r: any) => ({
+      ...this.parseProjectModuleRow(r),
+      project_execution_mode: r.project_execution_mode,
+    }));
+  }
+
+  // ── Project Module Dependencies ───────────────────────────────────────
+
+  async getProjectModuleDependencies(
     moduleId: string,
-  ): Promise<(ModuleDependencyRow & { depends_on_name: string })[]> {
-    const rows = await this.knex('environment_module_dependencies as d')
-      .join('environment_modules as m', 'd.depends_on_id', 'm.id')
+  ): Promise<(ProjectModuleDependencyRow & { depends_on_name: string })[]> {
+    const rows = await this.knex('project_module_dependencies as d')
+      .join('project_modules as m', 'd.depends_on_id', 'm.id')
       .where('d.module_id', moduleId)
       .select('d.*', 'm.name as depends_on_name');
     return rows.map((r: any) => ({
@@ -1457,15 +1561,14 @@ export class RegistryDatabase {
     }));
   }
 
-  async setModuleDependencies(
+  async setProjectModuleDependencies(
     moduleId: string,
     dependencies: Array<{
       depends_on_id: string;
       output_mapping?: OutputMappingEntry[];
     }>,
-  ): Promise<(ModuleDependencyRow & { depends_on_name: string })[]> {
-    // Delete existing dependencies
-    await this.knex('environment_module_dependencies')
+  ): Promise<(ProjectModuleDependencyRow & { depends_on_name: string })[]> {
+    await this.knex('project_module_dependencies')
       .where({ module_id: moduleId })
       .del();
 
@@ -1473,8 +1576,7 @@ export class RegistryDatabase {
       return [];
     }
 
-    // Insert new dependencies
-    await this.knex('environment_module_dependencies').insert(
+    await this.knex('project_module_dependencies').insert(
       dependencies.map(d => ({
         id: uuidv4(),
         module_id: moduleId,
@@ -1485,21 +1587,21 @@ export class RegistryDatabase {
       })),
     );
 
-    return this.getModuleDependencies(moduleId);
+    return this.getProjectModuleDependencies(moduleId);
   }
 
-  async getEnvironmentGraph(
-    environmentId: string,
+  async getProjectGraph(
+    projectId: string,
   ): Promise<{
-    modules: EnvironmentModuleRow[];
-    deps: (ModuleDependencyRow & { depends_on_name: string })[];
+    modules: ProjectModuleRow[];
+    deps: (ProjectModuleDependencyRow & { depends_on_name: string })[];
   }> {
-    const modules = await this.listModules(environmentId);
+    const modules = await this.listProjectModules(projectId);
     const moduleIds = modules.map(m => m.id);
     if (moduleIds.length === 0) return { modules, deps: [] };
 
-    const depRows = await this.knex('environment_module_dependencies as d')
-      .join('environment_modules as m', 'd.depends_on_id', 'm.id')
+    const depRows = await this.knex('project_module_dependencies as d')
+      .join('project_modules as m', 'd.depends_on_id', 'm.id')
       .whereIn('d.module_id', moduleIds)
       .select('d.*', 'm.name as depends_on_name');
 
@@ -1517,11 +1619,10 @@ export class RegistryDatabase {
 
   /**
    * Topological sort using Kahn's algorithm.
-   * Returns module IDs in execution order.
-   * Throws if a cycle is detected (defense in depth).
+   * Returns module IDs in execution order for a project's DAG.
    */
-  async topologicalSort(environmentId: string): Promise<string[]> {
-    const { modules, deps } = await this.getEnvironmentGraph(environmentId);
+  async topologicalSort(projectId: string): Promise<string[]> {
+    const { modules, deps } = await this.getProjectGraph(projectId);
     const inDegree = new Map<string, number>();
     const adjacency = new Map<string, string[]>();
 
@@ -1538,7 +1639,6 @@ export class RegistryDatabase {
       adjacency.set(dep.depends_on_id, adj);
     }
 
-    // Start with modules that have no dependencies
     const queue: string[] = [];
     for (const [id, degree] of inDegree) {
       if (degree === 0) queue.push(id);
@@ -1556,7 +1656,6 @@ export class RegistryDatabase {
     }
 
     if (sorted.length !== modules.length) {
-      // Cycle detected — find the cycle path
       const remaining = modules
         .filter(m => !sorted.includes(m.id))
         .map(m => m.name);
@@ -1570,40 +1669,35 @@ export class RegistryDatabase {
 
   /**
    * Detect cycles before adding dependencies.
-   * Uses DFS from each target to check if we can reach the source.
-   * Returns null if no cycle, or the cycle path string if a cycle is detected.
+   * Returns null if no cycle, or the cycle path string.
    */
   async detectCycle(
-    environmentId: string,
+    projectId: string,
     moduleId: string,
     dependsOnIds: string[],
   ): Promise<string | null> {
-    const { modules, deps } = await this.getEnvironmentGraph(environmentId);
+    const { modules, deps } = await this.getProjectGraph(projectId);
     const moduleMap = new Map(modules.map(m => [m.id, m]));
 
-    // Build adjacency list (module → depends_on) including the proposed new edges
     const dependsOn = new Map<string, Set<string>>();
     for (const m of modules) {
       dependsOn.set(m.id, new Set());
     }
     for (const dep of deps) {
-      // Skip existing edges from this module (we're replacing them)
       if (dep.module_id === moduleId) continue;
       dependsOn.get(dep.module_id)?.add(dep.depends_on_id);
     }
-    // Add proposed new edges
     for (const depId of dependsOnIds) {
       dependsOn.get(moduleId)?.add(depId);
     }
 
-    // DFS cycle detection from moduleId
     const visited = new Set<string>();
     const path: string[] = [];
 
     const dfs = (current: string): boolean => {
       if (current === moduleId && path.length > 0) {
         path.push(moduleMap.get(current)?.name ?? current);
-        return true; // cycle found
+        return true;
       }
       if (visited.has(current)) return false;
       visited.add(current);
@@ -1615,7 +1709,6 @@ export class RegistryDatabase {
       return false;
     };
 
-    // Start DFS from each proposed dependency target
     for (const depId of dependsOnIds) {
       visited.clear();
       path.length = 0;
@@ -1629,19 +1722,77 @@ export class RegistryDatabase {
     return null;
   }
 
-  // ── Module Variables ─────────────────────────────────────────────────
+  // ── Environment Module State ──────────────────────────────────────────
+
+  async getOrCreateEnvironmentModuleState(
+    environmentId: string,
+    projectModuleId: string,
+  ): Promise<EnvironmentModuleStateRow> {
+    const existing = await this.knex('environment_module_state')
+      .where({ environment_id: environmentId, project_module_id: projectModuleId })
+      .first();
+    if (existing) return this.parseEnvironmentModuleStateRow(existing);
+
+    const [row] = await this.knex('environment_module_state')
+      .insert({
+        id: uuidv4(),
+        environment_id: environmentId,
+        project_module_id: projectModuleId,
+      })
+      .onConflict(['environment_id', 'project_module_id'])
+      .merge({ updated_at: this.knex.fn.now() })
+      .returning('*');
+    return this.parseEnvironmentModuleStateRow(row);
+  }
+
+  async updateEnvironmentModuleState(
+    environmentId: string,
+    projectModuleId: string,
+    data: Partial<{
+      current_version: string | null;
+      last_run_id: string | null;
+      last_run_status: string | null;
+      last_run_at: string | null;
+      resource_count: number;
+      drift_status: string;
+    }>,
+  ): Promise<EnvironmentModuleStateRow | null> {
+    const [row] = await this.knex('environment_module_state')
+      .where({ environment_id: environmentId, project_module_id: projectModuleId })
+      .update({ ...data, updated_at: this.knex.fn.now() })
+      .returning('*');
+    return row ? this.parseEnvironmentModuleStateRow(row) : null;
+  }
+
+  async listEnvironmentModuleStates(
+    environmentId: string,
+  ): Promise<(EnvironmentModuleStateRow & { module_name: string; artifact_name: string })[]> {
+    const rows = await this.knex('environment_module_state as s')
+      .join('project_modules as m', 's.project_module_id', 'm.id')
+      .where('s.environment_id', environmentId)
+      .select('s.*', 'm.name as module_name', 'm.artifact_name');
+    return rows.map((r: any) => ({
+      ...this.parseEnvironmentModuleStateRow(r),
+      module_name: r.module_name,
+      artifact_name: r.artifact_name,
+    }));
+  }
+
+  // ── Module Variables (per-environment per-module) ─────────────────────
 
   async listModuleVariables(
-    moduleId: string,
+    environmentId: string,
+    projectModuleId: string,
   ): Promise<EnvironmentModuleVariableRow[]> {
     return this.knex('environment_module_variables')
-      .where({ module_id: moduleId })
+      .where({ environment_id: environmentId, project_module_id: projectModuleId })
       .orderBy('key', 'asc')
       .select('*');
   }
 
   async upsertModuleVariables(
-    moduleId: string,
+    environmentId: string,
+    projectModuleId: string,
     variables: Array<{
       key: string;
       value?: string | null;
@@ -1656,7 +1807,8 @@ export class RegistryDatabase {
       await this.knex('environment_module_variables')
         .insert({
           id: uuidv4(),
-          module_id: moduleId,
+          environment_id: environmentId,
+          project_module_id: projectModuleId,
           key: v.key,
           value: v.sensitive ? null : (v.value ?? null),
           sensitive: v.sensitive ?? false,
@@ -1665,7 +1817,7 @@ export class RegistryDatabase {
           description: v.description ?? null,
           secret_ref: v.secret_ref ?? null,
         })
-        .onConflict(['module_id', 'key', 'category'])
+        .onConflict(['environment_id', 'project_module_id', 'key', 'category'])
         .merge({
           value: v.sensitive ? null : (v.value ?? null),
           sensitive: v.sensitive ?? false,
@@ -1675,23 +1827,25 @@ export class RegistryDatabase {
           updated_at: this.knex.fn.now(),
         });
     }
-    return this.listModuleVariables(moduleId);
+    return this.listModuleVariables(environmentId, projectModuleId);
   }
 
   async deleteModuleVariable(
-    moduleId: string,
+    environmentId: string,
+    projectModuleId: string,
     key: string,
     category: string = 'terraform',
   ): Promise<void> {
     await this.knex('environment_module_variables')
-      .where({ module_id: moduleId, key, category })
+      .where({ environment_id: environmentId, project_module_id: projectModuleId, key, category })
       .del();
   }
 
   async snapshotModuleVariables(
-    moduleId: string,
+    environmentId: string,
+    projectModuleId: string,
   ): Promise<Record<string, unknown>> {
-    const vars = await this.listModuleVariables(moduleId);
+    const vars = await this.listModuleVariables(environmentId, projectModuleId);
     const snapshot: Record<string, any> = {};
     for (const v of vars) {
       snapshot[v.key] = {
@@ -1709,7 +1863,7 @@ export class RegistryDatabase {
 
   async createModuleRun(data: {
     id?: string;
-    module_id: string;
+    project_module_id: string;
     environment_id: string;
     environment_run_id?: string;
     module_name: string;
@@ -1733,29 +1887,27 @@ export class RegistryDatabase {
     const id = data.id ?? uuidv4();
 
     // Check for active run to determine queue position
-    const activeRun = await this.getActiveModuleRun(data.module_id);
+    // Queue is per module+environment pair
+    const activeRun = await this.getActiveModuleRun(data.project_module_id, data.environment_id);
     let status = data.status ?? 'pending';
     let queuePosition: number | null = null;
 
     if (activeRun) {
-      // Queue behind the active run
       const maxPos = await this.knex('module_runs')
-        .where({ module_id: data.module_id })
+        .where({ project_module_id: data.project_module_id, environment_id: data.environment_id })
         .whereNotNull('queue_position')
         .max('queue_position as max')
         .first();
       queuePosition = ((maxPos?.max as number) ?? 0) + 1;
       status = 'pending';
 
-      // Latest-wins for cascade: cancel older queued cascade runs for same module
       if (data.priority === 'cascade') {
         await this.knex('module_runs')
-          .where({ module_id: data.module_id, priority: 'cascade' })
+          .where({ project_module_id: data.project_module_id, environment_id: data.environment_id, priority: 'cascade' })
           .whereNotNull('queue_position')
           .del();
-        // Recalculate position after cleanup
         const newMax = await this.knex('module_runs')
-          .where({ module_id: data.module_id })
+          .where({ project_module_id: data.project_module_id, environment_id: data.environment_id })
           .whereNotNull('queue_position')
           .max('queue_position as max')
           .first();
@@ -1768,7 +1920,7 @@ export class RegistryDatabase {
     const [row] = await this.knex('module_runs')
       .insert({
         id,
-        module_id: data.module_id,
+        project_module_id: data.project_module_id,
         environment_id: data.environment_id,
         environment_run_id: data.environment_run_id ?? null,
         module_name: data.module_name,
@@ -1806,11 +1958,15 @@ export class RegistryDatabase {
   }
 
   async listModuleRuns(
-    moduleId: string,
+    projectModuleId: string,
+    environmentId: string,
     options?: { status?: string; cursor?: string; limit?: number },
   ): Promise<PaginatedResult<ModuleRunRow>> {
     const limit = options?.limit ?? 20;
-    let query = this.knex('module_runs').where({ module_id: moduleId });
+    let query = this.knex('module_runs').where({
+      project_module_id: projectModuleId,
+      environment_id: environmentId,
+    });
 
     if (options?.status) query = query.where('status', options.status);
 
@@ -1850,9 +2006,12 @@ export class RegistryDatabase {
     return { items, nextCursor, totalCount };
   }
 
-  async getActiveModuleRun(moduleId: string): Promise<ModuleRunRow | null> {
+  async getActiveModuleRun(
+    projectModuleId: string,
+    environmentId: string,
+  ): Promise<ModuleRunRow | null> {
     const row = await this.knex('module_runs')
-      .where({ module_id: moduleId })
+      .where({ project_module_id: projectModuleId, environment_id: environmentId })
       .whereIn('status', ['running', 'planned', 'applying'])
       .first();
     return row ? this.parseModuleRunRow(row) : null;
@@ -1901,15 +2060,15 @@ export class RegistryDatabase {
 
   /**
    * Dequeue the next module run after the current one completes.
-   * User-priority runs are dequeued first, then cascade.
-   * Runs within the same priority are FIFO by queue_position.
+   * Queue is scoped to (project_module_id, environment_id).
    */
   async dequeueNextModuleRun(
-    moduleId: string,
+    projectModuleId: string,
+    environmentId: string,
   ): Promise<ModuleRunRow | null> {
     return this.knex.transaction(async trx => {
       const next = await trx('module_runs')
-        .where({ module_id: moduleId })
+        .where({ project_module_id: projectModuleId, environment_id: environmentId })
         .whereNotNull('queue_position')
         .orderByRaw(
           "CASE WHEN priority = 'user' THEN 0 ELSE 1 END ASC, queue_position ASC",
@@ -1928,9 +2087,8 @@ export class RegistryDatabase {
         })
         .returning('*');
 
-      // Decrement remaining queue positions
       await trx('module_runs')
-        .where({ module_id: moduleId })
+        .where({ project_module_id: projectModuleId, environment_id: environmentId })
         .whereNotNull('queue_position')
         .decrement('queue_position', 1);
 
@@ -1953,10 +2111,11 @@ export class RegistryDatabase {
   }
 
   async getLatestSuccessfulModuleRun(
-    moduleId: string,
+    projectModuleId: string,
+    environmentId: string,
   ): Promise<ModuleRunRow | null> {
     const row = await this.knex('module_runs')
-      .where({ module_id: moduleId, status: 'succeeded' })
+      .where({ project_module_id: projectModuleId, environment_id: environmentId, status: 'succeeded' })
       .whereNotNull('tf_outputs')
       .orderBy('completed_at', 'desc')
       .first();
@@ -2131,26 +2290,33 @@ export class RegistryDatabase {
   // ── Terraform State ──────────────────────────────────────────────────
 
   async getOrCreateTerraformState(
-    moduleId: string,
+    environmentId: string,
+    projectModuleId: string,
     workspace: string,
   ): Promise<TerraformStateRow> {
     const existing = await this.knex('terraform_state')
-      .where({ module_id: moduleId })
+      .where({ environment_id: environmentId, project_module_id: projectModuleId })
       .first();
     if (existing) return existing;
     const [row] = await this.knex('terraform_state')
-      .insert({ module_id: moduleId, workspace })
-      .onConflict('workspace')
+      .insert({
+        id: uuidv4(),
+        environment_id: environmentId,
+        project_module_id: projectModuleId,
+        workspace,
+      })
+      .onConflict(['environment_id', 'project_module_id'])
       .merge({ updated_at: this.knex.fn.now() })
       .returning('*');
     return row;
   }
 
   async forceUnlockTerraformState(
-    moduleId: string,
+    environmentId: string,
+    projectModuleId: string,
   ): Promise<TerraformStateRow | null> {
     const [row] = await this.knex('terraform_state')
-      .where({ module_id: moduleId })
+      .where({ environment_id: environmentId, project_module_id: projectModuleId })
       .update({
         lock_id: null,
         locked_by: null,
@@ -2164,20 +2330,26 @@ export class RegistryDatabase {
   // ── Health ───────────────────────────────────────────────────────────
 
   async resetAllData(): Promise<void> {
-    // Delete in dependency order — Phase 3 tables first
+    // Delete in dependency order
     await this.knex('terraform_state').del();
     await this.knex('module_run_logs').del();
     await this.knex('module_run_outputs').del();
     await this.knex('environment_runs').del();
-    // Clear environment_run_id FK before deleting module_runs
     await this.knex('module_runs').update({ environment_run_id: null });
     await this.knex('module_runs').del();
     await this.knex('environment_module_variables').del();
-    await this.knex('environment_module_dependencies').del();
-    // Clear last_run_id FK before deleting modules
-    await this.knex('environment_modules').update({ last_run_id: null });
-    await this.knex('environment_modules').del();
+    // Clear last_run_id FK before deleting state
+    await this.knex('environment_module_state').update({ last_run_id: null });
+    await this.knex('environment_module_state').del();
+    // Binding tables
+    await this.knex('module_variable_sets').del();
+    await this.knex('module_cloud_integrations').del();
+    await this.knex('environment_variable_sets').del();
+    await this.knex('environment_cloud_integrations').del();
     await this.knex('environments').del();
+    await this.knex('project_module_dependencies').del();
+    await this.knex('project_modules').del();
+    await this.knex('projects').del();
     // Phase 1-2 tables
     await this.knex('iac_run_logs').del();
     await this.knex('iac_run_outputs').del();
@@ -2650,16 +2822,15 @@ export class RegistryDatabase {
     };
   }
 
-  private parseEnvironmentRow(row: any): EnvironmentRow {
+  private parseProjectRow(row: any): ProjectRow {
     return {
       ...row,
-      locked: Boolean(row.locked),
       module_count: Number(row.module_count),
       total_resources: Number(row.total_resources),
     };
   }
 
-  private parseEnvironmentModuleRow(row: any): EnvironmentModuleRow {
+  private parseProjectModuleRow(row: any): ProjectModuleRow {
     return {
       ...row,
       auto_plan_on_module_update: Boolean(row.auto_plan_on_module_update),
@@ -2669,11 +2840,25 @@ export class RegistryDatabase {
           ? JSON.parse(row.vcs_trigger)
           : row.vcs_trigger
         : null,
+    };
+  }
+
+  private parseEnvironmentRow(row: any): EnvironmentRow {
+    return {
+      ...row,
+      locked: Boolean(row.locked),
       state_backend: row.state_backend
         ? typeof row.state_backend === 'string'
           ? JSON.parse(row.state_backend)
           : row.state_backend
         : null,
+      total_resources: Number(row.total_resources),
+    };
+  }
+
+  private parseEnvironmentModuleStateRow(row: any): EnvironmentModuleStateRow {
+    return {
+      ...row,
       resource_count: Number(row.resource_count ?? 0),
     };
   }

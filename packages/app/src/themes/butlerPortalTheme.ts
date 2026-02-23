@@ -98,6 +98,28 @@ export const butlerPortalTheme = createUnifiedTheme({
 				},
 			},
 		},
+		MuiTabs: {
+			styleOverrides: {
+				indicator: {
+					backgroundColor: '#a78bfa',
+				},
+			},
+		},
+		MuiTab: {
+			styleOverrides: {
+				root: {
+					color: '#a3a3a3',
+					textTransform: 'none',
+					'&:hover': {
+						color: '#fafafa',
+						backgroundColor: '#262626',
+					},
+					'&.Mui-selected': {
+						color: '#a78bfa',
+					},
+				},
+			},
+		},
 		BackstageHeaderTabs: {
 			styleOverrides: {
 				defaultTab: {

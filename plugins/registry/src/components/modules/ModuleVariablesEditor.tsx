@@ -142,7 +142,8 @@ export function ModuleVariablesEditor({
             ...variables,
             {
               id: '',
-              module_id: moduleId,
+              environment_id: envId,
+              project_module_id: moduleId,
               key: editKey,
               value: editSensitive ? null : editValue,
               sensitive: editSensitive,
