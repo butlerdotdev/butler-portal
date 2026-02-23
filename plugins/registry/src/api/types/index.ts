@@ -60,7 +60,6 @@ export type {
 
 export type {
   EnvironmentStatus,
-  EnvironmentModuleStatus,
   ModuleRunOperation,
   ModuleRunStatus,
   EnvironmentRunOperation,
@@ -71,24 +70,37 @@ export type {
   StateBackendConfig,
   OutputMapping,
   Environment,
-  EnvironmentModule,
-  ModuleDependency,
   ModuleVariable,
   ModuleRun,
   EnvironmentRun,
-  EnvironmentGraphNode,
-  EnvironmentGraphEdge,
-  EnvironmentGraph,
-  CreateEnvironmentRequest,
-  AddModuleRequest,
-  SetDependenciesRequest,
   CreateModuleRunRequest,
   CreateEnvironmentRunRequest,
   CreateModuleRunResponse,
   EnvironmentListResponse,
   ModuleRunListResponse,
   RunLogEntry as ModuleRunLogEntry,
+  TestStateBackendRequest,
+  TestStateBackendResult,
 } from './environments';
+
+export type {
+  ProjectStatus,
+  ExecutionMode,
+  Project,
+  ProjectEnvironmentSummary,
+  ProjectModuleStatus,
+  ProjectModule,
+  ProjectModuleDependency,
+  EnvironmentModuleState,
+  ProjectGraphNode,
+  ProjectGraphEdge,
+  ProjectGraph,
+  CreateProjectRequest,
+  AddProjectModuleRequest,
+  SetProjectModuleDependenciesRequest,
+  CreateEnvironmentInProjectRequest,
+  ProjectListResponse,
+} from './projects';
 
 export type {
   CloudProvider,
@@ -98,6 +110,8 @@ export type {
   CreateCloudIntegrationRequest,
   CloudIntegrationBinding,
   ValidateCloudIntegrationResponse,
+  TestCloudIntegrationRequest,
+  TestCloudIntegrationResult,
 } from './cloudIntegrations';
 
 export type {

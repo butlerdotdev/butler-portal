@@ -7,7 +7,6 @@ import {
   Typography,
   Button,
   TextField,
-  MenuItem,
   Dialog,
   DialogTitle,
   DialogContent,
@@ -19,14 +18,14 @@ import type { Artifact } from '../../api/types/artifacts';
 
 interface AddModuleDialogProps {
   open: boolean;
-  envId: string;
+  projectId: string;
   onClose: () => void;
   onAdded: () => void;
 }
 
 export function AddModuleDialog({
   open,
-  envId,
+  projectId,
   onClose,
   onAdded,
 }: AddModuleDialogProps) {
@@ -36,7 +35,6 @@ export function AddModuleDialog({
   const [artifactNs, setArtifactNs] = useState('');
   const [artifactName, setArtifactName] = useState('');
   const [pinnedVersion, setPinnedVersion] = useState('');
-  const [execMode, setExecMode] = useState<'byoc' | 'peaas'>('byoc');
   const [tfVersion, setTfVersion] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -74,12 +72,11 @@ export function AddModuleDialog({
     try {
       setSubmitting(true);
       setError(null);
-      await api.addModule(envId, {
+      await api.addProjectModule(projectId, {
         name: localName.trim(),
         artifact_namespace: artifactNs.trim(),
         artifact_name: artifactName.trim(),
         pinned_version: pinnedVersion.trim() || undefined,
-        execution_mode: execMode,
         tf_version: tfVersion.trim() || undefined,
       });
       // Reset form
@@ -87,7 +84,6 @@ export function AddModuleDialog({
       setArtifactNs('');
       setArtifactName('');
       setPinnedVersion('');
-      setExecMode('byoc');
       setTfVersion('');
       onAdded();
       onClose();
@@ -158,7 +154,7 @@ export function AddModuleDialog({
           margin="normal"
           size="small"
           placeholder="e.g. vpc, eks, rds"
-          helperText="Unique name within this environment"
+          helperText="Unique name within this project"
         />
         <Box display="flex" style={{ gap: 16 }}>
           <TextField
@@ -191,19 +187,6 @@ export function AddModuleDialog({
           placeholder="Leave empty to track latest"
           helperText="Exact version (1.2.3) or constraint (~> 1.2)"
         />
-        <TextField
-          select
-          fullWidth
-          variant="outlined"
-          label="Execution Mode"
-          value={execMode}
-          onChange={e => setExecMode(e.target.value as 'byoc' | 'peaas')}
-          margin="normal"
-          size="small"
-        >
-          <MenuItem value="byoc">BYOC (Bring Your Own Compute)</MenuItem>
-          <MenuItem value="peaas">PeaaS (Platform-Managed)</MenuItem>
-        </TextField>
         <TextField
           fullWidth
           variant="outlined"

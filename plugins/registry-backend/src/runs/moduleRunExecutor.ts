@@ -111,7 +111,7 @@ export class ModuleRunExecutor {
             if (updated) await this.dagExecutor.onModuleRunComplete(updated);
           }
           // Dequeue next run
-          await this.db.dequeueNextModuleRun(run.module_id);
+          await this.db.dequeueNextModuleRun(run.project_module_id, run.environment_id);
         } else {
           this.logger.info('Module run still within timeout, resuming tracking', {
             runId: run.id,
@@ -185,7 +185,7 @@ export class ModuleRunExecutor {
 
       this.logger.info('Starting PeaaS module run', {
         runId: run.id,
-        moduleId: run.module_id,
+        moduleId: run.project_module_id,
         operation: run.operation,
         jobName,
       });
@@ -224,7 +224,7 @@ export class ModuleRunExecutor {
         exit_code: -1,
       });
       // Dequeue next and notify DAG
-      await this.db.dequeueNextModuleRun(run.module_id);
+      await this.db.dequeueNextModuleRun(run.project_module_id, run.environment_id);
       if (run.environment_run_id && this.dagExecutor) {
         const updated = await this.db.getModuleRun(run.id);
         if (updated) await this.dagExecutor.onModuleRunComplete(updated);

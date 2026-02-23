@@ -73,7 +73,7 @@ export class EnvVarResolver {
     }
 
     // Layer 3: Module variables (highest priority)
-    const moduleVars = await this.db.listModuleVariables(moduleId);
+    const moduleVars = await this.db.listModuleVariables(envId, moduleId);
     const moduleEnvVars = buildEnvVarsFromModuleVariables(moduleVars);
     for (const [key, val] of Object.entries(moduleEnvVars)) {
       result[key] = val;
@@ -130,7 +130,7 @@ export class EnvVarResolver {
     }
 
     // Layer 3: Module variables
-    const moduleVars = await this.db.listModuleVariables(moduleId);
+    const moduleVars = await this.db.listModuleVariables(envId, moduleId);
     for (const v of moduleVars) {
       const envName = v.category === 'terraform' ? `TF_VAR_${v.key}` : v.key;
       vars.set(envName, {

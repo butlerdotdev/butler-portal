@@ -178,7 +178,7 @@ export function AdminEnvironmentsView() {
         return {
           team,
           environmentCount: envs.length,
-          moduleCount: envs.reduce((sum, e) => sum + e.module_count, 0),
+          moduleCount: 0,
           resourceCount: envs.reduce((sum, e) => sum + e.total_resources, 0),
           activeCount: envs.filter(e => e.status === 'active').length,
           pausedCount: envs.filter(e => e.status === 'paused').length,
@@ -279,8 +279,7 @@ export function AdminEnvironmentsView() {
               <TableHead>
                 <TableRow>
                   <TableCell>Name</TableCell>
-                  <TableCell>Modules</TableCell>
-                  <TableCell>Total Resources</TableCell>
+                  <TableCell>Resources</TableCell>
                   <TableCell>Status</TableCell>
                   <TableCell>Last Run</TableCell>
                   <TableCell>Created</TableCell>
@@ -304,7 +303,6 @@ export function AdminEnvironmentsView() {
                         </Typography>
                       )}
                     </TableCell>
-                    <TableCell>{env.module_count}</TableCell>
                     <TableCell>{env.total_resources}</TableCell>
                     <TableCell>
                       <Chip

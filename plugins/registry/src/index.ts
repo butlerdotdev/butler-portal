@@ -46,19 +46,24 @@ export type {
 } from './api/types/runs';
 export type {
   Environment,
-  EnvironmentModule,
   EnvironmentRun,
   ModuleRun,
-  ModuleDependency,
   ModuleVariable,
-  EnvironmentGraph,
   EnvironmentListResponse,
   ModuleRunListResponse,
-  CreateEnvironmentRequest,
-  AddModuleRequest,
   CreateModuleRunRequest,
   CreateEnvironmentRunRequest,
 } from './api/types/environments';
+export type {
+  Project,
+  ProjectModule,
+  ProjectModuleDependency,
+  ProjectGraph,
+  ProjectListResponse,
+  CreateProjectRequest,
+  AddProjectModuleRequest,
+  CreateEnvironmentInProjectRequest,
+} from './api/types/projects';
 export type {
   CloudProvider,
   AuthMethod,

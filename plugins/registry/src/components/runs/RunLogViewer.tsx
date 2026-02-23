@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { Box, Typography, makeStyles } from '@material-ui/core';
+import { Box, Typography, IconButton, Tooltip, makeStyles } from '@material-ui/core';
+import FileCopyOutlinedIcon from '@material-ui/icons/FileCopyOutlined';
 import { useRegistryApi } from '../../hooks/useRegistryApi';
 import type { RunLogEntry } from '../../api/types/environments';
 
@@ -78,6 +79,30 @@ const useStyles = makeStyles(theme => ({
     fontFamily: 'Consolas, Monaco, monospace',
     fontSize: '0.85rem',
   },
+  toolbar: {
+    display: 'flex',
+    justifyContent: 'flex-end',
+    backgroundColor: '#252526',
+    borderBottom: '1px solid #333',
+    padding: '2px 8px',
+  },
+  copyButton: {
+    color: '#858585',
+    padding: 4,
+    '&:hover': {
+      color: '#d4d4d4',
+    },
+  },
+  copyIcon: {
+    fontSize: '1rem',
+  },
+  copiedText: {
+    color: '#89d185',
+    fontFamily: 'Consolas, Monaco, monospace',
+    fontSize: '0.75rem',
+    lineHeight: '28px',
+    marginRight: 4,
+  },
   scrollIndicator: {
     position: 'absolute' as const,
     bottom: 8,
@@ -115,6 +140,15 @@ export function RunLogViewer({
 
   const [logEntries, setLogEntries] = useState<RunLogEntry[]>([]);
   const [isPolling, setIsPolling] = useState(true);
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = useCallback(() => {
+    const text = logEntries.map(e => stripAnsi(e.content)).join('\n');
+    navigator.clipboard.writeText(text).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    });
+  }, [logEntries]);
 
   // Track the highest sequence number we have received so far.
   const sequenceRef = useRef(0);
@@ -220,6 +254,20 @@ export function RunLogViewer({
 
   return (
     <Box className={classes.root}>
+      <div className={classes.toolbar}>
+        {copied && (
+          <Typography className={classes.copiedText}>Copied!</Typography>
+        )}
+        <Tooltip title="Copy all logs">
+          <IconButton
+            className={classes.copyButton}
+            onClick={handleCopy}
+            size="small"
+          >
+            <FileCopyOutlinedIcon className={classes.copyIcon} />
+          </IconButton>
+        </Tooltip>
+      </div>
       <div
         ref={viewportRef}
         className={classes.viewport}

@@ -48,6 +48,7 @@ import {
   resolveTeamRole,
 } from '@internal/plugin-registry-common';
 import type { RegistryRole } from '@internal/plugin-registry-common';
+import { createProjectRouter } from './routes/projectRoutes';
 import { createEnvironmentRouter } from './routes/environmentRoutes';
 import { createModuleRouter } from './routes/moduleRoutes';
 import { createModuleRunRouter } from './routes/moduleRunRoutes';
@@ -1725,6 +1726,7 @@ export async function createRouter(options: RouterOptions): Promise<express.Rout
 
   // ── IaC Environment Sub-Routers ──────────────────────────────────────
 
+  router.use(createProjectRouter(options));
   router.use(createEnvironmentRouter(options));
   router.use(createModuleRouter(options));
   router.use(createModuleRunRouter(options));

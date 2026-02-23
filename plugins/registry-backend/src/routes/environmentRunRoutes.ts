@@ -56,14 +56,14 @@ export function createEnvironmentRunRouter(options: RouterOptions) {
         );
       }
 
-      // Get modules and compute execution order
-      const modules = await db.listModules(req.params.envId);
+      // Get modules from the project and compute execution order
+      const modules = await db.listProjectModules(env.project_id);
       const activeModules = modules.filter(m => m.status === 'active');
       if (activeModules.length === 0) {
-        throw badRequest('No active modules in this environment');
+        throw badRequest('No active modules in this project');
       }
 
-      const executionOrder = await db.topologicalSort(req.params.envId);
+      const executionOrder = await db.topologicalSort(env.project_id);
 
       const envRun = await db.createEnvironmentRun({
         id: crypto.randomUUID(),
@@ -157,8 +157,6 @@ export function createEnvironmentRunRouter(options: RouterOptions) {
         return;
       }
 
-      // Environment runs move to a "planned" equivalent when all module plans complete.
-      // We check that the operation is plan-all and status allows confirmation.
       if (envRun.operation !== 'plan-all') {
         throw badRequest('Can only confirm a plan-all environment run');
       }
@@ -179,7 +177,7 @@ export function createEnvironmentRunRouter(options: RouterOptions) {
 
       // Mark excluded modules as skipped
       for (const mr of moduleRuns) {
-        if (excludeSet.has(mr.module_id) && mr.status === 'planned') {
+        if (excludeSet.has(mr.project_module_id) && mr.status === 'planned') {
           await db.updateModuleRunStatus(mr.id, 'skipped', {
             skip_reason: 'Excluded from apply',
             completed_at: new Date().toISOString(),
@@ -187,12 +185,12 @@ export function createEnvironmentRunRouter(options: RouterOptions) {
         }
       }
 
-      // Also skip dependents of excluded modules
-      const deps = await db.getEnvironmentGraph(envRun.environment_id);
+      // Also skip dependents of excluded modules using project graph
+      const { deps } = await db.getProjectGraph(env!.project_id);
       const excludedNames = new Map<string, string>();
       for (const mr of moduleRuns) {
-        if (excludeSet.has(mr.module_id)) {
-          excludedNames.set(mr.module_id, mr.module_name);
+        if (excludeSet.has(mr.project_module_id)) {
+          excludedNames.set(mr.project_module_id, mr.module_name);
         }
       }
 
@@ -201,14 +199,14 @@ export function createEnvironmentRunRouter(options: RouterOptions) {
       let changed = true;
       while (changed) {
         changed = false;
-        for (const dep of deps.deps) {
+        for (const dep of deps) {
           if (toSkip.has(dep.depends_on_id) && !toSkip.has(dep.module_id)) {
             toSkip.add(dep.module_id);
             const upstreamName =
               excludedNames.get(dep.depends_on_id) ?? dep.depends_on_id;
             excludedNames.set(dep.module_id, '');
 
-            const mr = moduleRuns.find(r => r.module_id === dep.module_id);
+            const mr = moduleRuns.find(r => r.project_module_id === dep.module_id);
             if (mr && mr.status === 'planned') {
               await db.updateModuleRunStatus(mr.id, 'skipped', {
                 skip_reason: `Upstream module '${upstreamName}' excluded from apply`,

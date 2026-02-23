@@ -4,7 +4,6 @@
 // ── Enums ────────────────────────────────────────────────────────────
 
 export type EnvironmentStatus = 'active' | 'paused' | 'archived';
-export type EnvironmentModuleStatus = 'active' | 'destroyed' | 'archived';
 
 export type ModuleRunOperation =
   | 'plan'
@@ -60,7 +59,7 @@ export interface VcsTrigger {
 }
 
 export interface StateBackendConfig {
-  type: 'pg' | 's3' | 'gcs' | 'azurerm';
+  type: 's3' | 'gcs' | 'azurerm' | 'consul' | 'http' | string;
   config?: Record<string, unknown>;
 }
 
@@ -69,19 +68,32 @@ export interface OutputMapping {
   downstream_variable: string;
 }
 
+export interface TestStateBackendRequest {
+  type: string;
+  config?: Record<string, unknown>;
+}
+
+export interface TestStateBackendResult {
+  ok: boolean;
+  message: string;
+  latencyMs?: number;
+}
+
 // ── Environment ──────────────────────────────────────────────────────
 
 export interface Environment {
   id: string;
   name: string;
   description: string | null;
+  project_id: string;
+  project_name?: string;
   team: string | null;
   status: EnvironmentStatus;
   locked: boolean;
   locked_by: string | null;
   locked_at: string | null;
   lock_reason: string | null;
-  module_count: number;
+  state_backend: StateBackendConfig | null;
   total_resources: number;
   last_run_at: string | null;
   created_by: string | null;
@@ -89,45 +101,10 @@ export interface Environment {
   updated_at: string;
 }
 
-// ── Environment Module ───────────────────────────────────────────────
-
-export interface EnvironmentModule {
-  id: string;
-  environment_id: string;
-  name: string;
-  description: string | null;
-  artifact_id: string;
-  artifact_namespace: string;
-  artifact_name: string;
-  pinned_version: string | null;
-  current_version: string | null;
-  auto_plan_on_module_update: boolean;
-  vcs_trigger: VcsTrigger | null;
-  auto_plan_on_push: boolean;
-  execution_mode: 'byoc' | 'peaas';
-  tf_version: string | null;
-  working_directory: string | null;
-  state_backend: StateBackendConfig | null;
-  last_run_id: string | null;
-  last_run_status: ModuleRunStatus | null;
-  last_run_at: string | null;
-  resource_count: number;
-  drift_status: 'unknown' | 'clean' | 'drifted' | 'error';
-  status: EnvironmentModuleStatus;
-  created_at: string;
-  updated_at: string;
-}
-
-export interface ModuleDependency {
-  module_id: string;
-  depends_on_id: string;
-  depends_on_name: string;
-  output_mapping: OutputMapping[] | null;
-}
-
 export interface ModuleVariable {
   id: string;
-  module_id: string;
+  environment_id: string;
+  project_module_id: string;
   key: string;
   value: string | null;
   sensitive: boolean;
@@ -141,7 +118,7 @@ export interface ModuleVariable {
 
 export interface ModuleRun {
   id: string;
-  module_id: string;
+  project_module_id: string;
   environment_id: string;
   environment_run_id: string | null;
   module_name: string;
@@ -197,54 +174,7 @@ export interface EnvironmentRun {
   module_runs?: ModuleRun[];
 }
 
-// ── Graph ────────────────────────────────────────────────────────────
-
-export interface EnvironmentGraphNode {
-  id: string;
-  name: string;
-  artifact_name: string;
-  status: EnvironmentModuleStatus;
-  last_run_status: ModuleRunStatus | null;
-  resource_count: number;
-}
-
-export interface EnvironmentGraphEdge {
-  from: string;
-  to: string;
-}
-
-export interface EnvironmentGraph {
-  nodes: EnvironmentGraphNode[];
-  edges: EnvironmentGraphEdge[];
-}
-
 // ── Requests ─────────────────────────────────────────────────────────
-
-export interface CreateEnvironmentRequest {
-  name: string;
-  description?: string;
-  team?: string;
-}
-
-export interface AddModuleRequest {
-  name: string;
-  description?: string;
-  artifact_namespace: string;
-  artifact_name: string;
-  pinned_version?: string;
-  auto_plan_on_module_update?: boolean;
-  execution_mode?: 'byoc' | 'peaas';
-  tf_version?: string;
-  working_directory?: string;
-  state_backend?: StateBackendConfig;
-}
-
-export interface SetDependenciesRequest {
-  dependencies: Array<{
-    depends_on_id: string;
-    output_mapping?: OutputMapping[];
-  }>;
-}
 
 export interface CreateModuleRunRequest {
   operation: 'plan' | 'apply' | 'destroy' | 'refresh';

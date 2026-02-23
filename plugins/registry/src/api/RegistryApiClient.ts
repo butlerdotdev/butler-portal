@@ -36,27 +36,37 @@ import type {
 } from './types/runs';
 import type {
   Environment,
-  EnvironmentModule,
   EnvironmentRun,
   ModuleRun,
-  ModuleDependency,
   ModuleVariable,
-  EnvironmentGraph,
   EnvironmentListResponse,
   ModuleRunListResponse,
-  CreateEnvironmentRequest,
-  AddModuleRequest,
-  SetDependenciesRequest,
   CreateModuleRunRequest,
   CreateModuleRunResponse,
   CreateEnvironmentRunRequest,
   RunLogEntry as ModuleRunLogEntry,
+  TestStateBackendRequest,
+  TestStateBackendResult,
 } from './types/environments';
+import type {
+  Project,
+  ProjectModule,
+  ProjectModuleDependency,
+  EnvironmentModuleState,
+  ProjectGraph,
+  ProjectListResponse,
+  CreateProjectRequest,
+  AddProjectModuleRequest,
+  SetProjectModuleDependenciesRequest,
+  CreateEnvironmentInProjectRequest,
+} from './types/projects';
 import type {
   CloudIntegration,
   CreateCloudIntegrationRequest,
   CloudIntegrationBinding,
   ValidateCloudIntegrationResponse,
+  TestCloudIntegrationRequest,
+  TestCloudIntegrationResult,
 } from './types/cloudIntegrations';
 import type {
   VariableSet,
@@ -352,7 +362,7 @@ export class RegistryApiClient implements RegistryApi {
     return this.del(`/v1/tokens/${tokenId}`);
   }
 
-  // ── Runs ──
+  // ── Runs (artifact-level) ──
 
   async listRuns(
     namespace: string,
@@ -410,7 +420,118 @@ export class RegistryApiClient implements RegistryApi {
     );
   }
 
+  // ── Projects ──
+
+  async listProjects(
+    options?: { status?: string; limit?: number; cursor?: string },
+  ): Promise<ProjectListResponse> {
+    const params = new URLSearchParams();
+    if (options?.status) params.set('status', options.status);
+    if (options?.limit) params.set('limit', String(options.limit));
+    if (options?.cursor) params.set('cursor', options.cursor);
+    const qs = params.toString();
+    return this.get(`/v1/projects${qs ? `?${qs}` : ''}`);
+  }
+
+  async createProject(data: CreateProjectRequest): Promise<Project> {
+    return this.post('/v1/projects', data);
+  }
+
+  async getProject(projectId: string): Promise<Project> {
+    return this.get(`/v1/projects/${projectId}`);
+  }
+
+  async updateProject(
+    projectId: string,
+    data: Partial<CreateProjectRequest>,
+  ): Promise<Project> {
+    return this.patch(`/v1/projects/${projectId}`, data);
+  }
+
+  async deleteProject(projectId: string): Promise<void> {
+    return this.del(`/v1/projects/${projectId}`);
+  }
+
+  async getProjectGraph(projectId: string): Promise<ProjectGraph> {
+    return this.get(`/v1/projects/${projectId}/graph`);
+  }
+
+  // ── Project Modules ──
+
+  async listProjectModules(
+    projectId: string,
+  ): Promise<{ modules: ProjectModule[] }> {
+    return this.get(`/v1/projects/${projectId}/modules`);
+  }
+
+  async addProjectModule(
+    projectId: string,
+    data: AddProjectModuleRequest,
+  ): Promise<ProjectModule> {
+    return this.post(`/v1/projects/${projectId}/modules`, data);
+  }
+
+  async getProjectModule(
+    projectId: string,
+    moduleId: string,
+  ): Promise<ProjectModule> {
+    return this.get(`/v1/projects/${projectId}/modules/${moduleId}`);
+  }
+
+  async updateProjectModule(
+    projectId: string,
+    moduleId: string,
+    data: Partial<AddProjectModuleRequest>,
+  ): Promise<ProjectModule> {
+    return this.patch(
+      `/v1/projects/${projectId}/modules/${moduleId}`,
+      data,
+    );
+  }
+
+  async removeProjectModule(
+    projectId: string,
+    moduleId: string,
+  ): Promise<void> {
+    return this.del(`/v1/projects/${projectId}/modules/${moduleId}`);
+  }
+
+  // ── Project Module Dependencies ──
+
+  async getProjectModuleDependencies(
+    projectId: string,
+    moduleId: string,
+  ): Promise<{ dependencies: ProjectModuleDependency[] }> {
+    return this.get(
+      `/v1/projects/${projectId}/modules/${moduleId}/dependencies`,
+    );
+  }
+
+  async setProjectModuleDependencies(
+    projectId: string,
+    moduleId: string,
+    data: SetProjectModuleDependenciesRequest,
+  ): Promise<{ dependencies: ProjectModuleDependency[] }> {
+    return this.request(
+      `/v1/projects/${projectId}/modules/${moduleId}/dependencies`,
+      { method: 'PUT', body: data },
+    );
+  }
+
   // ── Environments ──
+
+  async listProjectEnvironments(
+    projectId: string,
+  ): Promise<EnvironmentListResponse> {
+    return this.get(`/v1/projects/${projectId}/environments`);
+  }
+
+  async createProjectEnvironment(
+    projectId: string,
+    data: CreateEnvironmentInProjectRequest,
+  ): Promise<Environment> {
+    return this.post(`/v1/projects/${projectId}/environments`, data);
+  }
 
   async listEnvironments(
     options?: { status?: string; limit?: number; cursor?: string },
@@ -423,19 +544,15 @@ export class RegistryApiClient implements RegistryApi {
     return this.get(`/v1/environments${qs ? `?${qs}` : ''}`);
   }
 
-  async createEnvironment(
-    data: CreateEnvironmentRequest,
-  ): Promise<Environment> {
-    return this.post('/v1/environments', data);
-  }
-
-  async getEnvironment(envId: string): Promise<Environment> {
+  async getEnvironment(
+    envId: string,
+  ): Promise<Environment & { module_states?: EnvironmentModuleState[] }> {
     return this.get(`/v1/environments/${envId}`);
   }
 
   async updateEnvironment(
     envId: string,
-    data: Partial<CreateEnvironmentRequest>,
+    data: Partial<{ name: string; description: string; state_backend: object }>,
   ): Promise<Environment> {
     return this.patch(`/v1/environments/${envId}`, data);
   }
@@ -458,88 +575,15 @@ export class RegistryApiClient implements RegistryApi {
     return this.post(`/v1/environments/${envId}/unlock`);
   }
 
-  async getEnvironmentGraph(envId: string): Promise<EnvironmentGraph> {
-    return this.get(`/v1/environments/${envId}/graph`);
+  // ── State Backend ──
+
+  async testStateBackend(
+    data: TestStateBackendRequest,
+  ): Promise<TestStateBackendResult> {
+    return this.post('/v1/state-backend/test', data);
   }
 
-  // ── Environment Modules ──
-
-  async listEnvironmentModules(
-    envId: string,
-  ): Promise<{ modules: EnvironmentModule[] }> {
-    return this.get(`/v1/environments/${envId}/modules`);
-  }
-
-  async addModule(
-    envId: string,
-    data: AddModuleRequest,
-  ): Promise<EnvironmentModule> {
-    return this.post(`/v1/environments/${envId}/modules`, data);
-  }
-
-  async getModule(
-    envId: string,
-    moduleId: string,
-  ): Promise<EnvironmentModule> {
-    return this.get(`/v1/environments/${envId}/modules/${moduleId}`);
-  }
-
-  async updateModule(
-    envId: string,
-    moduleId: string,
-    data: Partial<AddModuleRequest>,
-  ): Promise<EnvironmentModule> {
-    return this.patch(
-      `/v1/environments/${envId}/modules/${moduleId}`,
-      data,
-    );
-  }
-
-  async removeModule(envId: string, moduleId: string): Promise<void> {
-    return this.del(`/v1/environments/${envId}/modules/${moduleId}`);
-  }
-
-  async getModuleLatestOutputs(
-    envId: string,
-    moduleId: string,
-  ): Promise<{ outputs: Record<string, unknown> }> {
-    return this.get(
-      `/v1/environments/${envId}/modules/${moduleId}/latest-outputs`,
-    );
-  }
-
-  async forceUnlockModule(
-    envId: string,
-    moduleId: string,
-  ): Promise<void> {
-    return this.post(
-      `/v1/environments/${envId}/modules/${moduleId}/force-unlock`,
-    );
-  }
-
-  // ── Module Dependencies ──
-
-  async getModuleDependencies(
-    envId: string,
-    moduleId: string,
-  ): Promise<{ dependencies: ModuleDependency[] }> {
-    return this.get(
-      `/v1/environments/${envId}/modules/${moduleId}/dependencies`,
-    );
-  }
-
-  async setModuleDependencies(
-    envId: string,
-    moduleId: string,
-    data: SetDependenciesRequest,
-  ): Promise<{ dependencies: ModuleDependency[] }> {
-    return this.request(
-      `/v1/environments/${envId}/modules/${moduleId}/dependencies`,
-      { method: 'PUT', body: data },
-    );
-  }
-
-  // ── Module Variables ──
+  // ── Module Variables (env-scoped) ──
 
   async listModuleVariables(
     envId: string,
@@ -575,7 +619,27 @@ export class RegistryApiClient implements RegistryApi {
     );
   }
 
-  // ── Module Runs ──
+  // ── Module Outputs & State (env-scoped) ──
+
+  async getModuleLatestOutputs(
+    envId: string,
+    moduleId: string,
+  ): Promise<{ outputs: Record<string, unknown> }> {
+    return this.get(
+      `/v1/environments/${envId}/modules/${moduleId}/latest-outputs`,
+    );
+  }
+
+  async forceUnlockModule(
+    envId: string,
+    moduleId: string,
+  ): Promise<void> {
+    return this.post(
+      `/v1/environments/${envId}/modules/${moduleId}/force-unlock`,
+    );
+  }
+
+  // ── Module Runs (env-scoped) ──
 
   async listModuleRuns(
     envId: string,
@@ -672,12 +736,12 @@ export class RegistryApiClient implements RegistryApi {
 
   // ── Cross-reference ──
 
-  async listModulesForArtifact(
+  async listProjectsForArtifact(
     namespace: string,
     name: string,
-  ): Promise<{ modules: EnvironmentModule[] }> {
+  ): Promise<{ projects: Array<{ project_id: string; project_name: string; module_id: string; module_name: string }> }> {
     return this.get(
-      `/v1/artifacts/${namespace}/${name}/environments`,
+      `/v1/artifacts/${namespace}/${name}/projects`,
     );
   }
 
@@ -717,6 +781,12 @@ export class RegistryApiClient implements RegistryApi {
     id: string,
   ): Promise<ValidateCloudIntegrationResponse> {
     return this.post(`/v1/cloud-integrations/${id}/validate`);
+  }
+
+  async testCloudIntegration(
+    data: TestCloudIntegrationRequest,
+  ): Promise<TestCloudIntegrationResult> {
+    return this.post('/v1/cloud-integrations/test', data);
   }
 
   // ── Variable Sets ──
@@ -825,69 +895,69 @@ export class RegistryApiClient implements RegistryApi {
     );
   }
 
-  // ── Module Cloud Integration Bindings ──
+  // ── Module Cloud Integration Bindings (project-scoped) ──
 
   async listModuleCloudIntegrations(
-    envId: string,
+    projectId: string,
     moduleId: string,
   ): Promise<{ bindings: CloudIntegrationBinding[] }> {
     return this.get(
-      `/v1/environments/${envId}/modules/${moduleId}/cloud-integrations`,
+      `/v1/projects/${projectId}/modules/${moduleId}/cloud-integrations`,
     );
   }
 
   async bindCloudIntegrationToModule(
-    envId: string,
+    projectId: string,
     moduleId: string,
     integrationId: string,
     priority?: number,
   ): Promise<void> {
     return this.post(
-      `/v1/environments/${envId}/modules/${moduleId}/cloud-integrations`,
+      `/v1/projects/${projectId}/modules/${moduleId}/cloud-integrations`,
       { cloud_integration_id: integrationId, priority: priority ?? 0 },
     );
   }
 
   async unbindCloudIntegrationFromModule(
-    envId: string,
+    projectId: string,
     moduleId: string,
     bindingId: string,
   ): Promise<void> {
     return this.del(
-      `/v1/environments/${envId}/modules/${moduleId}/cloud-integrations/${bindingId}`,
+      `/v1/projects/${projectId}/modules/${moduleId}/cloud-integrations/${bindingId}`,
     );
   }
 
-  // ── Module Variable Set Bindings ──
+  // ── Module Variable Set Bindings (project-scoped) ──
 
   async listModuleVariableSets(
-    envId: string,
+    projectId: string,
     moduleId: string,
   ): Promise<{ bindings: VariableSetBinding[] }> {
     return this.get(
-      `/v1/environments/${envId}/modules/${moduleId}/variable-sets`,
+      `/v1/projects/${projectId}/modules/${moduleId}/variable-sets`,
     );
   }
 
   async bindVariableSetToModule(
-    envId: string,
+    projectId: string,
     moduleId: string,
     setId: string,
     priority?: number,
   ): Promise<void> {
     return this.post(
-      `/v1/environments/${envId}/modules/${moduleId}/variable-sets`,
+      `/v1/projects/${projectId}/modules/${moduleId}/variable-sets`,
       { variable_set_id: setId, priority: priority ?? 0 },
     );
   }
 
   async unbindVariableSetFromModule(
-    envId: string,
+    projectId: string,
     moduleId: string,
     bindingId: string,
   ): Promise<void> {
     return this.del(
-      `/v1/environments/${envId}/modules/${moduleId}/variable-sets/${bindingId}`,
+      `/v1/projects/${projectId}/modules/${moduleId}/variable-sets/${bindingId}`,
     );
   }
 

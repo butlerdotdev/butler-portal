@@ -29,24 +29,17 @@ import ArrowBackIcon from '@material-ui/icons/ArrowBack';
 import LockIcon from '@material-ui/icons/Lock';
 import LockOpenIcon from '@material-ui/icons/LockOpen';
 import PlayArrowIcon from '@material-ui/icons/PlayArrow';
-import AddIcon from '@material-ui/icons/Add';
 import { Progress, EmptyState } from '@backstage/core-components';
 import { usePermission } from '@backstage/plugin-permission-react';
 import {
-  registryEnvironmentUpdatePermission,
   registryEnvironmentLockPermission,
   registryRunCreatePermission,
 } from '@internal/plugin-registry-common';
 import { useRegistryApi } from '../../hooks/useRegistryApi';
-import { EnvironmentGraph } from './EnvironmentGraph';
 import { EnvironmentBindings } from './EnvironmentBindings';
-import { AddModuleDialog } from '../modules/AddModuleDialog';
-import type {
-  Environment,
-  EnvironmentModule,
-  EnvironmentRun,
-  EnvironmentGraph as GraphData,
-} from '../../api/types/environments';
+import { StateBackendForm } from '../modules/StateBackendForm';
+import type { Environment, EnvironmentRun } from '../../api/types/environments';
+import type { EnvironmentModuleState, Project } from '../../api/types/projects';
 
 const useStyles = makeStyles(theme => ({
   header: {
@@ -93,6 +86,9 @@ const useStyles = makeStyles(theme => ({
   progressBar: {
     marginTop: theme.spacing(1),
   },
+  stateBackendSection: {
+    padding: theme.spacing(2),
+  },
 }));
 
 function runStatusColor(
@@ -129,12 +125,11 @@ function moduleStatusColor(
 export function EnvironmentDetail() {
   const classes = useStyles();
   const navigate = useNavigate();
-  const { envId } = useParams<{ envId: string }>();
+  const { projectId, envId } = useParams<{ projectId: string; envId: string }>();
   const api = useRegistryApi();
 
-  const [environment, setEnvironment] = useState<Environment | null>(null);
-  const [modules, setModules] = useState<EnvironmentModule[]>([]);
-  const [graph, setGraph] = useState<GraphData | null>(null);
+  const [environment, setEnvironment] = useState<(Environment & { module_states?: EnvironmentModuleState[] }) | null>(null);
+  const [project, setProject] = useState<Project | null>(null);
   const [envRuns, setEnvRuns] = useState<EnvironmentRun[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -143,15 +138,11 @@ export function EnvironmentDetail() {
   const [lockDialogOpen, setLockDialogOpen] = useState(false);
   const [lockReason, setLockReason] = useState('');
 
-  // Add module dialog
-  const [addModuleDialogOpen, setAddModuleDialogOpen] = useState(false);
-
   // Run dialog
   const [runDialogOpen, setRunDialogOpen] = useState(false);
   const [runOperation, setRunOperation] = useState<'plan-all' | 'apply-all' | 'destroy-all'>('plan-all');
 
   // Permissions
-  const { allowed: canUpdate } = usePermission({ permission: registryEnvironmentUpdatePermission });
   const { allowed: canLock } = usePermission({ permission: registryEnvironmentLockPermission });
   const { allowed: canRun } = usePermission({ permission: registryRunCreatePermission });
 
@@ -159,16 +150,16 @@ export function EnvironmentDetail() {
     if (!envId) return;
     try {
       if (!silent) setLoading(true);
-      const [envData, modulesData, graphData, runsData] = await Promise.all([
+      const [envData, runsData] = await Promise.all([
         api.getEnvironment(envId),
-        api.listEnvironmentModules(envId),
-        api.getEnvironmentGraph(envId),
         api.listEnvironmentRuns(envId),
       ]);
       setEnvironment(envData);
-      setModules(modulesData.modules);
-      setGraph(graphData);
       setEnvRuns(runsData.runs);
+      // Fetch project for execution mode (best-effort, don't block on failure)
+      if (envData.project_id && !project) {
+        api.getProject(envData.project_id).then(p => setProject(p)).catch(() => {});
+      }
       setError(null);
     } catch (err) {
       if (!silent) {
@@ -256,13 +247,16 @@ export function EnvironmentDetail() {
     r => r.status === 'pending' || r.status === 'running',
   );
 
+  const moduleStates = environment.module_states ?? [];
+  const totalResources = moduleStates.reduce((sum, s) => sum + s.resource_count, 0);
+
   return (
     <>
       {/* Header */}
       <Box className={classes.header}>
         <Box>
           <Box className={classes.headerLeft}>
-            <IconButton size="small" onClick={() => navigate('..')}>
+            <IconButton size="small" onClick={() => navigate(projectId ? `../../` : '-1')}>
               <ArrowBackIcon />
             </IconButton>
             <Typography variant="h5">{environment.name}</Typography>
@@ -286,23 +280,13 @@ export function EnvironmentDetail() {
             </Typography>
           )}
           <Typography variant="caption" color="textSecondary">
-            {environment.module_count} modules | {environment.total_resources}{' '}
-            resources
+            {moduleStates.length} modules | {totalResources} resources
             {environment.team && ` | Team: ${environment.team}`}
+            {environment.state_backend && ` | Backend: ${environment.state_backend.type}`}
           </Typography>
         </Box>
 
         <Box className={classes.actions}>
-          {canUpdate && (
-            <Button
-              variant="outlined"
-              startIcon={<AddIcon />}
-              onClick={() => setAddModuleDialogOpen(true)}
-              size="small"
-            >
-              Add Module
-            </Button>
-          )}
           {canRun && (
             <Button
               variant="contained"
@@ -312,7 +296,7 @@ export function EnvironmentDetail() {
               size="small"
               disabled={environment.locked || !!activeEnvRun}
             >
-              Plan All
+              Run Actions
             </Button>
           )}
           {canLock && environment.locked ? (
@@ -387,101 +371,80 @@ export function EnvironmentDetail() {
         </Paper>
       )}
 
-      {/* DAG Graph */}
-      {graph && (
+      {/* Module States */}
+      {moduleStates.length > 0 && (
         <Box className={classes.section}>
           <Typography variant="subtitle1" className={classes.sectionTitle}>
-            Dependency Graph
+            Module Deployment State ({moduleStates.length})
           </Typography>
-          <Paper variant="outlined">
-            <EnvironmentGraph
-              graph={graph}
-              onNodeClick={moduleId =>
-                navigate(`modules/${moduleId}`)
-              }
-            />
-          </Paper>
-        </Box>
-      )}
-
-      {/* Module List */}
-      <Box className={classes.section}>
-        <Typography variant="subtitle1" className={classes.sectionTitle}>
-          Modules ({modules.length})
-        </Typography>
-        {modules.length === 0 ? (
-          <EmptyState
-            title="No modules"
-            description="Add a module from the registry to start deploying infrastructure."
-            missing="data"
-            action={
-              <Button
-                variant="contained"
-                color="primary"
-                startIcon={<AddIcon />}
-                onClick={() => setAddModuleDialogOpen(true)}
-              >
-                Add Module
-              </Button>
-            }
-          />
-        ) : (
           <TableContainer component={Paper} variant="outlined">
             <Table size="small">
               <TableHead>
                 <TableRow>
-                  <TableCell>Name</TableCell>
-                  <TableCell>Artifact</TableCell>
+                  <TableCell>Module</TableCell>
                   <TableCell>Version</TableCell>
                   <TableCell>Last Run</TableCell>
                   <TableCell>Resources</TableCell>
-                  <TableCell>Status</TableCell>
+                  <TableCell>Drift</TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
-                {modules.map(mod => (
+                {moduleStates.map(state => (
                   <TableRow
-                    key={mod.id}
+                    key={state.id}
                     className={classes.clickableRow}
-                    onClick={() => navigate(`modules/${mod.id}`)}
+                    onClick={() => navigate(`modules/${state.project_module_id}`)}
                   >
                     <TableCell>
-                      <Typography variant="body2">{mod.name}</Typography>
-                      {mod.description && (
-                        <Typography variant="caption" color="textSecondary">
-                          {mod.description}
-                        </Typography>
+                      <Typography variant="body2">
+                        {state.module_name || state.project_module_id}
+                      </Typography>
+                    </TableCell>
+                    <TableCell>
+                      {state.current_version || (
+                        <Chip label="not deployed" size="small" variant="outlined" />
                       )}
                     </TableCell>
                     <TableCell>
-                      {mod.artifact_namespace}/{mod.artifact_name}
-                    </TableCell>
-                    <TableCell>
-                      {mod.current_version || mod.pinned_version || (
-                        <Chip label="latest" size="small" />
-                      )}
-                    </TableCell>
-                    <TableCell>
-                      {mod.last_run_status ? (
+                      {state.last_run_status ? (
                         <Chip
-                          label={mod.last_run_status}
+                          label={state.last_run_status}
                           size="small"
-                          color={moduleStatusColor(mod.last_run_status)}
+                          color={moduleStatusColor(state.last_run_status)}
                         />
                       ) : (
                         '-'
                       )}
                     </TableCell>
-                    <TableCell>{mod.resource_count}</TableCell>
+                    <TableCell>{state.resource_count}</TableCell>
                     <TableCell>
-                      <Chip label={mod.status} size="small" variant="outlined" />
+                      <Chip
+                        label={state.drift_status}
+                        size="small"
+                        variant="outlined"
+                        color={state.drift_status === 'drifted' ? 'secondary' : 'default'}
+                      />
                     </TableCell>
                   </TableRow>
                 ))}
               </TableBody>
             </Table>
           </TableContainer>
-        )}
+        </Box>
+      )}
+
+      {/* State Backend */}
+      <Box className={classes.section}>
+        <Typography variant="subtitle1" className={classes.sectionTitle}>
+          State Backend
+        </Typography>
+        <Paper variant="outlined" className={classes.stateBackendSection}>
+          <StateBackendForm
+            value={environment.state_backend}
+            readOnly
+            executionMode={project?.execution_mode}
+          />
+        </Paper>
       </Box>
 
       {/* Bindings */}
@@ -507,7 +470,11 @@ export function EnvironmentDetail() {
               </TableHead>
               <TableBody>
                 {envRuns.map(run => (
-                  <TableRow key={run.id}>
+                  <TableRow
+                    key={run.id}
+                    className={classes.clickableRow}
+                    onClick={() => navigate(`runs/${run.id}`)}
+                  >
                     <TableCell>{run.operation}</TableCell>
                     <TableCell>
                       <Chip
@@ -567,16 +534,6 @@ export function EnvironmentDetail() {
           </Button>
         </DialogActions>
       </Dialog>
-
-      {/* Add Module Dialog */}
-      {envId && (
-        <AddModuleDialog
-          open={addModuleDialogOpen}
-          envId={envId}
-          onClose={() => setAddModuleDialogOpen(false)}
-          onAdded={fetchData}
-        />
-      )}
 
       {/* Run Dialog */}
       <Dialog

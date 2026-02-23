@@ -192,19 +192,19 @@ export function createBindingRouter(options: RouterOptions) {
     },
   );
 
-  // ── Module Cloud Integration Bindings ───────────────────────────────
+  // ── Module Cloud Integration Bindings (project-scoped) ────────────
 
   // List module cloud integrations
   router.get(
-    '/v1/environments/:envId/modules/:moduleId/cloud-integrations',
+    '/v1/projects/:projectId/modules/:moduleId/cloud-integrations',
     async (req, res) => {
       try {
-        const mod = await db.getModule(req.params.moduleId);
-        if (!mod || mod.environment_id !== req.params.envId) {
+        const mod = await db.getProjectModule(req.params.moduleId);
+        if (!mod || mod.project_id !== req.params.projectId) {
           throw notFound('RUN_NOT_FOUND', 'Module not found');
         }
-        const env = await db.getEnvironment(req.params.envId);
-        assertTeamAccess(env, req.activeTeam);
+        const project = await db.getProject(req.params.projectId);
+        assertTeamAccess(project, req.activeTeam);
 
         const rows = await db.listModuleCloudIntegrations(
           req.params.moduleId,
@@ -226,15 +226,15 @@ export function createBindingRouter(options: RouterOptions) {
 
   // Bind cloud integration to module
   router.post(
-    '/v1/environments/:envId/modules/:moduleId/cloud-integrations',
+    '/v1/projects/:projectId/modules/:moduleId/cloud-integrations',
     async (req, res) => {
       try {
-        const mod = await db.getModule(req.params.moduleId);
-        if (!mod || mod.environment_id !== req.params.envId) {
+        const mod = await db.getProjectModule(req.params.moduleId);
+        if (!mod || mod.project_id !== req.params.projectId) {
           throw notFound('RUN_NOT_FOUND', 'Module not found');
         }
-        const env = await db.getEnvironment(req.params.envId);
-        assertTeamAccess(env, req.activeTeam);
+        const project = await db.getProject(req.params.projectId);
+        assertTeamAccess(project, req.activeTeam);
 
         const { cloud_integration_id, priority } = req.body;
         if (!cloud_integration_id) {
@@ -263,7 +263,7 @@ export function createBindingRouter(options: RouterOptions) {
           resource_name: integration.name,
           details: {
             module_id: req.params.moduleId,
-            environment_id: req.params.envId,
+            project_id: req.params.projectId,
             priority,
           },
         });
@@ -277,15 +277,15 @@ export function createBindingRouter(options: RouterOptions) {
 
   // Unbind cloud integration from module
   router.delete(
-    '/v1/environments/:envId/modules/:moduleId/cloud-integrations/:bindingId',
+    '/v1/projects/:projectId/modules/:moduleId/cloud-integrations/:bindingId',
     async (req, res) => {
       try {
-        const mod = await db.getModule(req.params.moduleId);
-        if (!mod || mod.environment_id !== req.params.envId) {
+        const mod = await db.getProjectModule(req.params.moduleId);
+        if (!mod || mod.project_id !== req.params.projectId) {
           throw notFound('RUN_NOT_FOUND', 'Module not found');
         }
-        const env = await db.getEnvironment(req.params.envId);
-        assertTeamAccess(env, req.activeTeam);
+        const project = await db.getProject(req.params.projectId);
+        assertTeamAccess(project, req.activeTeam);
 
         await db.unbindCloudIntegrationFromModule(req.params.bindingId);
 
@@ -296,7 +296,7 @@ export function createBindingRouter(options: RouterOptions) {
           resource_id: req.params.bindingId,
           details: {
             module_id: req.params.moduleId,
-            environment_id: req.params.envId,
+            project_id: req.params.projectId,
           },
         });
 
@@ -307,19 +307,19 @@ export function createBindingRouter(options: RouterOptions) {
     },
   );
 
-  // ── Module Variable Set Bindings ────────────────────────────────────
+  // ── Module Variable Set Bindings (project-scoped) ─────────────────
 
   // List module variable sets
   router.get(
-    '/v1/environments/:envId/modules/:moduleId/variable-sets',
+    '/v1/projects/:projectId/modules/:moduleId/variable-sets',
     async (req, res) => {
       try {
-        const mod = await db.getModule(req.params.moduleId);
-        if (!mod || mod.environment_id !== req.params.envId) {
+        const mod = await db.getProjectModule(req.params.moduleId);
+        if (!mod || mod.project_id !== req.params.projectId) {
           throw notFound('RUN_NOT_FOUND', 'Module not found');
         }
-        const env = await db.getEnvironment(req.params.envId);
-        assertTeamAccess(env, req.activeTeam);
+        const project = await db.getProject(req.params.projectId);
+        assertTeamAccess(project, req.activeTeam);
 
         const rows = await db.listModuleVariableSets(req.params.moduleId);
         const bindings = rows.map(r => ({
@@ -337,15 +337,15 @@ export function createBindingRouter(options: RouterOptions) {
 
   // Bind variable set to module
   router.post(
-    '/v1/environments/:envId/modules/:moduleId/variable-sets',
+    '/v1/projects/:projectId/modules/:moduleId/variable-sets',
     async (req, res) => {
       try {
-        const mod = await db.getModule(req.params.moduleId);
-        if (!mod || mod.environment_id !== req.params.envId) {
+        const mod = await db.getProjectModule(req.params.moduleId);
+        if (!mod || mod.project_id !== req.params.projectId) {
           throw notFound('RUN_NOT_FOUND', 'Module not found');
         }
-        const env = await db.getEnvironment(req.params.envId);
-        assertTeamAccess(env, req.activeTeam);
+        const project = await db.getProject(req.params.projectId);
+        assertTeamAccess(project, req.activeTeam);
 
         const { variable_set_id, priority } = req.body;
         if (!variable_set_id) {
@@ -371,7 +371,7 @@ export function createBindingRouter(options: RouterOptions) {
           resource_name: variableSet.name,
           details: {
             module_id: req.params.moduleId,
-            environment_id: req.params.envId,
+            project_id: req.params.projectId,
             priority,
           },
         });
@@ -385,15 +385,15 @@ export function createBindingRouter(options: RouterOptions) {
 
   // Unbind variable set from module
   router.delete(
-    '/v1/environments/:envId/modules/:moduleId/variable-sets/:bindingId',
+    '/v1/projects/:projectId/modules/:moduleId/variable-sets/:bindingId',
     async (req, res) => {
       try {
-        const mod = await db.getModule(req.params.moduleId);
-        if (!mod || mod.environment_id !== req.params.envId) {
+        const mod = await db.getProjectModule(req.params.moduleId);
+        if (!mod || mod.project_id !== req.params.projectId) {
           throw notFound('RUN_NOT_FOUND', 'Module not found');
         }
-        const env = await db.getEnvironment(req.params.envId);
-        assertTeamAccess(env, req.activeTeam);
+        const project = await db.getProject(req.params.projectId);
+        assertTeamAccess(project, req.activeTeam);
 
         await db.unbindVariableSetFromModule(req.params.bindingId);
 
@@ -404,7 +404,7 @@ export function createBindingRouter(options: RouterOptions) {
           resource_id: req.params.bindingId,
           details: {
             module_id: req.params.moduleId,
-            environment_id: req.params.envId,
+            project_id: req.params.projectId,
           },
         });
 
@@ -417,18 +417,19 @@ export function createBindingRouter(options: RouterOptions) {
 
   // ── Resolved Variables Preview ──────────────────────────────────────
 
-  // Preview merged variables for a module (cloud integration env vars +
-  // variable set entries + module variables), with sensitive masking.
+  // Preview merged variables for a module in an environment
   router.get(
     '/v1/environments/:envId/modules/:moduleId/resolved-vars',
     async (req, res) => {
       try {
-        const mod = await db.getModule(req.params.moduleId);
-        if (!mod || mod.environment_id !== req.params.envId) {
-          throw notFound('RUN_NOT_FOUND', 'Module not found');
-        }
         const env = await db.getEnvironment(req.params.envId);
+        if (!env) throw notFound('ARTIFACT_NOT_FOUND', 'Environment not found');
         assertTeamAccess(env, req.activeTeam);
+
+        const mod = await db.getProjectModule(req.params.moduleId);
+        if (!mod || mod.project_id !== env.project_id) {
+          throw notFound('RUN_NOT_FOUND', 'Module not found in this project');
+        }
 
         // Gather all three layers
         const [effectiveIntegrations, effectiveVarSets, moduleVariables] =
@@ -441,11 +442,10 @@ export function createBindingRouter(options: RouterOptions) {
               req.params.moduleId,
               req.params.envId,
             ),
-            db.listModuleVariables(req.params.moduleId),
+            db.listModuleVariables(req.params.envId, req.params.moduleId),
           ]);
 
         // Build merged map: later layers override earlier ones.
-        // Layer 1: cloud integration env vars (lowest priority)
         const merged = new Map<
           string,
           {
@@ -457,6 +457,7 @@ export function createBindingRouter(options: RouterOptions) {
           }
         >();
 
+        // Layer 1: cloud integration env vars (lowest priority)
         for (const integration of effectiveIntegrations) {
           const envVars =
             integration.credential_config?.envVars ??

@@ -13,22 +13,25 @@ export function createModuleRunRouter(options: RouterOptions) {
   const { config, db, logger, httpAuth, permissions } = options;
   const router = Router();
 
-  // ── Module Runs (within an environment module) ────────────────────
+  // ── Module Runs (within an environment + project module) ──────────
 
-  // List runs for a module
+  // List runs for a module in an environment
   router.get(
     '/v1/environments/:envId/modules/:moduleId/runs',
     async (req, res) => {
       try {
-        const mod = await db.getModule(req.params.moduleId);
-        if (!mod || mod.environment_id !== req.params.envId) {
-          throw notFound('RUN_NOT_FOUND', 'Module not found');
-        }
         const env = await db.getEnvironment(req.params.envId);
+        if (!env) throw notFound('ARTIFACT_NOT_FOUND', 'Environment not found');
         assertTeamAccess(env, req.activeTeam);
+
+        const mod = await db.getProjectModule(req.params.moduleId);
+        if (!mod || mod.project_id !== env.project_id) {
+          throw notFound('RUN_NOT_FOUND', 'Module not found in this project');
+        }
+
         const { cursor, limit } = parsePagination(req.query);
         const status = req.query.status as string | undefined;
-        const result = await db.listModuleRuns(req.params.moduleId, {
+        const result = await db.listModuleRuns(req.params.moduleId, req.params.envId, {
           status,
           cursor: cursor ?? undefined,
           limit,
@@ -62,15 +65,19 @@ export function createModuleRunRouter(options: RouterOptions) {
           return;
         }
 
-        const mod = await db.getModule(req.params.moduleId);
-        if (!mod || mod.environment_id !== req.params.envId) {
-          throw notFound('RUN_NOT_FOUND', 'Module not found');
+        const mod = await db.getProjectModule(req.params.moduleId);
+        if (!mod || mod.project_id !== env.project_id) {
+          throw notFound('RUN_NOT_FOUND', 'Module not found in this project');
         }
+
+        // Get execution_mode from project
+        const project = await db.getProject(env.project_id);
+        if (!project) throw notFound('ARTIFACT_NOT_FOUND', 'Project not found');
 
         const { operation, module_version, ci_provider } = req.body;
         if (!operation) throw badRequest('operation is required');
 
-        const mode = mod.execution_mode;
+        const mode = project.execution_mode;
 
         // For BYOC, generate callback token
         let callbackToken: string | undefined;
@@ -86,12 +93,13 @@ export function createModuleRunRouter(options: RouterOptions) {
 
         // Snapshot variables at run creation time
         const variablesSnapshot = await db.snapshotModuleVariables(
+          req.params.envId,
           req.params.moduleId,
         );
 
         const run = await db.createModuleRun({
           id: crypto.randomUUID(),
-          module_id: req.params.moduleId,
+          project_module_id: req.params.moduleId,
           environment_id: req.params.envId,
           module_name: mod.name,
           artifact_namespace: mod.artifact_namespace,
@@ -107,7 +115,7 @@ export function createModuleRunRouter(options: RouterOptions) {
           callback_token_hash: callbackTokenHash,
           tf_version: mod.tf_version ?? undefined,
           variables_snapshot: variablesSnapshot,
-          state_backend_snapshot: mod.state_backend ?? undefined,
+          state_backend_snapshot: env.state_backend ?? undefined,
         });
 
         // Build butler URL for BYOC — runner fetches config from /config endpoint
@@ -135,6 +143,7 @@ export function createModuleRunRouter(options: RouterOptions) {
         logger.info('Module run created', {
           runId: run.id,
           moduleId: mod.id,
+          environmentId: env.id,
           operation,
           mode,
         });
@@ -290,8 +299,8 @@ export function createModuleRunRouter(options: RouterOptions) {
         completed_at: now,
       });
 
-      // Dequeue next run for this module
-      await db.dequeueNextModuleRun(run.module_id);
+      // Dequeue next run for this module+env
+      await db.dequeueNextModuleRun(run.project_module_id, run.environment_id);
 
       await db.writeAuditLog({
         actor: req.registryUser?.email ?? 'unknown',
@@ -338,8 +347,8 @@ export function createModuleRunRouter(options: RouterOptions) {
         completed_at: now,
       });
 
-      // Dequeue next run for this module
-      await db.dequeueNextModuleRun(run.module_id);
+      // Dequeue next run for this module+env
+      await db.dequeueNextModuleRun(run.project_module_id, run.environment_id);
 
       await db.writeAuditLog({
         actor: req.registryUser?.email ?? 'unknown',

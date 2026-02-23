@@ -3,7 +3,7 @@
 
 import { useMemo } from 'react';
 import { Box, Typography, makeStyles } from '@material-ui/core';
-import type { EnvironmentGraph as GraphData } from '../../api/types/environments';
+import type { ProjectGraph } from '../../api/types/projects';
 
 const useStyles = makeStyles(theme => ({
   root: {
@@ -33,25 +33,14 @@ interface NodePosition {
   y: number;
   name: string;
   artifactName: string;
-  lastRunStatus: string | null;
-  resourceCount: number;
+  status: string;
 }
 
-function statusFill(status: string | null): string {
+function statusFill(status: string): string {
   switch (status) {
-    case 'succeeded':
+    case 'active':
       return '#4caf50';
-    case 'failed':
-      return '#f44336';
-    case 'running':
-    case 'applying':
-    case 'planned':
-      return '#2196f3';
-    case 'queued':
-    case 'pending':
-      return '#ff9800';
-    case 'skipped':
-    case 'cancelled':
+    case 'archived':
       return '#9e9e9e';
     default:
       return '#bdbdbd';
@@ -59,7 +48,7 @@ function statusFill(status: string | null): string {
 }
 
 function layoutGraph(
-  graph: GraphData,
+  graph: ProjectGraph,
 ): { nodes: NodePosition[]; width: number; height: number } {
   if (graph.nodes.length === 0) {
     return { nodes: [], width: 0, height: 0 };
@@ -133,8 +122,7 @@ function layoutGraph(
         y: PADDING + idx * V_SPACING,
         name: node.name,
         artifactName: node.artifact_name,
-        lastRunStatus: node.last_run_status,
-        resourceCount: node.resource_count,
+        status: node.status,
       });
     });
   }
@@ -153,7 +141,7 @@ export function EnvironmentGraph({
   graph,
   onNodeClick,
 }: {
-  graph: GraphData;
+  graph: ProjectGraph;
   onNodeClick?: (moduleId: string) => void;
 }) {
   const classes = useStyles();
@@ -164,7 +152,7 @@ export function EnvironmentGraph({
     return (
       <Box className={classes.empty}>
         <Typography color="textSecondary">
-          No modules in this environment yet.
+          No modules in this project yet.
         </Typography>
       </Box>
     );
@@ -237,7 +225,7 @@ export function EnvironmentGraph({
               width={6}
               height={NODE_HEIGHT}
               rx={3}
-              fill={statusFill(node.lastRunStatus)}
+              fill={statusFill(node.status)}
             />
             <text
               x={16}
@@ -254,7 +242,7 @@ export function EnvironmentGraph({
               {node.artifactName}
             </text>
             <text x={16} y={52} fontSize={10} fill="#888">
-              {node.resourceCount} resources
+              {node.status}
             </text>
           </g>
         ))}

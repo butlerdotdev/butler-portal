@@ -26,7 +26,7 @@ import { useRegistryApi } from '../../hooks/useRegistryApi';
 import { ModuleVariablesEditor } from './ModuleVariablesEditor';
 import { ModuleSettings } from './ModuleSettings';
 import { ModuleRunsList } from './ModuleRunsList';
-import type { EnvironmentModule } from '../../api/types/environments';
+import type { ProjectModule } from '../../api/types/projects';
 
 const useStyles = makeStyles(theme => ({
   header: {
@@ -46,31 +46,17 @@ const useStyles = makeStyles(theme => ({
   },
 }));
 
-function statusColor(status: string | null): 'default' | 'primary' | 'secondary' {
-  switch (status) {
-    case 'succeeded':
-      return 'primary';
-    case 'failed':
-      return 'secondary';
-    case 'running':
-    case 'applying':
-    case 'planned':
-      return 'primary';
-    default:
-      return 'default';
-  }
-}
-
 export function ModuleDetail() {
   const classes = useStyles();
   const navigate = useNavigate();
-  const { envId, moduleId } = useParams<{
+  const { projectId, envId, moduleId } = useParams<{
+    projectId: string;
     envId: string;
     moduleId: string;
   }>();
   const api = useRegistryApi();
 
-  const [mod, setMod] = useState<EnvironmentModule | null>(null);
+  const [mod, setMod] = useState<ProjectModule | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [tabIndex, setTabIndex] = useState(0);
@@ -82,10 +68,10 @@ export function ModuleDetail() {
   >('plan');
 
   const fetchModule = useCallback(async () => {
-    if (!envId || !moduleId) return;
+    if (!projectId || !moduleId) return;
     try {
       setLoading(true);
-      const data = await api.getModule(envId, moduleId);
+      const data = await api.getProjectModule(projectId, moduleId);
       setMod(data);
       setError(null);
     } catch (err) {
@@ -95,7 +81,7 @@ export function ModuleDetail() {
     } finally {
       setLoading(false);
     }
-  }, [api, envId, moduleId]);
+  }, [api, projectId, moduleId]);
 
   useEffect(() => {
     fetchModule();
@@ -136,11 +122,16 @@ export function ModuleDetail() {
     return <EmptyState title="Module not found" missing="data" />;
   }
 
-  const tabDefs = [
-    { label: 'Runs', id: 'runs' },
-    { label: 'Variables', id: 'variables' },
-    { label: 'Settings', id: 'settings' },
-  ];
+  // When accessed from an environment context, show runs/variables/settings
+  // When accessed from project context (no envId), show settings only
+  const isEnvContext = !!envId;
+  const tabDefs = isEnvContext
+    ? [
+        { label: 'Runs', id: 'runs' },
+        { label: 'Variables', id: 'variables' },
+        { label: 'Settings', id: 'settings' },
+      ]
+    : [{ label: 'Settings', id: 'settings' }];
 
   return (
     <>
@@ -150,40 +141,33 @@ export function ModuleDetail() {
           <Box className={classes.headerLeft}>
             <IconButton
               size="small"
-              onClick={() => navigate(`../../`)}
+              onClick={() => navigate(-1)}
             >
               <ArrowBackIcon />
             </IconButton>
             <Typography variant="h5">{mod.name}</Typography>
             <Chip label={mod.status} size="small" variant="outlined" />
-            {mod.last_run_status && (
-              <Chip
-                label={mod.last_run_status}
-                size="small"
-                color={statusColor(mod.last_run_status)}
-              />
-            )}
           </Box>
           <Typography variant="body2" color="textSecondary" style={{ marginTop: 4 }}>
             {mod.artifact_namespace}/{mod.artifact_name}
-            {mod.current_version && ` @ ${mod.current_version}`}
             {mod.pinned_version && ` (pinned: ${mod.pinned_version})`}
           </Typography>
           <Typography variant="caption" color="textSecondary">
-            {mod.resource_count} resources | {mod.execution_mode}
-            {mod.tf_version && ` | TF ${mod.tf_version}`}
+            {mod.tf_version && `TF ${mod.tf_version}`}
           </Typography>
         </Box>
 
-        <Button
-          variant="contained"
-          color="primary"
-          startIcon={<PlayArrowIcon />}
-          onClick={() => setRunDialogOpen(true)}
-          size="small"
-        >
-          New Run
-        </Button>
+        {isEnvContext && (
+          <Button
+            variant="contained"
+            color="primary"
+            startIcon={<PlayArrowIcon />}
+            onClick={() => setRunDialogOpen(true)}
+            size="small"
+          >
+            New Run
+          </Button>
+        )}
       </Box>
 
       <Tabs
@@ -204,12 +188,13 @@ export function ModuleDetail() {
         <ModuleVariablesEditor envId={envId} moduleId={moduleId} />
       )}
 
-      {tabDefs[tabIndex]?.id === 'settings' && envId && moduleId && (
+      {tabDefs[tabIndex]?.id === 'settings' && projectId && moduleId && (
         <ModuleSettings
-          envId={envId}
+          projectId={projectId}
           moduleId={moduleId}
           mod={mod}
           onRefresh={fetchModule}
+          envId={envId}
         />
       )}
 
