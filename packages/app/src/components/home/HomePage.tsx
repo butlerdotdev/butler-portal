@@ -20,11 +20,11 @@ import ArrowForwardIcon from '@material-ui/icons/ArrowForward';
 const typewriterPrompts = [
 	'Search for Kubernetes clusters...',
 	'Find API documentation...',
-	'Browse workspace templates...',
-	'Explore registry artifacts...',
-	'Discover pipeline configurations...',
+	'Explore Chambers templates...',
+	'Search the Keeper...',
+	'Configure Herald pipelines...',
 	'Which teams have active clusters?',
-	'How do I create a new workspace?',
+	'How do I create a new chamber?',
 ];
 
 function useTypewriter(
@@ -293,13 +293,13 @@ export const HomePage = () => {
 									<NavigationCard icon={<CloudIcon />} title="Butler" description="Kubernetes clusters, teams, and infrastructure" href="/butler" />
 								</Grid>
 								<Grid item xs={12} sm={6} lg={3}>
-									<NavigationCard icon={<ViewQuiltIcon />} title="Workspaces" description="Development environments and collaboration" href="/workspaces" />
+									<NavigationCard icon={<ViewQuiltIcon />} title="Chambers" description="Private development environments, prepared and ready" href="/workspaces" />
 								</Grid>
 								<Grid item xs={12} sm={6} lg={3}>
-									<NavigationCard icon={<StorageIcon />} title="Registry" description="Private IaC artifact registry and governance" href="/registry" />
+									<NavigationCard icon={<StorageIcon />} title="Keeper" description="Governed stores for infrastructure code" href="/registry" />
 								</Grid>
 								<Grid item xs={12} sm={6} lg={3}>
-									<NavigationCard icon={<TimelineIcon />} title="Pipelines" description="Observability pipeline builder and fleet" href="/pipeline" />
+									<NavigationCard icon={<TimelineIcon />} title="Herald" description="Telemetry routing at fleet scale" href="/pipeline" />
 								</Grid>
 								<Grid item xs={12} sm={6} lg={3}>
 									<NavigationCard icon={<AddCircleOutlineIcon />} title="Create" description="Scaffold services with golden path templates" href="/create" />

@@ -105,9 +105,9 @@ export const Root = ({ children }: PropsWithChildren<{}>) => (
 				<SidebarItem icon={ButlerLabsIcon} to="butler" text="Butler Labs">
 					<SidebarSubmenu title="Butler Labs">
 						<SidebarSubmenuItem title="Butler" to="butler" icon={BrandCloudIcon} />
-						<SidebarSubmenuItem title="Workspaces" to="workspaces" icon={BrandViewQuiltIcon} />
-						<SidebarSubmenuItem title="Registry" to="registry" icon={BrandStorageIcon} />
-						<SidebarSubmenuItem title="Pipelines" to="pipeline" icon={BrandTimelineIcon} />
+						<SidebarSubmenuItem title="Chambers" to="workspaces" icon={BrandViewQuiltIcon} />
+						<SidebarSubmenuItem title="Keeper" to="registry" icon={BrandStorageIcon} />
+						<SidebarSubmenuItem title="Herald" to="pipeline" icon={BrandTimelineIcon} />
 					</SidebarSubmenu>
 				</SidebarItem>
 			</SidebarGroup>
