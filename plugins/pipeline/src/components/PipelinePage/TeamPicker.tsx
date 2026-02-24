@@ -15,7 +15,7 @@ const getRoleBadgeStyle = (role: string) => {
   switch (role) {
     case 'admin':
       return {
-        backgroundColor: 'rgba(139, 92, 246, 0.2)',
+        backgroundColor: 'rgba(124, 58, 237, 0.2)',
         color: '#a78bfa',
       };
     case 'operator':
@@ -63,14 +63,14 @@ const useStyles = makeStyles(theme => ({
     fontSize: '0.875rem',
     fontWeight: 500,
     borderRadius: 8,
-    border: '1px solid rgba(139, 92, 246, 0.3)',
-    backgroundColor: 'rgba(139, 92, 246, 0.2)',
+    border: '1px solid rgba(124, 58, 237, 0.3)',
+    backgroundColor: 'rgba(124, 58, 237, 0.2)',
     color: '#c4b5fd',
     cursor: 'pointer',
     transition: 'background-color 150ms, border-color 150ms',
     outline: 'none',
     '&:hover': {
-      backgroundColor: 'rgba(139, 92, 246, 0.3)',
+      backgroundColor: 'rgba(124, 58, 237, 0.3)',
     },
   },
   triggerIcon: {
@@ -127,10 +127,10 @@ const useStyles = makeStyles(theme => ({
     },
   },
   adminOptionActive: {
-    backgroundColor: 'rgba(139, 92, 246, 0.2)',
+    backgroundColor: 'rgba(124, 58, 237, 0.2)',
     color: '#c4b5fd',
     '&:hover': {
-      backgroundColor: 'rgba(139, 92, 246, 0.25)',
+      backgroundColor: 'rgba(124, 58, 237, 0.25)',
     },
   },
   adminOptionIcon: {

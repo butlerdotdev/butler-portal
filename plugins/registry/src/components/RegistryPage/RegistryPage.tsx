@@ -127,12 +127,12 @@ interface RoleBannerConfig {
 
 const ROLE_BANNERS: Partial<Record<RegistryRole, RoleBannerConfig>> = {
   'platform-admin': {
-    bg: 'rgba(139, 92, 246, 0.15)',
-    border: 'rgba(139, 92, 246, 0.25)',
+    bg: 'rgba(124, 58, 237, 0.2)',
+    border: 'rgba(124, 58, 237, 0.3)',
     iconColor: '#a78bfa',
     textColor: '#c4b5fd',
-    subtextColor: 'rgba(196, 181, 253, 0.7)',
-    separatorColor: 'rgba(167, 139, 250, 0.4)',
+    subtextColor: 'rgba(167, 139, 250, 0.6)',
+    separatorColor: 'rgba(124, 58, 237, 0.35)',
     label: 'Platform Admin',
     subtitle: 'Actions affect all teams',
     Icon: SecurityIcon,

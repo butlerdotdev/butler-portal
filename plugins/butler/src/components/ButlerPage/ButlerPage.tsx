@@ -98,8 +98,8 @@ const useStyles = makeStyles(() => ({
     justifyContent: 'center',
     gap: 8,
     padding: '6px 16px',
-    backgroundColor: 'rgba(139, 92, 246, 0.15)',
-    borderBottom: '1px solid rgba(139, 92, 246, 0.25)',
+    backgroundColor: 'rgba(124, 58, 237, 0.2)',
+    borderBottom: '1px solid rgba(124, 58, 237, 0.3)',
   },
   adminBannerIcon: {
     fontSize: 14,
@@ -113,12 +113,12 @@ const useStyles = makeStyles(() => ({
     textTransform: 'uppercase',
   },
   adminBannerSeparator: {
-    color: 'rgba(167, 139, 250, 0.4)',
+    color: 'rgba(124, 58, 237, 0.4)',
     fontSize: '0.75rem',
   },
   adminBannerSubtext: {
     fontSize: '0.75rem',
-    color: 'rgba(196, 181, 253, 0.7)',
+    color: 'rgba(167, 139, 250, 0.7)',
   },
   contentWrapper: {
     position: 'relative' as const,

@@ -18,12 +18,12 @@ import { useRegistryTeam } from '../../hooks/useRegistryTeam';
 const ROLE_CONFIG: Record<RegistryRole, { label: string; bg: string; text: string }> = {
   'platform-admin': {
     label: 'Platform Admin',
-    bg: 'rgba(139, 92, 246, 0.2)',
+    bg: 'rgba(124, 58, 237, 0.2)',
     text: '#a78bfa',
   },
   admin: {
     label: 'Admin',
-    bg: 'rgba(139, 92, 246, 0.2)',
+    bg: 'rgba(124, 58, 237, 0.2)',
     text: '#a78bfa',
   },
   operator: {
