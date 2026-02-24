@@ -19,7 +19,12 @@ import {
 } from '@backstage/plugin-techdocs';
 import { TechDocsAddons } from '@backstage/plugin-techdocs-react';
 import { ReportIssue } from '@backstage/plugin-techdocs-module-addons-contrib';
-import { UserSettingsPage } from '@backstage/plugin-user-settings';
+import {
+	UserSettingsPage,
+	UserSettingsProfileCard,
+	UserSettingsIdentityCard,
+	SettingsLayout,
+} from '@backstage/plugin-user-settings';
 import { apis } from './apis';
 import { entityPage } from './components/catalog/EntityPage';
 import { searchPage } from './components/search/SearchPage';
@@ -39,25 +44,25 @@ import { catalogEntityCreatePermission } from '@backstage/plugin-catalog-common/
 import { NotificationsPage } from '@backstage/plugin-notifications';
 import { SignalsDisplay } from '@backstage/plugin-signals';
 import { UnifiedThemeProvider } from '@backstage/theme';
-import { butlerPortalTheme } from './themes/butlerPortalTheme';
+import Grid from '@material-ui/core/Grid';
+import { butlerThemes, type ButlerThemeId } from './themes/butlerPortalTheme';
 import { HomePage } from './components/home';
 import { ButlerPage } from '@internal/plugin-butler';
 import { WorkspacesPluginPage } from '@internal/plugin-workspaces';
 import { RegistryPage } from '@internal/plugin-registry';
 import { PipelinePage } from '@internal/plugin-pipeline';
+import { AppearanceSettings } from './components/settings/AppearanceSettings';
 
 const app = createApp({
 	apis,
-	themes: [
-		{
-			id: 'butler-portal-dark',
-			title: 'Butler Portal Dark',
-			variant: 'dark',
-			Provider: ({ children }) => (
-				<UnifiedThemeProvider theme={butlerPortalTheme} children={children} />
-			),
-		},
-	],
+	themes: (Object.keys(butlerThemes) as ButlerThemeId[]).map(id => ({
+		id,
+		title: id,
+		variant: (id.includes('light') ? 'light' : 'dark') as 'light' | 'dark',
+		Provider: ({ children }: { children: React.ReactNode }) => (
+			<UnifiedThemeProvider theme={butlerThemes[id]} children={children} />
+		),
+	})),
 	bindRoutes({ bind }) {
 		bind(catalogPlugin.externalRoutes, {
 			createComponent: scaffolderPlugin.routes.root,
@@ -128,7 +133,23 @@ const routes = (
 		<Route path="/search" element={<SearchPage />}>
 			{searchPage}
 		</Route>
-		<Route path="/settings" element={<UserSettingsPage />} />
+		<Route path="/settings" element={<UserSettingsPage />}>
+			<SettingsLayout>
+				<SettingsLayout.Route path="general" title="General">
+					<Grid container direction="row" spacing={3}>
+						<Grid item xs={12} md={6}>
+							<UserSettingsProfileCard />
+						</Grid>
+						<Grid item xs={12} md={6}>
+							<AppearanceSettings />
+						</Grid>
+						<Grid item xs={12} md={6}>
+							<UserSettingsIdentityCard />
+						</Grid>
+					</Grid>
+				</SettingsLayout.Route>
+			</SettingsLayout>
+		</Route>
 		<Route path="/catalog-graph" element={<CatalogGraphPage />} />
 		<Route path="/notifications" element={<NotificationsPage />} />
 		<Route path="/butler/*" element={<ButlerPage />} />

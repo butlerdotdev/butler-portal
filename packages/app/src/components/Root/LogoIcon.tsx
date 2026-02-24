@@ -12,7 +12,7 @@ const useStyles = makeStyles({
 
 const LogoIcon = () => {
 	const classes = useStyles();
-	return <img src="/butler-portal-logo.png" alt="Butler Portal" className={classes.logo} />;
+	return <img src="/butler-portal-logo.svg" alt="Butler Portal" className={classes.logo} />;
 };
 
 export default LogoIcon;

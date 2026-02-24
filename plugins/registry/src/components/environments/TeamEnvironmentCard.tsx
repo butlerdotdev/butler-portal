@@ -41,7 +41,7 @@ const useStyles = makeStyles(theme => ({
     width: 40,
     height: 40,
     borderRadius: 8,
-    backgroundColor: 'rgba(139, 92, 246, 0.15)',
+    backgroundColor: 'rgba(124, 58, 237, 0.15)',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',

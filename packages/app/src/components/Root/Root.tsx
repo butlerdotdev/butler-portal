@@ -7,10 +7,12 @@ import LibraryBooks from '@material-ui/icons/LibraryBooks';
 import CreateComponentIcon from '@material-ui/icons/AddCircleOutline';
 import StorageIcon from '@material-ui/icons/Storage';
 import TimelineIcon from '@material-ui/icons/Timeline';
+import CloudIcon from '@material-ui/icons/Cloud';
+import ViewQuiltIcon from '@material-ui/icons/ViewQuilt';
 import LogoFull from './LogoFull';
 import LogoIcon from './LogoIcon';
-import ButlerIcon from './ButlerIcon';
-import WorkspacesIcon from './WorkspacesIcon';
+import ButlerLabsIcon from './ButlerLabsIcon';
+import { GitHubIcon, DiscordIcon, DocsIcon, WebsiteIcon } from './ExternalLinkIcons';
 import {
 	Sidebar,
 	sidebarConfig,
@@ -19,7 +21,6 @@ import {
 	SidebarItem,
 	SidebarPage,
 	SidebarSpace,
-	SidebarScrollWrapper,
 	useSidebarOpenState,
 	Link,
 	SidebarSubmenu,
@@ -30,6 +31,22 @@ import SearchIcon from '@material-ui/icons/Search';
 import SettingsIcon from '@material-ui/icons/Settings';
 import { SidebarSearchModal } from '@backstage/plugin-search';
 import { Settings as SidebarSettings } from '@backstage/plugin-user-settings';
+
+// Brand-colored icon wrappers for submenu items
+const useBrandIconStyles = makeStyles(theme => ({
+	brand: { color: theme.palette.primary.main },
+}));
+
+const brandIcon = (Icon: any) => (props: any) => {
+	const classes = useBrandIconStyles();
+	return <Icon {...props} className={classes.brand} />;
+};
+
+const BrandExtensionIcon = brandIcon(ExtensionIcon);
+const BrandStorageIcon = brandIcon(StorageIcon);
+const BrandCloudIcon = brandIcon(CloudIcon);
+const BrandViewQuiltIcon = brandIcon(ViewQuiltIcon);
+const BrandTimelineIcon = brandIcon(TimelineIcon);
 
 const useSidebarLogoStyles = makeStyles({
 	root: {
@@ -71,13 +88,12 @@ export const Root = ({ children }: PropsWithChildren<{}>) => (
 			<SidebarGroup label="Menu" icon={<MenuIcon />}>
 				<SidebarItem icon={HomeIcon} to="/" text="Home" />
 
-				{/* Catalog Section */}
 				<SidebarItem icon={CategoryIcon} to="catalog" text="Catalog">
 					<SidebarSubmenu title="Catalog">
-						<SidebarSubmenuItem title="Components" to="catalog?filters[kind]=component" icon={ExtensionIcon} />
-						<SidebarSubmenuItem title="Systems" to="catalog?filters[kind]=system" icon={StorageIcon} />
-						<SidebarSubmenuItem title="APIs" to="catalog?filters[kind]=api" icon={ExtensionIcon} />
-						<SidebarSubmenuItem title="Resources" to="catalog?filters[kind]=resource" icon={StorageIcon} />
+						<SidebarSubmenuItem title="Components" to="catalog?filters[kind]=component" icon={BrandExtensionIcon} />
+						<SidebarSubmenuItem title="Systems" to="catalog?filters[kind]=system" icon={BrandStorageIcon} />
+						<SidebarSubmenuItem title="APIs" to="catalog?filters[kind]=api" icon={BrandExtensionIcon} />
+						<SidebarSubmenuItem title="Resources" to="catalog?filters[kind]=resource" icon={BrandStorageIcon} />
 					</SidebarSubmenu>
 				</SidebarItem>
 
@@ -86,15 +102,32 @@ export const Root = ({ children }: PropsWithChildren<{}>) => (
 				<SidebarItem icon={CreateComponentIcon} to="create" text="Create..." />
 
 				<SidebarDivider />
-				<SidebarScrollWrapper>
-					<SidebarItem icon={ButlerIcon} to="butler" text="Butler" />
-					<SidebarItem icon={WorkspacesIcon} to="workspaces" text="Workspaces" />
-					<SidebarItem icon={StorageIcon} to="registry" text="Registry" />
-					<SidebarItem icon={TimelineIcon} to="pipeline" text="Pipelines" />
-				</SidebarScrollWrapper>
+				<SidebarItem icon={ButlerLabsIcon} to="butler" text="Butler Labs">
+					<SidebarSubmenu title="Butler Labs">
+						<SidebarSubmenuItem title="Butler" to="butler" icon={BrandCloudIcon} />
+						<SidebarSubmenuItem title="Workspaces" to="workspaces" icon={BrandViewQuiltIcon} />
+						<SidebarSubmenuItem title="Registry" to="registry" icon={BrandStorageIcon} />
+						<SidebarSubmenuItem title="Pipelines" to="pipeline" icon={BrandTimelineIcon} />
+					</SidebarSubmenu>
+				</SidebarItem>
 			</SidebarGroup>
 
 			<SidebarSpace />
+			<SidebarDivider />
+
+			<SidebarItem icon={WebsiteIcon} text="Butler Labs" onClick={() => window.open('https://butlerlabs.dev', '_blank')}>
+				<div />
+			</SidebarItem>
+			<SidebarItem icon={DocsIcon} text="Docs" onClick={() => window.open('https://docs.butlerlabs.dev', '_blank')}>
+				<div />
+			</SidebarItem>
+			<SidebarItem icon={GitHubIcon} text="GitHub" onClick={() => window.open('https://github.com/butlerdotdev', '_blank')}>
+				<div />
+			</SidebarItem>
+			<SidebarItem icon={DiscordIcon} text="Discord" onClick={() => window.open('https://discord.gg/cAzWG9qz3K', '_blank')}>
+				<div />
+			</SidebarItem>
+
 			<SidebarDivider />
 
 			<SidebarGroup label="Settings" icon={<SettingsIcon />} to="/settings">
