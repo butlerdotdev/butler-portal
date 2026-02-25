@@ -1,0 +1,8 @@
+site_name: Butler Portal
+docs_dir: docs
+nav:
+  - Home: index.md
+  - Architecture:
+    - ADR-001 CI/CD Adapter Architecture: architecture/ADR-001-cicd-adapter-architecture.md
+plugins:
+  - search

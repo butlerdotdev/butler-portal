@@ -32,6 +32,15 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     apt-get install -y --no-install-recommends libsqlite3-dev && \
     rm -rf /var/lib/apt/lists/*
 
+# Install mkdocs for TechDocs local builder (generates docs on-the-fly from repo mkdocs.yml).
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked \
+    apt-get update && \
+    apt-get install -y --no-install-recommends python3-pip && \
+    rm -rf /var/lib/apt/lists/*
+
+RUN pip install --break-system-packages mkdocs-techdocs-core
+
 # From here on we use the least-privileged `node` user to run the backend.
 USER node
 
