@@ -34,15 +34,18 @@ auth:
         clientSecret: ${AUTH_GOOGLE_CLIENT_SECRET}
         prompt: select_account
 
+integrations:
+  github:
+    - host: github.com
+      token: ${GITHUB_TOKEN}
+
 catalog:
   import:
     entityFilename: catalog-info.yaml
     pullRequestBranchName: backstage-integration
   rules:
     - allow: [Component, System, API, Resource, Location, Template, Group, User, Domain]
-  locations:
-    - type: file
-      target: ./catalog/butler-platform.yaml
+  locations: []
 
 techdocs:
   builder: 'local'
