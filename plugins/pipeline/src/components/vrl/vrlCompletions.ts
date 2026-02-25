@@ -5,8 +5,8 @@ import {
   type CompletionContext,
   type CompletionResult,
   autocompletion,
-  type Extension,
 } from '@codemirror/autocomplete';
+import type { Extension } from '@codemirror/state';
 
 const VRL_FUNCTIONS = [
   { label: 'upcase', type: 'function', detail: 'Convert string to uppercase' },

@@ -69,9 +69,6 @@ export const pipelinePlugin = createBackendPlugin({
           config.getOptionalString('pipeline.vectorBinaryPath') ?? undefined;
         const vrlTimeoutMs =
           config.getOptionalNumber('pipeline.vrl.timeoutMs') ?? undefined;
-        const vrlMaxInputEvents =
-          config.getOptionalNumber('pipeline.vrl.maxInputEvents') ?? undefined;
-
         const vrlExecutor = new VrlExecutor(
           {
             vectorBinaryPath,

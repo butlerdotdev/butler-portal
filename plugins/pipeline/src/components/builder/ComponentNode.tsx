@@ -17,7 +17,7 @@ const TYPE_COLORS: Record<string, string> = {
   sink: '#ff9800',
 };
 
-const TYPE_ICONS: Record<string, React.ComponentType> = {
+const TYPE_ICONS: Record<string, React.ComponentType<any>> = {
   source: InputIcon,
   transform: TransformIcon,
   sink: CallMadeIcon,

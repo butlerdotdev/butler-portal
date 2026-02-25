@@ -22,14 +22,11 @@ import {
   PermissionsService,
   UserInfoService,
 } from '@backstage/backend-plugin-api';
-import { AuthorizeResult } from '@backstage/plugin-permission-common';
-import type { BasicPermission } from '@backstage/plugin-permission-common';
 import express from 'express';
 import Router from 'express-promise-router';
 import { PipelineDatabase } from './database/PipelineDatabase';
 import { VrlExecutor } from './vrl/vrlExecutor';
 import { resolveIdentity } from './auth/identityResolver';
-import { sendError, forbidden } from './util/errors';
 import { createPipelineRoutes } from './routes/pipelineRoutes';
 import { createImportRoutes } from './routes/importRoutes';
 import { createVrlRoutes } from './routes/vrlRoutes';
@@ -71,14 +68,12 @@ export async function createRouter(
   options: RouterOptions,
 ): Promise<express.Router> {
   const {
-    config,
     logger,
     httpAuth,
     userInfo,
     auth,
     db,
     vrlExecutor,
-    permissions,
   } = options;
 
   const router = Router();

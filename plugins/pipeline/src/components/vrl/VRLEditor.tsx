@@ -10,7 +10,6 @@ import {
   highlightSpecialChars,
   highlightActiveLine,
   drawSelection,
-  keymap,
 } from '@codemirror/view';
 import { EditorState } from '@codemirror/state';
 import { vrlLanguage } from './vrlLanguage';

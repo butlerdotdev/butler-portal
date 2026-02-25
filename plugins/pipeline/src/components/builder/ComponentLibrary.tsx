@@ -27,7 +27,7 @@ import type { ComponentSchema } from '../../api/types/pipelines';
 
 const CATEGORY_ORDER = ['Sources', 'Transforms', 'Sinks'];
 
-const TYPE_ICONS: Record<string, React.ComponentType> = {
+const TYPE_ICONS: Record<string, React.ComponentType<any>> = {
   source: InputIcon,
   transform: TransformIcon,
   sink: CallMadeIcon,

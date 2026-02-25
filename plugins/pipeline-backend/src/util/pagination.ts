@@ -18,7 +18,7 @@ const DEFAULT_PAGE_SIZE = 50;
 const MAX_PAGE_SIZE = 200;
 
 export interface PaginationParams {
-  cursor: string | null;
+  cursor?: string;
   limit: number;
   sortBy: string;
   sortOrder: 'asc' | 'desc';
@@ -28,7 +28,7 @@ export function parsePagination(
   query: Record<string, unknown>,
 ): PaginationParams {
   const cursor =
-    typeof query.cursor === 'string' ? query.cursor : null;
+    typeof query.cursor === 'string' ? query.cursor : undefined;
 
   let limit = DEFAULT_PAGE_SIZE;
   if (typeof query.limit === 'string') {
