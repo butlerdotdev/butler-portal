@@ -360,12 +360,15 @@ export function createModuleRunCallbackRouter(options: RouterOptions) {
 
       // Resolve variables — from environment-scoped module variables
       const moduleVars = await db.listModuleVariables(run.environment_id, run.project_module_id);
-      const variables: Record<string, { value: string; sensitive: boolean }> = {};
+      const variables: Record<string, { value: any; sensitive: boolean }> = {};
       for (const v of moduleVars) {
-        variables[v.key] = {
-          value: v.sensitive ? (v.secret_ref ?? '') : (v.value ?? ''),
-          sensitive: v.sensitive,
-        };
+        let val: any = v.sensitive ? (v.secret_ref ?? '') : (v.value ?? '');
+        // HCL variables (complex types like lists/objects) — parse so
+        // the runner receives native JSON types instead of strings.
+        if (v.hcl && !v.sensitive && typeof val === 'string') {
+          try { val = JSON.parse(val); } catch { /* keep as string */ }
+        }
+        variables[v.key] = { value: val, sensitive: v.sensitive };
       }
 
       // Resolve cloud integration + variable set env vars for the runner.
