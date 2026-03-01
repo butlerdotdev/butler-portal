@@ -313,6 +313,25 @@ export function createModuleRunCallbackRouter(options: RouterOptions) {
         mod.artifact_name,
       );
 
+      // Resolve the effective version: explicit run version, or resolve
+      // pinned constraint (e.g. "~> 1.2.0") to latest matching approved version.
+      let resolvedVersion = run.module_version ?? undefined;
+      if (!resolvedVersion && artifact && mod.pinned_version) {
+        const constraint = mod.pinned_version;
+        if (/^~>|[><=^]/.test(constraint)) {
+          // Semver constraint — resolve to latest matching approved version
+          const versions = await db.listApprovedVersions(artifact.id);
+          const match = versions.find(v => {
+            const pin = constraint.replace(/^~>\s*/, '');
+            const [pMaj, pMin] = pin.split('.').map(Number);
+            return v.version_major === pMaj && v.version_minor >= pMin;
+          });
+          resolvedVersion = match?.version;
+        } else {
+          resolvedVersion = constraint;
+        }
+      }
+
       // Resolve source from artifact storage/source config or VCS trigger
       const source: {
         type: string;
@@ -320,6 +339,9 @@ export function createModuleRunCallbackRouter(options: RouterOptions) {
         gitRef?: string;
         workingDirectory?: string;
       } = { type: 'none' };
+
+      const tagPrefix = artifact?.storage_config?.git?.tagPrefix ?? 'v';
+      const gitRef = resolvedVersion ? `${tagPrefix}${resolvedVersion}` : 'main';
 
       if (mod.vcs_trigger?.repositoryUrl) {
         source.type = 'git';
@@ -329,14 +351,12 @@ export function createModuleRunCallbackRouter(options: RouterOptions) {
       } else if (artifact?.source_config?.repositoryUrl) {
         source.type = 'git';
         source.gitRepo = artifact.source_config.repositoryUrl;
-        source.gitRef = run.module_version ?? mod.pinned_version ?? 'main';
+        source.gitRef = gitRef;
         source.workingDirectory = artifact.source_config.path ?? mod.working_directory ?? undefined;
       } else if (artifact?.storage_config?.git?.repositoryUrl) {
         source.type = 'git';
         source.gitRepo = artifact.storage_config.git.repositoryUrl;
-        source.gitRef = run.module_version
-          ? `${artifact.storage_config.git.tagPrefix ?? 'v'}${run.module_version}`
-          : 'main';
+        source.gitRef = gitRef;
         source.workingDirectory = artifact.storage_config.git.path ?? mod.working_directory ?? undefined;
       }
 
