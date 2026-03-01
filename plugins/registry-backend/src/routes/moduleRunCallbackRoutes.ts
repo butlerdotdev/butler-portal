@@ -313,23 +313,21 @@ export function createModuleRunCallbackRouter(options: RouterOptions) {
         mod.artifact_name,
       );
 
-      // Resolve the effective version: explicit run version, or resolve
-      // pinned constraint (e.g. "~> 1.2.0") to latest matching approved version.
-      let resolvedVersion = run.module_version ?? undefined;
-      if (!resolvedVersion && artifact && mod.pinned_version) {
-        const constraint = mod.pinned_version;
-        if (/^~>|[><=^]/.test(constraint)) {
-          // Semver constraint — resolve to latest matching approved version
-          const versions = await db.listApprovedVersions(artifact.id);
-          const match = versions.find(v => {
-            const pin = constraint.replace(/^~>\s*/, '');
-            const [pMaj, pMin] = pin.split('.').map(Number);
-            return v.version_major === pMaj && v.version_minor >= pMin;
-          });
-          resolvedVersion = match?.version;
-        } else {
-          resolvedVersion = constraint;
-        }
+      // Resolve the effective version: explicit run version or pinned constraint.
+      // Either source may contain a semver constraint (e.g. "~> 8.0") that needs
+      // to be resolved to the latest matching approved version from the registry.
+      let resolvedVersion: string | undefined =
+        run.module_version ?? mod.pinned_version ?? undefined;
+
+      if (resolvedVersion && artifact && /^~>|[><=^]/.test(resolvedVersion)) {
+        const constraint = resolvedVersion;
+        const versions = await db.listApprovedVersions(artifact.id);
+        const pin = constraint.replace(/^~>\s*/, '');
+        const [pMaj, pMin] = pin.split('.').map(Number);
+        const match = versions.find(
+          v => v.version_major === pMaj && v.version_minor >= (pMin || 0),
+        );
+        resolvedVersion = match?.version;
       }
 
       // Resolve source from artifact storage/source config or VCS trigger
