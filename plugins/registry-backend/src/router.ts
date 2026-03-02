@@ -55,7 +55,6 @@ import { createModuleRunRouter } from './routes/moduleRunRoutes';
 import { createEnvironmentRunRouter } from './routes/environmentRunRoutes';
 import { createModuleRunCallbackRouter } from './routes/moduleRunCallbackRoutes';
 import { createCloudIntegrationRouter } from './routes/cloudIntegrationRoutes';
-import { createSeedRouter } from './routes/seedRoutes';
 import { createVariableSetRouter } from './routes/variableSetRoutes';
 import { createBindingRouter } from './routes/bindingRoutes';
 import { createPolicyRouter } from './routes/policyRoutes';
@@ -1737,7 +1736,6 @@ export async function createRouter(options: RouterOptions): Promise<express.Rout
   router.use(createVariableSetRouter(options));
   router.use(createBindingRouter(options));
   router.use(createPolicyRouter(options));
-  router.use(createSeedRouter(options));
 
   // Catch-all for unimplemented routes
   router.use((_req, res) => {
