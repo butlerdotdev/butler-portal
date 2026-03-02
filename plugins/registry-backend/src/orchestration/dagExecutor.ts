@@ -70,6 +70,14 @@ export class DagExecutor {
 
     const now = new Date().toISOString();
 
+    // Ensure environment_module_state rows exist for all active modules
+    for (const mod of activeModules) {
+      await this.db.getOrCreateEnvironmentModuleState(
+        envRun.environment_id,
+        mod.id,
+      );
+    }
+
     // Create module runs for each active module
     for (const mod of activeModules) {
       const hasNoDeps = (inDegree.get(mod.id) ?? 0) === 0;

@@ -138,6 +138,11 @@ export function createModuleRunCallbackRouter(options: RouterOptions) {
 
       // Update environment_module_state on terminal status
       if (isTerminal) {
+        // Ensure the state row exists before updating
+        await db.getOrCreateEnvironmentModuleState(
+          run.environment_id,
+          run.project_module_id,
+        );
         const stateUpdates: Record<string, unknown> = {
           last_run_id: run.id,
           last_run_status: status,
