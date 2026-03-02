@@ -246,7 +246,11 @@ export function createModuleRunCallbackRouter(options: RouterOptions) {
         req.params.runId,
       );
 
-      const outputs = req.body;
+      // Runner sends {"outputs": {...}} — unwrap if present
+      const rawBody = req.body;
+      const outputs = (rawBody && typeof rawBody === 'object' && rawBody.outputs && typeof rawBody.outputs === 'object')
+        ? rawBody.outputs
+        : rawBody;
       if (!outputs || typeof outputs !== 'object') {
         throw badRequest('Request body must be a JSON object of outputs');
       }
