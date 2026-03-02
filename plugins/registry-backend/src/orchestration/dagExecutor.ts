@@ -50,11 +50,23 @@ export class DagExecutor {
     const activeModules = modules.filter(m => m.status === 'active');
     const { deps } = await this.db.getProjectGraph(env.project_id);
 
-    // Build adjacency and in-degree maps
-    const { inDegree } = this.buildGraph(activeModules, deps);
-
     // Map operation: plan-all → plan, apply-all → apply, destroy-all → destroy
     const moduleOp = this.mapOperation(envRun.operation);
+
+    // For destroy, reverse the dependency direction so leaf modules run first.
+    // In normal order: A→B means "B depends on A" (A runs first).
+    // For destroy: A must be destroyed AFTER B, so B should run first.
+    const effectiveDeps =
+      moduleOp === 'destroy'
+        ? deps.map(d => ({
+            ...d,
+            module_id: d.depends_on_id,
+            depends_on_id: d.module_id,
+          }))
+        : deps;
+
+    // Build adjacency and in-degree maps
+    const { inDegree } = this.buildGraph(activeModules, effectiveDeps);
 
     const now = new Date().toISOString();
 
@@ -128,10 +140,22 @@ export class DagExecutor {
     const allModuleRuns = await this.db.getModuleRunsForEnvRun(envRun.id);
     const { deps } = await this.db.getProjectGraph(env.project_id);
 
-    // Build reverse adjacency: module_id → [depends_on_id, ...]
+    // For destroy, reverse the dependency direction.
+    // Normal: depends_on_id → module_id (upstream runs first)
+    // Destroy: module_id → depends_on_id (downstream runs first)
+    const isDestroy = moduleRun.operation === 'destroy';
+    const effectiveDeps = isDestroy
+      ? deps.map(d => ({
+          ...d,
+          module_id: d.depends_on_id,
+          depends_on_id: d.module_id,
+        }))
+      : deps;
+
+    // Build adjacency maps using effective (possibly reversed) deps
     const upstreamOf = new Map<string, string[]>();
     const downstreamOf = new Map<string, string[]>();
-    for (const dep of deps) {
+    for (const dep of effectiveDeps) {
       if (!downstreamOf.has(dep.depends_on_id)) {
         downstreamOf.set(dep.depends_on_id, []);
       }
