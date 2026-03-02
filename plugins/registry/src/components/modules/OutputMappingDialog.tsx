@@ -118,9 +118,9 @@ export function OutputMappingDialog({
             <Table size="small">
               <TableHead>
                 <TableRow>
-                  <TableCell>Upstream Output</TableCell>
+                  <TableCell>Output from {upstreamModuleName}</TableCell>
                   <TableCell style={{ width: 40 }} />
-                  <TableCell>Downstream Variable</TableCell>
+                  <TableCell>Variable in {currentModuleName}</TableCell>
                   <TableCell style={{ width: 48 }} />
                 </TableRow>
               </TableHead>
