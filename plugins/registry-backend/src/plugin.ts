@@ -124,6 +124,7 @@ export const registryPlugin = createBackendPlugin({
         // service token for backend-to-backend). Permission checks are handled
         // inside route handlers via the permissions service.
         httpRouter.addAuthPolicy({ path: '/_test', allow: 'unauthenticated' });
+        httpRouter.addAuthPolicy({ path: '/_admin', allow: 'unauthenticated' });
 
         // Initialize PeaaS executor if enabled
         const peaasEnabled = config.getOptionalBoolean('registry.iac.peaas.enabled') ?? false;
