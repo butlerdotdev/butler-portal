@@ -37,9 +37,14 @@ import {
 } from '@internal/plugin-registry-common';
 import { useRegistryApi } from '../../hooks/useRegistryApi';
 import { EnvironmentBindings } from './EnvironmentBindings';
+import { EnvironmentGraph } from './EnvironmentGraph';
 import { StateBackendForm } from '../modules/StateBackendForm';
 import type { Environment, EnvironmentRun } from '../../api/types/environments';
-import type { EnvironmentModuleState, Project } from '../../api/types/projects';
+import type {
+  EnvironmentModuleState,
+  Project,
+  ProjectGraph,
+} from '../../api/types/projects';
 
 const useStyles = makeStyles(theme => ({
   header: {
@@ -130,6 +135,7 @@ export function EnvironmentDetail() {
 
   const [environment, setEnvironment] = useState<(Environment & { module_states?: EnvironmentModuleState[] }) | null>(null);
   const [project, setProject] = useState<Project | null>(null);
+  const [graph, setGraph] = useState<ProjectGraph | null>(null);
   const [envRuns, setEnvRuns] = useState<EnvironmentRun[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -156,9 +162,10 @@ export function EnvironmentDetail() {
       ]);
       setEnvironment(envData);
       setEnvRuns(runsData.runs);
-      // Fetch project for execution mode (best-effort, don't block on failure)
+      // Fetch project and graph (best-effort, don't block on failure)
       if (envData.project_id && !project) {
         api.getProject(envData.project_id).then(p => setProject(p)).catch(() => {});
+        api.getProjectGraph(envData.project_id).then(g => setGraph(g)).catch(() => {});
       }
       setError(null);
     } catch (err) {
@@ -369,6 +376,22 @@ export function EnvironmentDetail() {
             }
           />
         </Paper>
+      )}
+
+      {/* Dependency Graph */}
+      {graph && graph.nodes.length > 0 && (
+        <Box className={classes.section}>
+          <Typography variant="subtitle1" className={classes.sectionTitle}>
+            Dependency Graph
+          </Typography>
+          <Paper variant="outlined">
+            <EnvironmentGraph
+              graph={graph}
+              moduleStates={moduleStates}
+              onNodeClick={moduleId => navigate(`modules/${moduleId}`)}
+            />
+          </Paper>
+        </Box>
       )}
 
       {/* Module States */}

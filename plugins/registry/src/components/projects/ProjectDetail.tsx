@@ -507,7 +507,7 @@ export function ProjectDetail() {
                         </defs>
 
                         {/* Edges */}
-                        {graph.edges.map((edge: { from: string; to: string }, i: number) => {
+                        {graph.edges.map((edge, i: number) => {
                           const posMap = new Map(
                             graphLayout.nodes.map(n => [n.id, n]),
                           );
@@ -518,17 +518,45 @@ export function ProjectDetail() {
                           const y1 = from.y + NODE_HEIGHT / 2;
                           const x2 = to.x;
                           const y2 = to.y + NODE_HEIGHT / 2;
+                          const mappingCount = edge.output_mapping_count ?? 0;
+                          const hasData = mappingCount > 0;
+                          const midX = (x1 + x2) / 2;
+                          const midY = (y1 + y2) / 2;
                           return (
-                            <line
-                              key={i}
-                              x1={x1}
-                              y1={y1}
-                              x2={x2}
-                              y2={y2}
-                              stroke="#666"
-                              strokeWidth={2}
-                              markerEnd="url(#project-arrowhead)"
-                            />
+                            <g key={i}>
+                              <line
+                                x1={x1}
+                                y1={y1}
+                                x2={x2}
+                                y2={y2}
+                                stroke={hasData ? '#1976d2' : '#999'}
+                                strokeWidth={hasData ? 2.5 : 1.5}
+                                strokeDasharray={hasData ? undefined : '6 3'}
+                                markerEnd="url(#project-arrowhead)"
+                              />
+                              {hasData && (
+                                <>
+                                  <rect
+                                    x={midX - 16}
+                                    y={midY - 10}
+                                    width={32}
+                                    height={16}
+                                    rx={8}
+                                    fill="#1976d2"
+                                  />
+                                  <text
+                                    x={midX}
+                                    y={midY + 2}
+                                    textAnchor="middle"
+                                    fontSize={9}
+                                    fontWeight={600}
+                                    fill="#fff"
+                                  >
+                                    {mappingCount} out
+                                  </text>
+                                </>
+                              )}
+                            </g>
                           );
                         })}
 

@@ -26,6 +26,7 @@ import { useRegistryApi } from '../../hooks/useRegistryApi';
 import { ModuleVariablesEditor } from './ModuleVariablesEditor';
 import { ModuleSettings } from './ModuleSettings';
 import { ModuleRunsList } from './ModuleRunsList';
+import { ModuleOutputsViewer } from './ModuleOutputsViewer';
 import type { ProjectModule } from '../../api/types/projects';
 
 const useStyles = makeStyles(theme => ({
@@ -129,6 +130,7 @@ export function ModuleDetail() {
     ? [
         { label: 'Runs', id: 'runs' },
         { label: 'Variables', id: 'variables' },
+        { label: 'Outputs', id: 'outputs' },
         { label: 'Settings', id: 'settings' },
       ]
     : [{ label: 'Settings', id: 'settings' }];
@@ -186,6 +188,10 @@ export function ModuleDetail() {
 
       {tabDefs[tabIndex]?.id === 'variables' && envId && moduleId && (
         <ModuleVariablesEditor envId={envId} moduleId={moduleId} />
+      )}
+
+      {tabDefs[tabIndex]?.id === 'outputs' && envId && moduleId && (
+        <ModuleOutputsViewer envId={envId} moduleId={moduleId} />
       )}
 
       {tabDefs[tabIndex]?.id === 'settings' && projectId && moduleId && (

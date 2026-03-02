@@ -4,6 +4,7 @@
 import { useMemo } from 'react';
 import { Box, Typography, makeStyles } from '@material-ui/core';
 import type { ProjectGraph } from '../../api/types/projects';
+import type { EnvironmentModuleState } from '../../api/types/projects';
 
 const useStyles = makeStyles(theme => ({
   root: {
@@ -34,25 +35,47 @@ interface NodePosition {
   name: string;
   artifactName: string;
   status: string;
+  runStatus: string | null;
 }
 
-function statusFill(status: string): string {
-  switch (status) {
-    case 'active':
+function runStatusFill(runStatus: string | null): string {
+  switch (runStatus) {
+    case 'succeeded':
       return '#4caf50';
-    case 'archived':
+    case 'failed':
+    case 'timed_out':
+    case 'cancelled':
+      return '#f44336';
+    case 'running':
+    case 'applying':
+    case 'confirmed':
+      return '#2196f3';
+    case 'planned':
+      return '#ff9800';
+    case 'queued':
+    case 'pending':
       return '#9e9e9e';
     default:
       return '#bdbdbd';
   }
 }
 
+function runStatusLabel(runStatus: string | null): string {
+  if (!runStatus) return 'no runs';
+  return runStatus;
+}
+
 function layoutGraph(
   graph: ProjectGraph,
+  moduleStates?: EnvironmentModuleState[],
 ): { nodes: NodePosition[]; width: number; height: number } {
   if (graph.nodes.length === 0) {
     return { nodes: [], width: 0, height: 0 };
   }
+
+  const stateMap = new Map(
+    (moduleStates ?? []).map(s => [s.project_module_id, s]),
+  );
 
   // Build adjacency for topological layering
   const incoming = new Map<string, Set<string>>();
@@ -93,7 +116,7 @@ function layoutGraph(
     }
   }
 
-  // Handle disconnected nodes (cycle or no edges)
+  // Handle disconnected nodes
   for (const n of graph.nodes) {
     if (!layers.has(n.id)) {
       layers.set(n.id, 0);
@@ -116,6 +139,7 @@ function layoutGraph(
     const ids = layerGroups.get(layer) ?? [];
     ids.forEach((id, idx) => {
       const node = nodeMap.get(id)!;
+      const state = stateMap.get(id);
       positions.push({
         id,
         x: PADDING + layer * H_SPACING,
@@ -123,6 +147,7 @@ function layoutGraph(
         name: node.name,
         artifactName: node.artifact_name,
         status: node.status,
+        runStatus: state?.last_run_status ?? null,
       });
     });
   }
@@ -139,14 +164,19 @@ function layoutGraph(
 
 export function EnvironmentGraph({
   graph,
+  moduleStates,
   onNodeClick,
 }: {
   graph: ProjectGraph;
+  moduleStates?: EnvironmentModuleState[];
   onNodeClick?: (moduleId: string) => void;
 }) {
   const classes = useStyles();
 
-  const layout = useMemo(() => layoutGraph(graph), [graph]);
+  const layout = useMemo(
+    () => layoutGraph(graph, moduleStates),
+    [graph, moduleStates],
+  );
 
   if (graph.nodes.length === 0) {
     return (
@@ -170,7 +200,7 @@ export function EnvironmentGraph({
       >
         <defs>
           <marker
-            id="arrowhead"
+            id="env-arrowhead"
             markerWidth="10"
             markerHeight="7"
             refX="10"
@@ -178,6 +208,16 @@ export function EnvironmentGraph({
             orient="auto"
           >
             <polygon points="0 0, 10 3.5, 0 7" fill="#666" />
+          </marker>
+          <marker
+            id="env-arrowhead-blue"
+            markerWidth="10"
+            markerHeight="7"
+            refX="10"
+            refY="3.5"
+            orient="auto"
+          >
+            <polygon points="0 0, 10 3.5, 0 7" fill="#1976d2" />
           </marker>
         </defs>
 
@@ -190,17 +230,49 @@ export function EnvironmentGraph({
           const y1 = from.y + NODE_HEIGHT / 2;
           const x2 = to.x;
           const y2 = to.y + NODE_HEIGHT / 2;
+          const mappingCount = edge.output_mapping_count ?? 0;
+          const hasData = mappingCount > 0;
+          const midX = (x1 + x2) / 2;
+          const midY = (y1 + y2) / 2;
           return (
-            <line
-              key={i}
-              x1={x1}
-              y1={y1}
-              x2={x2}
-              y2={y2}
-              stroke="#666"
-              strokeWidth={2}
-              markerEnd="url(#arrowhead)"
-            />
+            <g key={i}>
+              <line
+                x1={x1}
+                y1={y1}
+                x2={x2}
+                y2={y2}
+                stroke={hasData ? '#1976d2' : '#999'}
+                strokeWidth={hasData ? 2.5 : 1.5}
+                strokeDasharray={hasData ? undefined : '6 3'}
+                markerEnd={
+                  hasData
+                    ? 'url(#env-arrowhead-blue)'
+                    : 'url(#env-arrowhead)'
+                }
+              />
+              {hasData && (
+                <>
+                  <rect
+                    x={midX - 16}
+                    y={midY - 10}
+                    width={32}
+                    height={16}
+                    rx={8}
+                    fill="#1976d2"
+                  />
+                  <text
+                    x={midX}
+                    y={midY + 2}
+                    textAnchor="middle"
+                    fontSize={9}
+                    fontWeight={600}
+                    fill="#fff"
+                  >
+                    {mappingCount} out
+                  </text>
+                </>
+              )}
+            </g>
           );
         })}
 
@@ -217,15 +289,15 @@ export function EnvironmentGraph({
               height={NODE_HEIGHT}
               rx={6}
               fill="#fff"
-              stroke="#ccc"
+              stroke={runStatusFill(node.runStatus)}
               strokeWidth={2}
             />
-            {/* Status indicator */}
+            {/* Run status indicator */}
             <rect
               width={6}
               height={NODE_HEIGHT}
               rx={3}
-              fill={statusFill(node.status)}
+              fill={runStatusFill(node.runStatus)}
             />
             <text
               x={16}
@@ -241,8 +313,14 @@ export function EnvironmentGraph({
             <text x={16} y={38} fontSize={10} fill="#888">
               {node.artifactName}
             </text>
-            <text x={16} y={52} fontSize={10} fill="#888">
-              {node.status}
+            <text
+              x={16}
+              y={52}
+              fontSize={10}
+              fill={runStatusFill(node.runStatus)}
+              fontWeight={500}
+            >
+              {runStatusLabel(node.runStatus)}
             </text>
           </g>
         ))}

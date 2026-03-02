@@ -163,6 +163,9 @@ export function createProjectRouter(options: RouterOptions) {
       const edges = deps.map(d => ({
         from: d.depends_on_id,
         to: d.module_id,
+        output_mapping_count: Array.isArray(d.output_mapping)
+          ? d.output_mapping.length
+          : 0,
       }));
 
       res.json({ nodes, edges });

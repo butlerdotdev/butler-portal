@@ -92,6 +92,7 @@ export interface ProjectGraphNode {
 export interface ProjectGraphEdge {
   from: string;
   to: string;
+  output_mapping_count?: number;
 }
 
 export interface ProjectGraph {
