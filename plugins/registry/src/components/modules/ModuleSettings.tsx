@@ -9,7 +9,6 @@ import {
   TextField,
   MenuItem,
   Paper,
-  Chip,
   FormControlLabel,
   Switch,
   Table,
@@ -22,6 +21,7 @@ import {
   makeStyles,
 } from '@material-ui/core';
 import DeleteIcon from '@material-ui/icons/Delete';
+import EditIcon from '@material-ui/icons/Edit';
 import { Progress } from '@backstage/core-components';
 import { usePermission } from '@backstage/plugin-permission-react';
 import {
@@ -31,10 +31,12 @@ import {
 import { useRegistryApi } from '../../hooks/useRegistryApi';
 import { ModuleBindings } from './ModuleBindings';
 import { ResolvedVariablesViewer } from './ResolvedVariablesViewer';
+import { OutputMappingDialog } from './OutputMappingDialog';
 import type {
   ProjectModule,
   ProjectModuleDependency,
 } from '../../api/types/projects';
+import type { OutputMapping } from '../../api/types/environments';
 
 const useStyles = makeStyles(theme => ({
   section: {
@@ -58,6 +60,12 @@ const useStyles = makeStyles(theme => ({
     alignItems: 'center',
     gap: theme.spacing(1),
     padding: theme.spacing(1),
+  },
+  mappingLink: {
+    cursor: 'pointer',
+    '&:hover': {
+      textDecoration: 'underline',
+    },
   },
 }));
 
@@ -94,6 +102,7 @@ export function ModuleSettings({
   const [allModules, setAllModules] = useState<ProjectModule[]>([]);
   const [depsLoading, setDepsLoading] = useState(true);
   const [newDepId, setNewDepId] = useState('');
+  const [editingDep, setEditingDep] = useState<ProjectModuleDependency | null>(null);
 
   const fetchDeps = useCallback(async () => {
     try {
@@ -134,10 +143,12 @@ export function ModuleSettings({
   const handleAddDep = async () => {
     if (!newDepId) return;
     try {
-      const existingIds = deps.map(d => d.depends_on_id);
       await api.setProjectModuleDependencies(projectId, moduleId, {
         dependencies: [
-          ...existingIds.map(id => ({ depends_on_id: id })),
+          ...deps.map(d => ({
+            depends_on_id: d.depends_on_id,
+            output_mapping: d.output_mapping ?? undefined,
+          })),
           { depends_on_id: newDepId },
         ],
       });
@@ -152,10 +163,30 @@ export function ModuleSettings({
     try {
       const remaining = deps
         .filter(d => d.depends_on_id !== depId)
-        .map(d => ({ depends_on_id: d.depends_on_id }));
+        .map(d => ({
+          depends_on_id: d.depends_on_id,
+          output_mapping: d.output_mapping ?? undefined,
+        }));
       await api.setProjectModuleDependencies(projectId, moduleId, {
         dependencies: remaining,
       });
+      fetchDeps();
+    } catch {
+      // Silent
+    }
+  };
+
+  const handleSaveMapping = async (depId: string, mapping: OutputMapping[]) => {
+    try {
+      await api.setProjectModuleDependencies(projectId, moduleId, {
+        dependencies: deps.map(d => ({
+          depends_on_id: d.depends_on_id,
+          output_mapping: d.depends_on_id === depId
+            ? (mapping.length > 0 ? mapping : undefined)
+            : (d.output_mapping ?? undefined),
+        })),
+      });
+      setEditingDep(null);
       fetchDeps();
     } catch {
       // Silent
@@ -252,23 +283,41 @@ export function ModuleSettings({
                         <TableCell>{dep.depends_on_name}</TableCell>
                         <TableCell>
                           {dep.output_mapping && dep.output_mapping.length > 0
-                            ? dep.output_mapping.map((m: { upstream_output: string; downstream_variable: string }) => (
-                                <Chip
-                                  key={m.upstream_output}
-                                  label={`${m.upstream_output} -> ${m.downstream_variable}`}
-                                  size="small"
-                                  variant="outlined"
-                                  style={{ margin: 2 }}
-                                />
-                              ))
-                            : '-'}
+                            ? (
+                              <Typography
+                                variant="body2"
+                                color="primary"
+                                className={classes.mappingLink}
+                                onClick={() => setEditingDep(dep)}
+                              >
+                                {dep.output_mapping.length} mapping{dep.output_mapping.length !== 1 ? 's' : ''}
+                              </Typography>
+                            )
+                            : (
+                              <Typography
+                                variant="body2"
+                                color="textSecondary"
+                                className={classes.mappingLink}
+                                onClick={() => setEditingDep(dep)}
+                              >
+                                ordering only
+                              </Typography>
+                            )}
                         </TableCell>
-                        <TableCell>
+                        <TableCell align="right">
+                          <IconButton
+                            size="small"
+                            onClick={() => setEditingDep(dep)}
+                            title="Edit output mapping"
+                          >
+                            <EditIcon fontSize="small" />
+                          </IconButton>
                           <IconButton
                             size="small"
                             onClick={() =>
                               handleRemoveDep(dep.depends_on_id)
                             }
+                            title="Remove dependency"
                           >
                             <DeleteIcon fontSize="small" />
                           </IconButton>
@@ -336,6 +385,18 @@ export function ModuleSettings({
             Use only if Terraform state is stuck locked after a crash. This action is audit-logged.
           </Typography>
         </Box>
+      )}
+
+      {/* Output Mapping Editor Dialog */}
+      {editingDep && (
+        <OutputMappingDialog
+          open
+          onClose={() => setEditingDep(null)}
+          onSave={mapping => handleSaveMapping(editingDep.depends_on_id, mapping)}
+          upstreamModuleName={editingDep.depends_on_name}
+          currentModuleName={mod.name}
+          initialMapping={editingDep.output_mapping ?? []}
+        />
       )}
     </>
   );
