@@ -1,9 +1,23 @@
-# Butler Portal
+<p align="center">
+  <img src="https://raw.githubusercontent.com/butlerdotdev/butler/main/assets/mascots/portal.png" alt="Butler Portal" width="200"/>
+</p>
 
-[![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
-[![Backstage](https://img.shields.io/badge/Backstage-v1.45.0-9cf)](https://backstage.io)
+<h1 align="center">Butler Portal</h1>
 
-[Butler Labs](https://butlerlabs.dev)' Internal Developer Platform, built on [Backstage](https://backstage.io).
+<p align="center">
+  Internal Developer Platform built on <a href="https://backstage.io">Backstage</a>. Home of Chambers, Keeper, and Herald.
+</p>
+
+<p align="center">
+  <a href="LICENSE"><img src="https://img.shields.io/badge/License-Apache%202.0-blue.svg" alt="License"></a>
+  <a href="https://backstage.io"><img src="https://img.shields.io/badge/Backstage-v1.45.0-9cf" alt="Backstage"></a>
+</p>
+
+<p align="center">
+  <a href="https://github.com/butlerdotdev/butler">Butler</a> · <a href="https://docs.butlerlabs.dev">Docs</a> · <a href="https://butlerlabs.dev">Website</a>
+</p>
+
+---
 
 Butler Portal gives dev teams self-service access to infrastructure, service catalogs, golden paths, and documentation. The [Butler](https://github.com/butlerdotdev/butler) plugin is the first integration, adding Kubernetes-as-a-Service from the Butler control plane. More plugins are coming to fill out the rest of the platform engineering stack.
 
