@@ -13,16 +13,16 @@ Butler Portal is built on [Backstage](https://backstage.io), an open platform fo
 graph TB
     subgraph portal["Butler Portal"]
         subgraph app["Backstage App Shell"]
+            BF["Butler Frontend"]
             CF["Chambers Frontend"]
             KF["Keeper Frontend"]
             HF["Herald Frontend"]
         end
 
         subgraph backend["Backstage Backend"]
-            CB["Chambers Backend"]
+            BB["Butler Backend<br/>K8s Proxy + Terminal"]
             KB["Keeper Backend"]
             HB["Herald Backend"]
-            KP["Kubernetes Plugin"]
         end
     end
 
@@ -41,15 +41,15 @@ graph TB
         TC2["Tenant Cluster 2"]
     end
 
-    CF --> CB
+    BF --> BB
+    CF --> BB
     KF --> KB
     HF --> HB
 
-    CB --> KP
     KB --> PG
-    HB --> KP
+    BB --> API
+    HB --> API
 
-    KP --> API
     API --> BC
     BC --> WS
 
@@ -63,9 +63,13 @@ graph TB
 
 The app shell is the React single-page application that hosts all plugin frontends. It provides navigation, theming, authentication context, and the Backstage service catalog. Plugin frontends register as React components mounted at specific routes within the app shell.
 
+### Butler Backend
+
+The Butler backend (`plugins/butler-backend`) is the central Kubernetes integration point. It provides authenticated access to the Butler management cluster's API server, WebSocket-based terminal proxying for cluster node access, and serves as the data layer for both the Butler frontend and Chambers frontend. Chambers does not have its own backend; it communicates with the management cluster through the Butler backend.
+
 ### Plugin Backends
 
-Each plugin backend runs as an Express router within the Backstage backend process. Backends handle API requests from their corresponding frontends, manage database access, and communicate with external services. The Backstage backend provides shared infrastructure for logging, configuration, database connections, and authentication.
+Keeper and Herald each have their own backends that run as Express routers within the Backstage backend process. The Keeper backend manages PostgreSQL storage for artifact metadata. The Herald backend handles Vector configuration compilation and pipeline validation. The Backstage backend provides shared infrastructure for logging, configuration, database connections, and authentication.
 
 ### PostgreSQL
 
@@ -73,7 +77,7 @@ PostgreSQL serves as the persistent data store for the Backstage catalog and plu
 
 ### Butler Management Cluster
 
-Portal connects to the Butler management cluster through the Backstage Kubernetes plugin. This connection provides access to Butler CRDs such as TenantCluster, Workspace, and Team resources. The Chambers plugin reads and creates Workspace resources through this connection. The Herald plugin reads cluster topology to determine available telemetry sources.
+Portal connects to the Butler management cluster through the Butler backend plugin. This connection provides access to Butler CRDs such as TenantCluster, Workspace, and Team resources. The Chambers plugin reads and creates Workspace resources through this connection. The Herald plugin reads cluster topology to determine available telemetry sources.
 
 ### Tenant Clusters
 

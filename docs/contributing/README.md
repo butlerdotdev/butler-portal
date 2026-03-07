@@ -127,15 +127,15 @@ butler-portal/
       src/
         index.ts            # Backend plugin registration
   plugins/
-    chambers-frontend/      # Chambers UI components
-    chambers-backend/       # Chambers API handlers
-    chambers-common/        # Shared types for Chambers
-    keeper-frontend/        # Keeper UI components
-    keeper-backend/         # Keeper API handlers and DB
-    keeper-common/          # Shared types for Keeper
-    herald-frontend/        # Herald UI components
-    herald-backend/         # Herald API handlers
-    herald-common/          # Shared types for Herald
+    butler/                 # Butler cluster management frontend
+    butler-backend/         # Butler K8s proxy and WebSocket terminal
+    workspaces/             # Chambers workspace management frontend
+    registry/               # Keeper artifact registry frontend
+    registry-backend/       # Keeper API and PostgreSQL storage
+    registry-common/        # Keeper shared types and permissions
+    pipeline/               # Herald pipeline builder frontend
+    pipeline-backend/       # Herald API and Vector execution
+    pipeline-common/        # Herald shared types and permissions
   app-config.yaml           # Base configuration
   package.json              # Root workspace config
   tsconfig.json             # TypeScript config
@@ -164,7 +164,7 @@ After scaffolding, register the plugin in the app:
 1. **Frontend**: Add the plugin page to `packages/app/src/App.tsx`:
 
     ```typescript
-    import { MyPluginPage } from '@butlerlabs/plugin-my-plugin';
+    import { MyPluginPage } from '@internal/plugin-my-plugin';
 
     // In the FlatRoutes:
     <Route path="/my-plugin" element={<MyPluginPage />} />
@@ -173,7 +173,7 @@ After scaffolding, register the plugin in the app:
 2. **Backend**: Add the plugin to `packages/backend/src/index.ts`:
 
     ```typescript
-    import { myPlugin } from '@butlerlabs/plugin-my-plugin-backend';
+    import { myPlugin } from '@internal/plugin-my-plugin-backend';
 
     backend.add(myPlugin);
     ```
@@ -189,7 +189,7 @@ After scaffolding, register the plugin in the app:
 Run tests for a specific plugin:
 
 ```bash
-yarn workspace @butlerlabs/plugin-chambers-frontend test
+yarn workspace @internal/plugin-workspaces test
 ```
 
 Run all tests across the monorepo:
@@ -201,7 +201,7 @@ yarn test:all
 Run tests in watch mode during development:
 
 ```bash
-yarn workspace @butlerlabs/plugin-chambers-frontend test --watch
+yarn workspace @internal/plugin-workspaces test --watch
 ```
 
 ### Building
@@ -215,7 +215,7 @@ yarn build:all
 Build a specific plugin:
 
 ```bash
-yarn workspace @butlerlabs/plugin-chambers-frontend build
+yarn workspace @internal/plugin-workspaces build
 ```
 
 ### Type Checking

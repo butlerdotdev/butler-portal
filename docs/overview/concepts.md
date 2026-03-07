@@ -17,12 +17,15 @@ A Backstage app instance is a deployed Backstage application with a specific set
 
 ### Plugin
 
-A plugin is a modular extension that adds functionality to a Backstage instance. Plugins consist of two parts:
+A plugin is a modular extension that adds functionality to a Backstage instance. Plugins can have up to three parts:
 
 - **Frontend plugin** (`plugins/{name}`): React components that render pages, cards, and widgets in the Backstage UI.
 - **Backend plugin** (`plugins/{name}-backend`): Node.js modules that expose API routes, connect to databases, and interact with external systems.
+- **Common package** (`plugins/{name}-common`): Shared TypeScript types and permission definitions used by both frontend and backend.
 
-Butler Portal ships five plugins (three implemented, two planned). Each plugin registers its own routes, API endpoints, and catalog entity kinds.
+Not every plugin requires all three parts. Some plugins are frontend-only and rely on other plugins' backends for data access.
+
+Butler Portal ships with nine plugin packages across five functional areas (three implemented, two planned). Each plugin registers its own routes, API endpoints, and catalog entity kinds.
 
 ### Service Catalog
 
@@ -99,15 +102,18 @@ Butler Portal follows the standard Backstage plugin architecture. Each plugin is
 ```
 butler-portal/
   packages/
-    app/            # Frontend shell (React)
-    backend/        # Backend host (Node.js)
+    app/                 # Frontend shell (React)
+    backend/             # Backend host (Node.js)
   plugins/
-    workspaces/          # Chambers frontend
-    workspaces-backend/  # Chambers backend
+    butler/              # Butler cluster management frontend
+    butler-backend/      # Butler K8s proxy and WebSocket terminal
+    workspaces/          # Chambers frontend (uses butler-backend for K8s access)
     registry/            # Keeper frontend
-    registry-backend/    # Keeper backend
-    pipeline/            # Herald frontend
-    pipeline-backend/    # Herald backend
+    registry-backend/    # Keeper API and PostgreSQL storage
+    registry-common/     # Keeper shared types
+    pipeline/            # Herald frontend (React Flow + CodeMirror)
+    pipeline-backend/    # Herald API and Vector execution
+    pipeline-common/     # Herald shared types
 ```
 
 The frontend shell (`packages/app`) imports and mounts each plugin's routes. The backend host (`packages/backend`) loads each plugin's API router and catalog providers.
@@ -146,9 +152,22 @@ flowchart LR
 
 ## Plugin Concepts
 
+### Butler Plugin
+
+The Butler plugin provides Kubernetes cluster management within Portal. It mirrors the functionality of the standalone Butler Console, with additional Portal-specific features like integrated identity provider configuration and Backstage catalog entity discovery. The frontend (`plugins/butler`) renders cluster dashboards, terminal access, and addon management. The backend (`plugins/butler-backend`) handles WebSocket terminal proxying and authenticated Kubernetes API access.
+
+**Key Concepts:**
+
+| Concept | Description |
+|---------|-------------|
+| Cluster Dashboard | Overview of tenant clusters with status, nodes, and addon inventory |
+| Terminal Access | WebSocket-based terminal session to cluster nodes via the backend proxy |
+| Addon Management | Install, upgrade, and remove addons on tenant clusters |
+| Catalog Sync | TenantCluster resources discovered as Backstage catalog entities |
+
 ### Chambers (Workspaces)
 
-Chambers provides private development environments for engineers. Each workspace is an isolated container or VM with a configured development toolchain.
+Chambers provides private development environments for engineers. Each workspace is an isolated container or VM with a configured development toolchain. Chambers is a frontend-only plugin (`plugins/workspaces`). It communicates with the Butler management cluster through the Butler backend plugin for Kubernetes API access.
 
 **Key Concepts:**
 

@@ -5,7 +5,9 @@ sidebar_label: Overview
 
 # Chambers
 
-Chambers is Butler Portal's developer workspace plugin. It provides private development environments that run as pods on Butler-managed Kubernetes clusters. Developers use Chambers to create, connect to, and manage cloud-based workspaces directly from the Portal UI.
+Chambers is Butler Portal's developer workspace plugin (`plugins/workspaces`). It provides private development environments that run as pods on Butler-managed Kubernetes clusters. Developers use Chambers to create, connect to, and manage cloud-based workspaces directly from the Portal UI.
+
+Chambers is a frontend-only plugin. It communicates with the Butler management cluster through the Butler backend plugin (`plugins/butler-backend`) for Kubernetes API access to Workspace and WorkspaceTemplate CRDs.
 
 ## Key Features
 

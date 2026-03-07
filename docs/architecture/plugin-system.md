@@ -9,29 +9,22 @@ Butler Portal plugins follow the standard Backstage plugin architecture. Each pl
 
 ## Plugin Package Structure
 
-A typical plugin consists of three packages within the monorepo:
+Plugins vary in composition. Some have frontend, backend, and common packages. Others are frontend-only and rely on shared backends for data access.
 
 ```
 plugins/
-  chambers-frontend/       # React components, pages, routes
-    src/
-      plugin.ts            # Plugin registration and route bindings
-      components/          # React components
-      api/                 # API client for backend calls
-    package.json
-  chambers-backend/        # Express router, service logic
-    src/
-      plugin.ts            # Backend plugin registration
-      router.ts            # Express route handlers
-      service.ts           # Business logic and external calls
-    package.json
-  chambers-common/         # Shared types and utilities
-    src/
-      types.ts             # TypeScript interfaces shared across frontend and backend
-    package.json
+  butler/                  # Cluster management frontend
+  butler-backend/          # K8s proxy, WebSocket terminal, cluster API
+  workspaces/              # Chambers frontend (frontend-only, uses butler-backend)
+  registry/                # Keeper frontend
+  registry-backend/        # Keeper API and PostgreSQL storage
+  registry-common/         # Keeper shared types and permissions
+  pipeline/                # Herald frontend (React Flow, CodeMirror)
+  pipeline-backend/        # Herald API and Vector execution
+  pipeline-common/         # Herald shared types and permissions
 ```
 
-The `-common` package is optional. Use it when the frontend and backend share type definitions, constants, or validation logic.
+Not every plugin needs all three packages. Chambers (`workspaces`) is a frontend-only plugin that communicates with the management cluster through the Butler backend. Keeper and Herald each have their own backends and common packages because they manage independent data stores and permissions.
 
 ## Frontend Plugins
 
@@ -42,10 +35,10 @@ Frontend plugins are React components that mount into the Backstage app shell. E
 Frontend plugins register with the Backstage app in `packages/app/src/App.tsx`:
 
 ```typescript
-import { chambersPlugin, ChambersPage } from '@butlerlabs/plugin-chambers-frontend';
+import { ButlerPage } from '@internal/plugin-butler';
 
 // In the app routes:
-<Route path="/chambers" element={<ChambersPage />} />
+<Route path="/butler" element={<ButlerPage />} />
 ```
 
 The plugin object created via `createPlugin()` declares the plugin's ID, API references, and any dependencies on other plugins.
@@ -58,7 +51,7 @@ Frontend plugins communicate with their backends through the Backstage proxy or 
 
 ```typescript
 // Frontend API client using the proxy
-const response = await fetch(`${baseUrl}/api/proxy/chambers/workspaces`);
+const response = await fetch(`${baseUrl}/api/proxy/butler/clusters`);
 ```
 
 **API ref pattern**: The frontend declares an API ref and provides a client implementation. The Backstage API system handles dependency injection and discovery.
@@ -66,8 +59,8 @@ const response = await fetch(`${baseUrl}/api/proxy/chambers/workspaces`);
 ```typescript
 import { createApiRef } from '@backstage/core-plugin-api';
 
-export const chambersApiRef = createApiRef<ChambersApi>({
-  id: 'plugin.chambers',
+export const butlerApiRef = createApiRef<ButlerApi>({
+  id: 'plugin.butler',
 });
 ```
 
@@ -80,10 +73,10 @@ Backend plugins are Express routers that register with the Backstage backend. Th
 Backend plugins register with the Backstage backend in `packages/backend/src/index.ts`:
 
 ```typescript
-import { chambersPlugin } from '@butlerlabs/plugin-chambers-backend';
+import { butlerPlugin } from '@internal/plugin-butler-backend';
 
 // In the backend builder:
-backend.add(chambersPlugin);
+backend.add(butlerPlugin);
 ```
 
 ### Router Structure
@@ -93,8 +86,8 @@ Each backend plugin exports a router factory that receives Backstage backend ser
 ```typescript
 import { createRouter } from './router';
 
-export const chambersPlugin = createBackendPlugin({
-  pluginId: 'chambers',
+export const butlerPlugin = createBackendPlugin({
+  pluginId: 'butler',
   register(env) {
     env.registerInit({
       deps: {
@@ -134,26 +127,25 @@ const workspaces = await client.listNamespacedCustomObject(
 Common packages contain shared TypeScript types, constants, and utility functions used by both the frontend and backend packages of a plugin. They have no runtime dependencies on Backstage APIs.
 
 ```typescript
-// chambers-common/src/types.ts
-export interface Workspace {
+// registry-common/src/types.ts
+export interface Artifact {
+  id: string;
   name: string;
-  namespace: string;
-  status: WorkspacePhase;
-  sshEndpoint?: string;
-  editorUrl?: string;
+  type: ArtifactType;
+  version: string;
+  status: ArtifactStatus;
 }
 
-export type WorkspacePhase =
-  | 'Pending'
-  | 'Running'
-  | 'Stopped'
-  | 'Failed';
+export type ArtifactType =
+  | 'terraform-module'
+  | 'helm-chart'
+  | 'opa-policy';
 ```
 
 Both the frontend and backend import from the common package:
 
 ```typescript
-import { Workspace, WorkspacePhase } from '@butlerlabs/plugin-chambers-common';
+import { Artifact, ArtifactType } from '@internal/plugin-registry-common';
 ```
 
 ## Plugin Discovery
