@@ -88,8 +88,8 @@ The monorepo contains nine plugin packages:
 | Chambers (workspaces) | Beta |
 | Keeper (IaC registry) | Beta |
 | Herald (telemetry pipelines) | Beta |
-| Alfred (knowledge platform) | Planned |
-| Jeeves (drift remediation) | Planned |
+| Alfred (knowledge platform) | Coming Soon |
+| Jeeves (drift remediation) | Coming Soon |
 | Backstage Catalog Integration | Beta |
 | OIDC / SSO Authentication | Stable |
 

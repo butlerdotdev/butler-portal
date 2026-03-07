@@ -126,25 +126,26 @@ Frontend plugins communicate with their backends through the Backstage proxy or 
 flowchart LR
     subgraph portal["Butler Portal"]
         subgraph fe["Frontend"]
-            A["Chambers UI"]
-            B["Keeper UI"]
-            C["Herald UI"]
+            A["Butler UI"]
+            B["Chambers UI"]
+            C["Keeper UI"]
+            D["Herald UI"]
         end
         subgraph be["Backend"]
-            D["Chambers API"]
-            E["Keeper API"]
-            F["Herald API"]
-            G["Catalog"]
+            E["Butler Backend"]
+            F["Keeper Backend"]
+            G["Herald Backend"]
         end
     end
 
-    A --> D
+    A --> E
     B --> E
     C --> F
+    D --> G
 
-    D --> H["Kubernetes API"]
-    E --> I["Artifact Registry"]
-    F --> J["Vector Config"]
+    E --> H["Kubernetes API"]
+    F --> I["PostgreSQL"]
+    G --> J["Vector"]
     G --> H
 ```
 
