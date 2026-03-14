@@ -116,7 +116,7 @@ export async function createRouter(options: RouterOptions): Promise<express.Rout
   const routerOptions = { ...options, dagExecutor };
 
   const router = Router();
-  router.use(express.json());
+  router.use(express.json({ limit: '50mb' }));
 
   // Resolve Backstage user identity for all requests (non-blocking).
   // Sets req.registryUser and req.ownershipRefs if a valid Backstage token is present.
