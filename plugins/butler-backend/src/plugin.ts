@@ -99,16 +99,12 @@ export const butlerPlugin = createBackendPlugin({
           logger: logger.child({ service: 'butler-router' }),
         });
 
-        // Register the router with Backstage's HTTP router
+        // Register the router with Backstage's HTTP router.
+        // The framework default-deny auth policy applies: every route in
+        // this plugin requires an authenticated Backstage caller. There is
+        // no addAuthPolicy opt-out; identity propagation to butler-server
+        // is the receiving end's job, not a reason to weaken the gate.
         httpRouter.use(router);
-
-        // Allow unauthenticated access from the Backstage frontend.
-        // The butler backend plugin handles its own authentication to
-        // butler-server; Backstage auth is not required for these proxy routes.
-        httpRouter.addAuthPolicy({
-          path: '/',
-          allow: 'unauthenticated',
-        });
 
         // Clean up on shutdown
         lifecycle.addShutdownHook(() => {
