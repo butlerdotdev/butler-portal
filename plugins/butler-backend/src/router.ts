@@ -88,12 +88,13 @@ export async function createRouter(options: {
                   });
                 })
                 .catch(() => {
-                  socket.write(
+                  socket.end(
                     'HTTP/1.1 401 Unauthorized\r\n' +
+                      'WWW-Authenticate: Bearer\r\n' +
                       'Connection: close\r\n' +
+                      'Content-Length: 0\r\n' +
                       '\r\n',
                   );
-                  socket.destroy();
                 });
             }
             // For non-matching paths, don't consume the socket —
