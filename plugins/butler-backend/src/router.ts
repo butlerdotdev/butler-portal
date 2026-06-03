@@ -66,13 +66,36 @@ export async function createRouter(options: {
           (request: IncomingMessage, socket: Duplex, head: Buffer) => {
             const pathname = request.url || '';
 
-            // Only handle WebSocket upgrades for butler plugin paths
+            // Only handle WebSocket upgrades for butler plugin paths.
+            // Authenticate the caller before the WS handshake completes:
+            // the framework's credentials barrier only runs on HTTP
+            // requests, so upgrades need their own gate. Per-action
+            // authorization is downstream work (P0 #3 / P1 #4).
             if (pathname.startsWith('/api/butler/ws/')) {
-              wss.handleUpgrade(request, socket as any, head, clientWs => {
-                // Strip /api/butler prefix to get butler-server path
-                const wsPath = pathname.replace('/api/butler', '');
-                handleWsRelay(clientWs, wsPath, targetUrl, authManager, logger);
-              });
+              httpAuth
+                .credentials(request as any, { allow: ['user', 'service'] })
+                .then(() => {
+                  wss.handleUpgrade(request, socket as any, head, clientWs => {
+                    // Strip /api/butler prefix to get butler-server path
+                    const wsPath = pathname.replace('/api/butler', '');
+                    handleWsRelay(
+                      clientWs,
+                      wsPath,
+                      targetUrl,
+                      authManager,
+                      logger,
+                    );
+                  });
+                })
+                .catch(() => {
+                  socket.end(
+                    'HTTP/1.1 401 Unauthorized\r\n' +
+                      'WWW-Authenticate: Bearer\r\n' +
+                      'Connection: close\r\n' +
+                      'Content-Length: 0\r\n' +
+                      '\r\n',
+                  );
+                });
             }
             // For non-matching paths, don't consume the socket —
             // other upgrade handlers (e.g., webpack HMR) will handle them.
