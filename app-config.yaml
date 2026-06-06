@@ -60,10 +60,16 @@ scaffolder:
     email: butler-portal@butlerlabs.dev
 
 butler:
+  # Local dev fallback to localhost:8080 is intentional; pointed at a wrong
+  # server, the portal will fail visibly on the first request to butler-server.
   baseUrl: ${BUTLER_SERVER_URL:-http://localhost:8080}
+  # No fallback. Set BUTLER_SERVICE_ACCOUNT_USER and BUTLER_SERVICE_ACCOUNT_PASSWORD
+  # via the chart-managed Secret (butlerAuth.existingSecret), via an app-config
+  # local override during development, or via an environment variable. The plugin
+  # rejects empty values and the literal "admin" at init time.
   auth:
-    username: ${BUTLER_SERVICE_ACCOUNT_USER:-admin}
-    password: ${BUTLER_SERVICE_ACCOUNT_PASSWORD:-admin}
+    username: ${BUTLER_SERVICE_ACCOUNT_USER}
+    password: ${BUTLER_SERVICE_ACCOUNT_PASSWORD}
 
 pipeline:
   vectorBinaryPath: vector

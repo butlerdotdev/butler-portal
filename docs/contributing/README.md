@@ -90,6 +90,32 @@ backend:
 SQLite mode does not support Keeper's full-text search or concurrent access. Use PostgreSQL for testing Keeper features.
 :::
 
+## Butler Service-Account Credentials
+
+The Butler plugin authenticates to butler-server using a service-account username and password. These values must be supplied explicitly; the plugin rejects empty values and the literal string `"admin"` at init time and refuses to start.
+
+Choose one of:
+
+**Option A: environment variables** (matches the production chart path):
+
+```bash
+export BUTLER_SERVICE_ACCOUNT_USER='<your-service-account-username>'
+export BUTLER_SERVICE_ACCOUNT_PASSWORD='<your-service-account-password>'
+yarn dev
+```
+
+**Option B: app-config.local.yaml** (kept out of git via `.gitignore`):
+
+```yaml
+butler:
+  baseUrl: http://127.0.0.1:8080
+  auth:
+    username: '<your-service-account-username>'
+    password: '<your-service-account-password>'
+```
+
+If the portal starts and immediately throws `butler.auth.username and butler.auth.password must be set` or `set to the string "admin"`, the credentials path is misconfigured: pick one of the two options above and try again.
+
 ## Development Server
 
 Start the frontend and backend together:
