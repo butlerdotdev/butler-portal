@@ -18,21 +18,29 @@
  * Validates butler-server service-account credentials at plugin init time.
  *
  * Defense-in-depth against the prior admin/admin default. Throws if either
- * value is missing/empty, or matches the literal string "admin" (after
- * whitespace trimming). The trim catches accidental bypass via values like
- * " admin" or "admin\t" that would otherwise pass a strict-equality check.
+ * value is missing/empty, or if the password matches the literal string
+ * "admin" (after whitespace trimming). The trim catches accidental bypass
+ * via values like " admin" or "admin\t" that would otherwise pass a
+ * strict-equality check.
  *
- * Case-sensitive comparison: "Admin" passes (different value), "admin" fails.
+ * The username field is not validated against "admin": butler-server's
+ * admin user is legitimately named "admin" (the chart's
+ * BUTLER_ADMIN_USERNAME default), and a real deployment can carry that
+ * exact username with a real password. The insecure-default condition we
+ * are catching is specifically the PASSWORD being the literal "admin".
+ *
+ * Case-sensitive comparison on the password: "Admin" passes (different
+ * value), "admin" fails.
  *
  * Opt-out: if the environment variable BUTLER_ALLOW_INSECURE_ADMIN_CREDENTIALS
- * is set exactly to the string "true", a literal "admin" value logs a warning
- * and the function returns without throwing. The check is strict equality on
- * the string "true" so that values like "TRUE", "yes", "1", or an unset
- * variable do not accidentally disable the validation. This escape hatch
- * exists for internal deployments where butler-server is reachable only from
- * trusted networks and rotation of the admin credentials is operationally
- * deferred. It is NOT a recommended pattern for any deployment where
- * butler-server is reachable from networks outside the operator's control.
+ * is set exactly to the string "true", a literal "admin" password logs a
+ * warning and the function returns without throwing. The check is strict
+ * equality on the string "true" so that values like "TRUE", "yes", "1", or
+ * an unset variable do not accidentally disable the validation. This escape
+ * hatch exists for internal deployments where butler-server is reachable
+ * only from trusted networks and rotation is operationally deferred. It is
+ * NOT a recommended pattern for any deployment where butler-server is
+ * reachable from networks outside the operator's control.
  *
  * The empty-credentials check is not affected by the opt-out: empty values
  * always throw, regardless of BUTLER_ALLOW_INSECURE_ADMIN_CREDENTIALS.
@@ -53,18 +61,11 @@ export function validateButlerAuth(
     );
   }
 
-  const usernameIsAdmin = trimmedUsername === 'admin';
-  const passwordIsAdmin = trimmedPassword === 'admin';
-
-  if (usernameIsAdmin || passwordIsAdmin) {
+  if (trimmedPassword === 'admin') {
     const optOut = process.env.BUTLER_ALLOW_INSECURE_ADMIN_CREDENTIALS === 'true';
 
     if (optOut) {
-      const fields: string[] = [];
-      if (usernameIsAdmin) fields.push('butler.auth.username');
-      if (passwordIsAdmin) fields.push('butler.auth.password');
-      const verb = fields.length > 1 ? 'are' : 'is';
-      const warning = `${fields.join(' and ')} ${verb} set to the insecure default "admin". BUTLER_ALLOW_INSECURE_ADMIN_CREDENTIALS=true is set; continuing despite the insecure credentials. Rotate the affected field(s) to remove this warning.`;
+      const warning = `butler.auth.password is set to the insecure default "admin". BUTLER_ALLOW_INSECURE_ADMIN_CREDENTIALS=true is set; continuing despite the insecure credentials. Rotate the password to remove this warning.`;
       if (logger) {
         logger.warn(warning);
       } else {
@@ -75,7 +76,7 @@ export function validateButlerAuth(
     }
 
     throw new Error(
-      'butler.auth.username or butler.auth.password is set to the string "admin". This is the prior insecure default. Set both to real service-account credentials before starting the portal, or set BUTLER_ALLOW_INSECURE_ADMIN_CREDENTIALS=true to override (not recommended for production).',
+      'butler.auth.password is set to the string "admin". This is the prior insecure default. Set the password to the real butler-server service-account credential before starting the portal, or set BUTLER_ALLOW_INSECURE_ADMIN_CREDENTIALS=true to override (not recommended for production).',
     );
   }
 }

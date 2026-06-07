@@ -86,7 +86,9 @@ If the existing release was supplying the credentials through `extraEnv` entries
 
 ## Opting out of credential validation (not recommended)
 
-`0.2.1` adds an opt-out for the runtime validation that rejects the literal `"admin"` username or password. The opt-out exists for operators who run butler-portal in a closed network alongside a butler-server that uses the built-in admin account, where rotating to a real service account is operationally deferred. Setting the opt-out keeps the validation in place for everyone else (empty values still throw; non-`"admin"` literals are unaffected).
+`0.2.1` added a runtime validation that rejected the literal `"admin"` as either the username or the password. `0.2.2` narrows the check to the password only: username `"admin"` is now accepted with any non-`"admin"` password, because butler-server's admin user is legitimately named `"admin"`. Only the password being the literal `"admin"` is the insecure-default condition this validation catches.
+
+The opt-out exists for operators who run butler-portal in a closed network alongside a butler-server where the admin password literally is `"admin"` and rotation is operationally deferred. Setting the opt-out keeps the validation in place for everyone else (empty values still throw; non-`"admin"` passwords are unaffected).
 
 To opt out, set `BUTLER_ALLOW_INSECURE_ADMIN_CREDENTIALS=true` on the portal pod, typically via the chart's `extraEnv`:
 
@@ -98,7 +100,7 @@ extraEnv:
 
 The portal logs a warning at init time when the opt-out is honored. The check is strict equality on the string `"true"`; values like `"TRUE"`, `"yes"`, `"1"`, or an unset variable do not disable the validation.
 
-**Do NOT use this for any deployment where butler-server is reachable from networks outside your control.** Rotate the affected credential and remove the opt-out as soon as the rotation completes.
+**Do NOT use this for any deployment where butler-server is reachable from networks outside your control.** Rotate the password and remove the opt-out as soon as the rotation completes.
 
 ## See also
 

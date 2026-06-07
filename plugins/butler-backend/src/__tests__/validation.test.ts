@@ -20,7 +20,7 @@ describe('validateButlerAuth', () => {
   const mustBeSetMessage =
     /butler\.auth\.username and butler\.auth\.password must be set/;
   const priorDefaultMessage =
-    /set to the string "admin"\. This is the prior insecure default/;
+    /butler\.auth\.password is set to the string "admin"\. This is the prior insecure default/;
   const optOutHintMessage = /BUTLER_ALLOW_INSECURE_ADMIN_CREDENTIALS=true/;
 
   // Each test starts with the opt-out env var unset to prevent state leakage.
@@ -46,16 +46,27 @@ describe('validateButlerAuth', () => {
     expect(() => validateButlerAuth('svc-portal', '')).toThrow(mustBeSetMessage);
   });
 
-  it('throws "prior insecure default" when username is "admin" and password is valid', () => {
-    expect(() => validateButlerAuth('admin', 'real-password')).toThrow(
+  it('throws "prior insecure default" when password is "admin" (any username)', () => {
+    expect(() => validateButlerAuth('svc-portal', 'admin')).toThrow(
+      priorDefaultMessage,
+    );
+    expect(() => validateButlerAuth('admin', 'admin')).toThrow(
       priorDefaultMessage,
     );
   });
 
-  it('throws "prior insecure default" when username is valid and password is "admin"', () => {
-    expect(() => validateButlerAuth('svc-portal', 'admin')).toThrow(
-      priorDefaultMessage,
-    );
+  it('allows username "admin" with a valid non-admin password (real-world production case)', () => {
+    // butler-server's admin user is legitimately named "admin"; pairing that
+    // username with a real, non-default password is the canonical production
+    // case. v0.2.1 incorrectly rejected this; v0.2.2 accepts it.
+    expect(() =>
+      validateButlerAuth('admin', 'real-service-account-password'),
+    ).not.toThrow();
+  });
+
+  it('allows username "admin " with leading or trailing whitespace and a valid password', () => {
+    expect(() => validateButlerAuth('admin ', 'real-password')).not.toThrow();
+    expect(() => validateButlerAuth(' admin', 'real-password')).not.toThrow();
   });
 
   it('returns void cleanly when both values are valid non-admin', () => {
@@ -64,8 +75,7 @@ describe('validateButlerAuth', () => {
     ).not.toThrow();
   });
 
-  it('treats "admin" comparison as case-sensitive (operator-chosen "Admin" is not the prior default)', () => {
-    expect(() => validateButlerAuth('Admin', 'real-password')).not.toThrow();
+  it('treats "admin" password comparison as case-sensitive ("Admin" passes)', () => {
     expect(() => validateButlerAuth('svc-portal', 'Admin')).not.toThrow();
   });
 
@@ -73,8 +83,8 @@ describe('validateButlerAuth', () => {
     expect(() => validateButlerAuth('   ', '\t')).toThrow(mustBeSetMessage);
   });
 
-  it('throws "prior insecure default" when username is "admin" with trailing whitespace', () => {
-    expect(() => validateButlerAuth('admin ', 'real-password')).toThrow(
+  it('throws "prior insecure default" when password is "admin " with trailing whitespace', () => {
+    expect(() => validateButlerAuth('svc-portal', 'admin ')).toThrow(
       priorDefaultMessage,
     );
   });
@@ -85,24 +95,9 @@ describe('validateButlerAuth', () => {
     );
   });
 
-  it('error message includes the opt-out hint when admin literal triggers the throw', () => {
-    expect(() => validateButlerAuth('admin', 'real-password')).toThrow(
+  it('error message includes the opt-out hint when admin password triggers the throw', () => {
+    expect(() => validateButlerAuth('svc-portal', 'admin')).toThrow(
       optOutHintMessage,
-    );
-  });
-
-  it('allows admin username with opt-out env set to "true" and warns through the provided logger', () => {
-    process.env.BUTLER_ALLOW_INSECURE_ADMIN_CREDENTIALS = 'true';
-    const logger = { warn: jest.fn() };
-    expect(() =>
-      validateButlerAuth('admin', 'real-password', logger),
-    ).not.toThrow();
-    expect(logger.warn).toHaveBeenCalledTimes(1);
-    expect(logger.warn).toHaveBeenCalledWith(
-      expect.stringContaining('butler.auth.username'),
-    );
-    expect(logger.warn).toHaveBeenCalledWith(
-      expect.stringContaining('BUTLER_ALLOW_INSECURE_ADMIN_CREDENTIALS=true'),
     );
   });
 
@@ -116,6 +111,9 @@ describe('validateButlerAuth', () => {
     expect(logger.warn).toHaveBeenCalledWith(
       expect.stringContaining('butler.auth.password'),
     );
+    expect(logger.warn).toHaveBeenCalledWith(
+      expect.stringContaining('BUTLER_ALLOW_INSECURE_ADMIN_CREDENTIALS=true'),
+    );
   });
 
   it.each(['yes', 'TRUE', '1', 'True', ''])(
@@ -128,9 +126,7 @@ describe('validateButlerAuth', () => {
     },
   );
 
-  it('throws when opt-out env is unset (default behaviour unchanged)', () => {
-    // beforeEach already deleted the env var; this asserts that the
-    // default code path is unaffected by the opt-out feature.
+  it('throws when opt-out env is unset (default behaviour unchanged for password=admin)', () => {
     expect(process.env.BUTLER_ALLOW_INSECURE_ADMIN_CREDENTIALS).toBeUndefined();
     expect(() => validateButlerAuth('admin', 'admin')).toThrow(
       priorDefaultMessage,
