@@ -66,6 +66,18 @@ spec:
             {{- with .Values.extraEnv }}
             {{- toYaml . | nindent 12 }}
             {{- end }}
+            # Service-account credentials for butler-server. Positioned last so
+            # the chart-managed secretKeyRef wins over any extraEnv override.
+            - name: BUTLER_SERVICE_ACCOUNT_USER
+              valueFrom:
+                secretKeyRef:
+                  name: {{ required "butlerAuth.existingSecret is required. Create a Secret in the release namespace with username and password keys for the butler-server service account, then set butlerAuth.existingSecret to its name. See chart README for details." .Values.butlerAuth.existingSecret }}
+                  key: {{ .Values.butlerAuth.usernameKey | default "username" }}
+            - name: BUTLER_SERVICE_ACCOUNT_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.butlerAuth.existingSecret }}
+                  key: {{ .Values.butlerAuth.passwordKey | default "password" }}
           livenessProbe:
             httpGet:
               path: /healthcheck

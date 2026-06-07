@@ -54,6 +54,25 @@ appConfig:
   auth:
     provider: guest
 
+# Service-account credentials for authenticating to butler-server.
+# REQUIRED: chart install/upgrade fails if butlerAuth.existingSecret is unset.
+#
+# Create the Secret in the release namespace before installing:
+#
+#   kubectl create secret generic butler-server-auth \
+#     --namespace <release-namespace> \
+#     --from-literal=username='<service-account-username>' \
+#     --from-literal=password='<service-account-password>'
+#
+butlerAuth:
+  # Name of an existing Secret in the release namespace holding the
+  # butler-server service-account credentials. Must be set explicitly.
+  existingSecret: ""
+  # Key inside the Secret that holds the username.
+  usernameKey: username
+  # Key inside the Secret that holds the password.
+  passwordKey: password
+
 # PostgreSQL via CloudNativePG
 # Requires the CNPG operator to be installed in the cluster
 postgresql:

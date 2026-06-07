@@ -28,6 +28,24 @@ jobs:
       - name: Lint chart
         run: helm lint ./charts/butler-portal
 
+      - name: Verify fail-guard fires when butlerAuth.existingSecret is unset
+        run: |
+          set +e
+          OUT=$(helm template butler-portal ./charts/butler-portal 2>&1)
+          RC=$?
+          set -e
+          if [ $RC -eq 0 ]; then
+            echo "ERROR: helm template rendered successfully with no butlerAuth.existingSecret. The required-guard is not firing."
+            echo "$OUT" | tail -20
+            exit 1
+          fi
+          if ! echo "$OUT" | grep -q "butlerAuth.existingSecret is required"; then
+            echo "ERROR: helm template failed but not with the expected required-guard message."
+            echo "$OUT" | tail -20
+            exit 1
+          fi
+          echo "OK: required-guard fired with the expected message."
+
   release:
     if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
     needs: lint

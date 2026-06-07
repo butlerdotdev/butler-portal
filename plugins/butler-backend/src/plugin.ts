@@ -20,6 +20,7 @@ import {
 } from '@backstage/backend-plugin-api';
 import { AuthManager } from './service/AuthManager';
 import { createRouter } from './router';
+import { validateButlerAuth } from './validation';
 
 /**
  * butlerPlugin is a Backstage backend plugin that acts as a Backend-for-Frontend
@@ -40,9 +41,13 @@ import { createRouter } from './router';
  * butler:
  *   baseUrl: http://butler-server:8080
  *   auth:
- *     username: admin
- *     password: ${BUTLER_ADMIN_PASSWORD}
+ *     username: ${BUTLER_SERVICE_ACCOUNT_USER}
+ *     password: ${BUTLER_SERVICE_ACCOUNT_PASSWORD}
  * ```
+ *
+ * Credentials must be provided explicitly. The plugin rejects empty values
+ * and the literal "admin" at init time so prior insecure defaults cannot
+ * silently re-emerge.
  */
 export const butlerPlugin = createBackendPlugin({
   pluginId: 'butler',
@@ -58,10 +63,16 @@ export const butlerPlugin = createBackendPlugin({
         lifecycle: coreServices.lifecycle,
       },
       async init({ config, logger, httpRouter, httpAuth, userInfo, auth, lifecycle }) {
-        // Read butler configuration
+        // Read butler configuration. getString throws if any key is absent.
         const baseUrl = config.getString('butler.baseUrl');
         const username = config.getString('butler.auth.username');
         const password = config.getString('butler.auth.password');
+
+        // Defense-in-depth on top of the chart's butlerAuth.existingSecret
+        // enforcement: catch empty values and the prior insecure default for
+        // any path that bypasses the chart (local dev overrides, manual
+        // deployments, future code changes that re-introduce a default).
+        validateButlerAuth(username, password);
 
         logger.info('Initializing butler backend plugin', {
           baseUrl,
