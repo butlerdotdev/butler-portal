@@ -116,6 +116,8 @@ butler:
 
 If the portal starts and immediately throws `butler.auth.username and butler.auth.password must be set` or `set to the string "admin"`, the credentials path is misconfigured: pick one of the two options above and try again.
 
+If you are running against a butler-server that uses the built-in admin account and you have not yet provisioned a service account, set `BUTLER_ALLOW_INSECURE_ADMIN_CREDENTIALS=true` to opt out of the literal `"admin"` check. The portal logs a warning at init time. The check is strict equality on the string `"true"`; uppercase variants and other truthy strings do not disable it. Do not use the opt-out outside local development without understanding the trade-off described in the chart README.
+
 ## Development Server
 
 Start the frontend and backend together:
