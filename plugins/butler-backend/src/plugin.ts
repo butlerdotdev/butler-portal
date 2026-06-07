@@ -72,7 +72,9 @@ export const butlerPlugin = createBackendPlugin({
         // enforcement: catch empty values and the prior insecure default for
         // any path that bypasses the chart (local dev overrides, manual
         // deployments, future code changes that re-introduce a default).
-        validateButlerAuth(username, password);
+        // Operators may set BUTLER_ALLOW_INSECURE_ADMIN_CREDENTIALS=true to
+        // accept admin/admin (warning logged); empty values always throw.
+        validateButlerAuth(username, password, logger);
 
         logger.info('Initializing butler backend plugin', {
           baseUrl,

@@ -84,6 +84,22 @@ To upgrade:
 
 If the existing release was supplying the credentials through `extraEnv` entries named `BUTLER_SERVICE_ACCOUNT_USER` / `BUTLER_SERVICE_ACCOUNT_PASSWORD`, those entries are now redundant. The chart provides them natively via `butlerAuth.existingSecret`, and the chart-managed entries appear last in the container `env:` list so they win even if the `extraEnv` entries are left in place. Removing them is a cleanup, not a correctness fix.
 
+## Opting out of credential validation (not recommended)
+
+`0.2.1` adds an opt-out for the runtime validation that rejects the literal `"admin"` username or password. The opt-out exists for operators who run butler-portal in a closed network alongside a butler-server that uses the built-in admin account, where rotating to a real service account is operationally deferred. Setting the opt-out keeps the validation in place for everyone else (empty values still throw; non-`"admin"` literals are unaffected).
+
+To opt out, set `BUTLER_ALLOW_INSECURE_ADMIN_CREDENTIALS=true` on the portal pod, typically via the chart's `extraEnv`:
+
+```yaml
+extraEnv:
+  - name: BUTLER_ALLOW_INSECURE_ADMIN_CREDENTIALS
+    value: "true"
+```
+
+The portal logs a warning at init time when the opt-out is honored. The check is strict equality on the string `"true"`; values like `"TRUE"`, `"yes"`, `"1"`, or an unset variable do not disable the validation.
+
+**Do NOT use this for any deployment where butler-server is reachable from networks outside your control.** Rotate the affected credential and remove the opt-out as soon as the rotation completes.
+
 ## See also
 
 - [`values.yaml`](./values.yaml) for the full set of supported values
