@@ -102,6 +102,69 @@ The portal logs a warning at init time when the opt-out is honored. The check is
 
 **Do NOT use this for any deployment where butler-server is reachable from networks outside your control.** Rotate the password and remove the opt-out as soon as the rotation completes.
 
+## Monitoring
+
+Starting in `0.2.3`, butler-portal exposes a dedicated unauthenticated health endpoint for operator-facing monitoring:
+
+```
+GET /api/butler/_health
+```
+
+Response shape:
+
+```json
+// 200 OK. butler plugin has a non-expired butler-server JWT.
+{
+  "status": "ok",
+  "authenticated": true,
+  "tokenExpiresAt": 1717862400
+}
+
+// 503 Service Unavailable. butler plugin is degraded.
+{
+  "status": "degraded",
+  "authenticated": false,
+  "lastError": "butler-server login failed: 401 Unauthorized - {\"error\":\"Invalid credentials\"}"
+}
+```
+
+`tokenExpiresAt` is the Unix-seconds expiry of the current butler-server session token. `lastError` is the message from the most recent failed login attempt; it does not include credentials or tokens.
+
+**Important monitoring note**: the structured `/api/butler/_health` response shape above is only available **after plugin init succeeds**. If butler plugin init fails at startup (misconfigured credentials, butler-server unreachable at boot, etc.), the router is never mounted and the `/api/butler/_health` route does not exist. In that state, requests to any butler path return Backstage's generic lifecycle 503 with a body like `{"error":{"name":"ServiceUnavailableError","message":"Service has not started up yet"}}`. Operators should monitor BOTH the structured `/api/butler/_health` endpoint AND watch for the generic `"Service has not started up yet"` response on any butler route, since the two signals correspond to different failure classes (runtime drift vs deploy-time misconfiguration).
+
+The endpoint is intentionally NOT wired to the chart's readiness probe. The probe stays on the global `/healthcheck` path so a degraded butler plugin does not take down the IDP shell, catalog, or TechDocs. Operators wanting butler-specific alerting should configure their monitoring tools to poll `/api/butler/_health` independently.
+
+### Example Prometheus blackbox exporter config
+
+```yaml
+- job_name: butler-portal-health
+  metrics_path: /probe
+  params:
+    module: [http_2xx]
+  static_configs:
+    - targets:
+        - https://portal.example.com/api/butler/_health
+  relabel_configs:
+    - source_labels: [__address__]
+      target_label: __param_target
+    - source_labels: [__param_target]
+      target_label: instance
+    - target_label: __address__
+      replacement: blackbox-exporter:9115
+```
+
+A failed probe means the butler plugin is degraded; the rest of the portal may still be functional.
+
+### Failure modes covered
+
+| Failure mode | Caught? | Where the signal lands |
+|---|---|---|
+| Misconfigured credentials at deploy time (F1) | yes | Plugin init throws, butler routes return Backstage's generic lifecycle 503 with body `"Service has not started up yet"`. The structured `_health` route does not exist when init fails. |
+| butler-server unreachable at portal startup (F2) | yes | Same path as F1. |
+| Transient token refresh failure at runtime (F3) | minimal | `scheduleRefresh` retries ONCE after 30s. Further refresh failures are unhandled (single-shot retry, not indefinite). `_health` flips to 503 only after the held token's `exp` passes. Persistent runtime degradation is a known gap, tracked as followup. |
+| Malformed JWT response from butler-server (F4) | yes | Covered by the same throw path as F1/F2 at init time, or surfaces via lastError on a refresh attempt. |
+| Asymmetric session expiry (server invalidates before `exp`) (F5) | not covered | Surfaces as 401s mid-request through the proxy; separate concern. |
+
 ## See also
 
 - [`values.yaml`](./values.yaml) for the full set of supported values
