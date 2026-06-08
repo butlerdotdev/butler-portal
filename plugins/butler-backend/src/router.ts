@@ -165,6 +165,46 @@ export async function createRouter(options: {
    * the proxy authenticates to butler-server with a service account, but
    * this endpoint resolves the actual user's permissions and team memberships.
    */
+
+  /**
+   * GET /_health
+   *
+   * Unauthenticated monitoring endpoint. Returns AuthManager's current
+   * state without going through Backstage default-deny so external
+   * monitoring tools (Prometheus blackbox, Pingdom, etc.) can poll it
+   * without a Backstage session.
+   *
+   * Response shape:
+   *   200 OK    { status: "ok",       authenticated: true,  tokenExpiresAt: <unix-seconds> }
+   *   503 Down  { status: "degraded", authenticated: false, lastError: "<message>" }
+   *
+   * This is intentionally NOT wired to the chart's readiness probe. The
+   * probe stays on the global /healthcheck path so a degraded butler
+   * plugin does not take down the IDP shell, catalog, or TechDocs. The
+   * endpoint exists for operator-facing alerting, not kubelet signals.
+   *
+   * The lastError field surfaces the message from the most recent failed
+   * login attempt. butler-server's auth error responses are non-sensitive
+   * today (e.g., `{"error":"Invalid credentials"}`); no credentials or
+   * tokens are included in the lastError text.
+   *
+   * Forward-compat note: lastError contains a substring of butler-server's
+   * HTTP error response body. If butler-server's auth-error response shape
+   * ever evolves to include sensitive details (user identifiers, partial
+   * tokens, internal diagnostics), those would leak via this unauthenticated
+   * endpoint. Either sanitize lastError here before returning, or audit
+   * butler-server's error responses before any /api/auth/* changes ship.
+   * Tracked in the followup queue.
+   */
+  router.get('/_health', (_req: Request, res: Response) => {
+    const snapshot = authManager.getHealthSnapshot();
+    if (snapshot.authenticated) {
+      res.status(200).json({ status: 'ok', ...snapshot });
+    } else {
+      res.status(503).json({ status: 'degraded', ...snapshot });
+    }
+  });
+
   router.get('/_identity', async (req: Request, res: Response) => {
     try {
       const userLocalPart = await resolveUserEmail(req);

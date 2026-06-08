@@ -109,7 +109,25 @@ export const butlerPlugin = createBackendPlugin({
         });
 
         // Router is mounted under Backstage's default-deny auth gate.
-        // All routes require an authenticated Backstage caller.
+        // All routes require an authenticated Backstage caller EXCEPT
+        // /_health, which is intentionally unauthenticated so external
+        // monitoring tools (Prometheus blackbox, Pingdom, etc.) can poll
+        // it without a Backstage session. The endpoint exposes only the
+        // current auth state and (on degraded) a non-sensitive error
+        // message; no credentials or tokens are returned.
+        //
+        // Path-matching note: Backstage's createCredentialsBarrier uses
+        // pathToRegexp(policyPath, { end: false }), which is PREFIX
+        // matching. The current router only registers GET /_health, so
+        // this exception matches exactly one route today. If a future
+        // commit adds any /_health/<sub> route, that sub-path will be
+        // unauthenticated by default. Either add explicit per-route auth
+        // there or restructure this policy when /_health/* routes are
+        // introduced. Tracked in the followup queue.
+        httpRouter.addAuthPolicy({
+          path: '/_health',
+          allow: 'unauthenticated',
+        });
         httpRouter.use(router);
 
         // Clean up on shutdown

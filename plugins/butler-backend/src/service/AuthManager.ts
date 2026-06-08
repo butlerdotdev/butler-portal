@@ -32,6 +32,7 @@ export class AuthManager {
   private token: string | null = null;
   private tokenExpiry: number = 0;
   private refreshTimer: ReturnType<typeof setTimeout> | null = null;
+  private lastError: string | undefined;
 
   constructor(options: {
     baseUrl: string;
@@ -48,8 +49,22 @@ export class AuthManager {
   /**
    * Authenticates to butler-server via POST /api/auth/login/legacy.
    * Extracts the JWT from the butler_session Set-Cookie header.
+   *
+   * On success, clears lastError. On failure, records lastError before
+   * re-throwing so getHealthSnapshot can surface the most recent reason
+   * to monitoring tools.
    */
   async login(): Promise<void> {
+    try {
+      await this.loginInternal();
+      this.lastError = undefined;
+    } catch (err) {
+      this.lastError = err instanceof Error ? err.message : String(err);
+      throw err;
+    }
+  }
+
+  private async loginInternal(): Promise<void> {
     const loginUrl = `${this.baseUrl}/api/auth/login/legacy`;
 
     this.logger.info('Authenticating to butler-server', {
@@ -118,6 +133,30 @@ export class AuthManager {
       await this.login();
     }
     return this.token!;
+  }
+
+  /**
+   * Returns a snapshot of the current authentication state, suitable for
+   * exposing on a monitoring endpoint. Does not throw under any input
+   * state, so callers can safely poll this without try/catch.
+   *
+   * `authenticated` is true only when a non-expired token is held.
+   * `tokenExpiresAt` is the Unix-seconds expiry of the current token if
+   *   one is held, otherwise undefined.
+   * `lastError` is the message from the most recent failed login attempt,
+   *   or undefined if no failure has been recorded (or if the most recent
+   *   login succeeded).
+   */
+  getHealthSnapshot(): {
+    authenticated: boolean;
+    tokenExpiresAt?: number;
+    lastError?: string;
+  } {
+    return {
+      authenticated: !!this.token && !this.isTokenExpired(),
+      tokenExpiresAt: this.tokenExpiry > 0 ? this.tokenExpiry : undefined,
+      lastError: this.lastError,
+    };
   }
 
   /**
