@@ -89,18 +89,14 @@ export const butlerPlugin = createBackendPlugin({
           logger: logger.child({ service: 'butler-auth-manager' }),
         });
 
-        // Attempt to authenticate on startup, but don't fail hard
-        // so the rest of Backstage can still start without butler-server
-        try {
-          await authManager.login();
-          logger.info('Authenticated to butler-server');
-        } catch (err) {
-          logger.warn(
-            'Failed to authenticate to butler-server on startup. ' +
-            'Butler API requests will fail until butler-server is available. ' +
-            `Error: ${err instanceof Error ? err.message : String(err)}`,
-          );
-        }
+        // Authenticate to butler-server. Failure propagates out of init so
+        // Backstage marks the butler plugin as failed and butler routes
+        // return 503 instead of attempting (and failing) the proxy call.
+        // Global health endpoints stay 200; the IDP shell, catalog, and
+        // TechDocs continue to work. Operators wanting butler-specific
+        // alerting should monitor /api/butler/_health independently.
+        await authManager.login();
+        logger.info('Authenticated to butler-server');
 
         // Create the proxy router
         const router = await createRouter({
