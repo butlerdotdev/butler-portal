@@ -89,18 +89,14 @@ export const butlerPlugin = createBackendPlugin({
           logger: logger.child({ service: 'butler-auth-manager' }),
         });
 
-        // Attempt to authenticate on startup, but don't fail hard
-        // so the rest of Backstage can still start without butler-server
-        try {
-          await authManager.login();
-          logger.info('Authenticated to butler-server');
-        } catch (err) {
-          logger.warn(
-            'Failed to authenticate to butler-server on startup. ' +
-            'Butler API requests will fail until butler-server is available. ' +
-            `Error: ${err instanceof Error ? err.message : String(err)}`,
-          );
-        }
+        // Authenticate to butler-server. Failure propagates out of init so
+        // Backstage marks the butler plugin as failed and butler routes
+        // return 503 instead of attempting (and failing) the proxy call.
+        // Global health endpoints stay 200; the IDP shell, catalog, and
+        // TechDocs continue to work. Operators wanting butler-specific
+        // alerting should monitor /api/butler/_health independently.
+        await authManager.login();
+        logger.info('Authenticated to butler-server');
 
         // Create the proxy router
         const router = await createRouter({
@@ -113,7 +109,25 @@ export const butlerPlugin = createBackendPlugin({
         });
 
         // Router is mounted under Backstage's default-deny auth gate.
-        // All routes require an authenticated Backstage caller.
+        // All routes require an authenticated Backstage caller EXCEPT
+        // /_health, which is intentionally unauthenticated so external
+        // monitoring tools (Prometheus blackbox, Pingdom, etc.) can poll
+        // it without a Backstage session. The endpoint exposes only the
+        // current auth state and (on degraded) a non-sensitive error
+        // message; no credentials or tokens are returned.
+        //
+        // Path-matching note: Backstage's createCredentialsBarrier uses
+        // pathToRegexp(policyPath, { end: false }), which is PREFIX
+        // matching. The current router only registers GET /_health, so
+        // this exception matches exactly one route today. If a future
+        // commit adds any /_health/<sub> route, that sub-path will be
+        // unauthenticated by default. Either add explicit per-route auth
+        // there or restructure this policy when /_health/* routes are
+        // introduced. Tracked in the followup queue.
+        httpRouter.addAuthPolicy({
+          path: '/_health',
+          allow: 'unauthenticated',
+        });
         httpRouter.use(router);
 
         // Clean up on shutdown
