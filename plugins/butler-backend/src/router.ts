@@ -50,57 +50,42 @@ export async function createRouter(options: {
 
   const router = Router();
 
-  // WebSocket relay setup
-  // We use noServer mode because Backstage owns the HTTP server.
-  // On the first incoming HTTP request, we grab the server reference
-  // and attach an upgrade listener for butler WebSocket paths.
+  // WebSocket relay setup. We use noServer mode because Backstage does not
+  // expose the http.Server to plugins at init time: RootHttpRouterService
+  // and HttpRouterService only expose `use`, and the server is captured
+  // inside @backstage/backend-defaults's rootHttpRouterServiceFactory and
+  // never handed to plugins. The only way to reach the server from a
+  // plugin is `req.socket.server` from an Express middleware, so the
+  // upgrade listener is necessarily attached lazily on the first incoming
+  // HTTP request to /api/butler.
+  //
+  // The window between server.listen and that first request is benign:
+  // Node's http.Server silently closes upgrade connections when no
+  // 'upgrade' listener is registered (per Node docs for the 'upgrade'
+  // event). An upgrade attempt during the window is dropped, not passed
+  // through unauthenticated. The only observable effect is that a very
+  // early legitimate WebSocket client fails to connect and must retry
+  // after the first HTTP request lands. No auth-bypass path exists during
+  // the window, so a synchronous attach is not required for correctness.
+  //
+  // The upgradeHandlerAttached boolean is the idempotency guard: the
+  // listener is registered exactly once across the process lifetime,
+  // regardless of how many requests race through this middleware.
   const wss = new WebSocketServer({ noServer: true });
+  const upgradeHandler = createButlerUpgradeHandler({
+    httpAuth,
+    wss,
+    targetUrl,
+    authManager,
+    logger,
+  });
   let upgradeHandlerAttached = false;
 
   router.use((req: Request, _res: Response, next) => {
     if (!upgradeHandlerAttached) {
       const server = (req as any).socket?.server;
       if (server) {
-        server.on(
-          'upgrade',
-          (request: IncomingMessage, socket: Duplex, head: Buffer) => {
-            const pathname = request.url || '';
-
-            // Only handle WebSocket upgrades for butler plugin paths.
-            // Authenticate the caller before the WS handshake completes:
-            // the framework's credentials barrier only runs on HTTP
-            // requests, so upgrades need their own gate. Per-action
-            // authorization is downstream work (P0 #3 / P1 #4).
-            if (pathname.startsWith('/api/butler/ws/')) {
-              httpAuth
-                .credentials(request as any, { allow: ['user', 'service'] })
-                .then(() => {
-                  wss.handleUpgrade(request, socket as any, head, clientWs => {
-                    // Strip /api/butler prefix to get butler-server path
-                    const wsPath = pathname.replace('/api/butler', '');
-                    handleWsRelay(
-                      clientWs,
-                      wsPath,
-                      targetUrl,
-                      authManager,
-                      logger,
-                    );
-                  });
-                })
-                .catch(() => {
-                  socket.end(
-                    'HTTP/1.1 401 Unauthorized\r\n' +
-                      'WWW-Authenticate: Bearer\r\n' +
-                      'Connection: close\r\n' +
-                      'Content-Length: 0\r\n' +
-                      '\r\n',
-                  );
-                });
-            }
-            // For non-matching paths, don't consume the socket —
-            // other upgrade handlers (e.g., webpack HMR) will handle them.
-          },
-        );
+        server.on('upgrade', upgradeHandler);
         upgradeHandlerAttached = true;
         logger.info('WebSocket upgrade handler attached to HTTP server');
       }
@@ -444,6 +429,61 @@ export async function createRouter(options: {
   });
 
   return router;
+}
+
+/**
+ * Builds the http.Server 'upgrade' listener for /api/butler/ws/* paths.
+ *
+ * Defense-in-depth role: the framework's HTTP credentialsBarrier is the
+ * primary authentication gate for plugin routes, but it only runs on HTTP
+ * requests, not on raw WebSocket upgrades. This listener exists to ensure
+ * that the day a WebSocket route is added to this plugin, an upgrade
+ * arriving directly on /api/butler/ws/* is authenticated before the
+ * handshake completes. The path is deliberately retained even though no
+ * production WebSocket route currently exercises it; deleting it would
+ * remove the only guard for that future code path, and recreating it
+ * later would be done without the context that produced it. Per-action
+ * authorization (P0 #3 / P1 #4) is a separate downstream concern that
+ * layers on top of this authentication check.
+ *
+ * Non-matching paths are not consumed: other 'upgrade' listeners on the
+ * same http.Server (for example, webpack HMR in dev mode) remain free to
+ * handle them.
+ *
+ * Extracted as a named factory so the guard logic can be unit-tested
+ * directly without standing up a Backstage backend or http.Server.
+ */
+export function createButlerUpgradeHandler(deps: {
+  httpAuth: HttpAuthService;
+  wss: WebSocketServer;
+  targetUrl: string;
+  authManager: AuthManager;
+  logger: LoggerService;
+}): (request: IncomingMessage, socket: Duplex, head: Buffer) => void {
+  const { httpAuth, wss, targetUrl, authManager, logger } = deps;
+  return (request: IncomingMessage, socket: Duplex, head: Buffer) => {
+    const pathname = request.url || '';
+    if (!pathname.startsWith('/api/butler/ws/')) {
+      return;
+    }
+    httpAuth
+      .credentials(request as any, { allow: ['user', 'service'] })
+      .then(() => {
+        wss.handleUpgrade(request, socket as any, head, clientWs => {
+          const wsPath = pathname.replace('/api/butler', '');
+          handleWsRelay(clientWs, wsPath, targetUrl, authManager, logger);
+        });
+      })
+      .catch(() => {
+        socket.end(
+          'HTTP/1.1 401 Unauthorized\r\n' +
+            'WWW-Authenticate: Bearer\r\n' +
+            'Connection: close\r\n' +
+            'Content-Length: 0\r\n' +
+            '\r\n',
+        );
+      });
+  };
 }
 
 /**
