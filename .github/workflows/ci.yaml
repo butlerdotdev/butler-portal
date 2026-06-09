@@ -29,6 +29,10 @@ on:
       - 'yarn.lock'
       - 'packages/backend/Dockerfile'
 
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.head_ref || github.ref_name }}
+  cancel-in-progress: true
+
 env:
   REGISTRY: ghcr.io
   IMAGE_NAME: butlerdotdev/butler-portal
@@ -36,6 +40,7 @@ env:
 jobs:
   test:
     runs-on: butler-runners
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
 
@@ -61,6 +66,7 @@ jobs:
 
   build:
     runs-on: butler-runners
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
 
