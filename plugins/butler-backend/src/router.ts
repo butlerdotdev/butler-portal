@@ -25,6 +25,41 @@ import {
   AuthService,
 } from '@backstage/backend-plugin-api';
 import { AuthManager } from './service/AuthManager';
+import { PortalSigner } from './service/PortalSigner';
+
+/**
+ * applyPortalCarrierSwap is the Stage 2 per-request carrier switch.
+ *
+ * When PortalSigner is null (Stage 2 dormant default, and the steady state
+ * in any deployment that has not yet mounted a signing key Secret), this
+ * function is a no-op: forwardHeaders stays exactly as the caller built
+ * them, which means the legacy admin Bearer plus X-Butler-User-Email
+ * carrier reaches butler-server byte-identically to pre-Stage-2 traffic.
+ *
+ * When PortalSigner is non-null AND we have a resolved user identity,
+ * the function replaces forwardHeaders.Authorization with a portal-minted
+ * Ed25519 proof keyed by subEmail, and deletes any X-Butler-User-Email
+ * header (the proof's sub claim carries the identity end-to-end; the
+ * legacy impersonation header becomes redundant and is removed so
+ * butler-server's pre-Stage-4 header-trust branch does not also fire).
+ *
+ * The function mutates forwardHeaders in place so the call sites keep the
+ * legacy header-building code verbatim and add a single line that applies
+ * the swap at the end.
+ *
+ * Exported for unit testing of the load-bearing per-request switch.
+ */
+export function applyPortalCarrierSwap(opts: {
+  forwardHeaders: Record<string, string>;
+  portalSigner: PortalSigner | null;
+  subEmail: string | undefined;
+}): void {
+  const { forwardHeaders, portalSigner, subEmail } = opts;
+  if (portalSigner && subEmail) {
+    forwardHeaders.Authorization = `Bearer ${portalSigner.sign(subEmail)}`;
+    delete forwardHeaders['X-Butler-User-Email'];
+  }
+}
 
 /**
  * Creates an Express router that proxies all requests to butler-server.
@@ -44,8 +79,15 @@ export async function createRouter(options: {
   userInfo: UserInfoService;
   auth: AuthService;
   logger: LoggerService;
+  // Stage 2: when non-null and a user identity is resolvable, outgoing
+  // proxy + WS-relay requests carry a portal-minted Ed25519 proof in
+  // Authorization (no X-Butler-User-Email). When null (Stage 2 default
+  // until the chart mounts a signing key Secret) the legacy carrier path
+  // is unchanged.
+  portalSigner?: PortalSigner | null;
 }): Promise<Router> {
   const { baseUrl, authManager, httpAuth, userInfo, auth, logger } = options;
+  const portalSigner = options.portalSigner ?? null;
   const targetUrl = baseUrl.replace(/\/+$/, '');
 
   const router = Router();
@@ -78,6 +120,9 @@ export async function createRouter(options: {
     targetUrl,
     authManager,
     logger,
+    portalSigner,
+    userInfo,
+    auth,
   });
   let upgradeHandlerAttached = false;
 
@@ -311,12 +356,21 @@ export async function createRouter(options: {
       // only get the local part. Reconstruct the full email for the server
       // to use as the effective user identity.
       const userEmail = await resolveUserEmail(req);
+      let fullEmail: string | undefined;
       if (userEmail) {
-        const fullEmail = userEmail.includes('@')
+        fullEmail = userEmail.includes('@')
           ? userEmail
           : `${userEmail}@butlerlabs.dev`;
         forwardHeaders['X-Butler-User-Email'] = fullEmail;
       }
+
+      // Stage 2 carrier switch. When PortalSigner is null (the production
+      // default until Stage 3 mounts the signing key Secret) this is a
+      // no-op and the legacy admin Bearer + X-Butler-User-Email above
+      // reaches butler-server byte-identically. When activated, the proof
+      // replaces the Authorization Bearer and the impersonation header is
+      // dropped.
+      applyPortalCarrierSwap({ forwardHeaders, portalSigner, subEmail: fullEmail });
 
       // Forward content-type if present
       if (req.headers['content-type']) {
@@ -459,8 +513,26 @@ export function createButlerUpgradeHandler(deps: {
   targetUrl: string;
   authManager: AuthManager;
   logger: LoggerService;
+  // Stage 2 optional deps. When portalSigner, userInfo, and auth are ALL
+  // provided, the upgrade handler resolves the user identity from the
+  // upgrade credentials and threads it into handleWsRelay so the outgoing
+  // WebSocket carries a portal-minted proof. When any of the three is
+  // absent (the default; the unmodified existing test scaffold also omits
+  // them), the legacy admin-Bearer carrier is preserved unchanged.
+  portalSigner?: PortalSigner | null;
+  userInfo?: UserInfoService;
+  auth?: AuthService;
 }): (request: IncomingMessage, socket: Duplex, head: Buffer) => void {
-  const { httpAuth, wss, targetUrl, authManager, logger } = deps;
+  const {
+    httpAuth,
+    wss,
+    targetUrl,
+    authManager,
+    logger,
+    portalSigner,
+    userInfo,
+    auth,
+  } = deps;
   return (request: IncomingMessage, socket: Duplex, head: Buffer) => {
     const pathname = request.url || '';
     if (!pathname.startsWith('/api/butler/ws/')) {
@@ -468,10 +540,45 @@ export function createButlerUpgradeHandler(deps: {
     }
     httpAuth
       .credentials(request as any, { allow: ['user', 'service'] })
-      .then(() => {
+      .then(async credentials => {
+        // Resolve the acting user's email when the Stage 2 carrier is
+        // configured AND the credentials principal is a user. This mirrors
+        // the HTTP proxy's resolveUserEmail: entity ref local part with
+        // butlerlabs.dev domain fallback. When portalSigner is null or
+        // the upgrade is a service-principal call, subEmail stays
+        // undefined and handleWsRelay falls back to the legacy carrier.
+        let subEmail: string | undefined;
+        if (
+          portalSigner &&
+          userInfo &&
+          auth &&
+          auth.isPrincipal(credentials, 'user')
+        ) {
+          try {
+            const info = await userInfo.getUserInfo(credentials);
+            const name = info.userEntityRef.split('/').pop();
+            if (name) {
+              subEmail = name.includes('@')
+                ? name
+                : `${name}@butlerlabs.dev`;
+            }
+          } catch {
+            // Identity resolution failure falls through to the legacy
+            // carrier rather than rejecting the upgrade. Same posture as
+            // the HTTP path's resolveUserEmail catch.
+          }
+        }
         wss.handleUpgrade(request, socket as any, head, clientWs => {
           const wsPath = pathname.replace('/api/butler', '');
-          handleWsRelay(clientWs, wsPath, targetUrl, authManager, logger);
+          handleWsRelay(
+            clientWs,
+            wsPath,
+            targetUrl,
+            authManager,
+            logger,
+            portalSigner ?? null,
+            subEmail,
+          );
         });
       })
       .catch(() => {
@@ -497,6 +604,8 @@ async function handleWsRelay(
   targetUrl: string,
   authManager: AuthManager,
   logger: LoggerService,
+  portalSigner: PortalSigner | null = null,
+  subEmail: string | undefined = undefined,
 ) {
   try {
     const token = await authManager.getToken();
@@ -504,8 +613,19 @@ async function handleWsRelay(
 
     logger.info('Opening WebSocket relay', { path, target: wsTargetUrl });
 
+    // Stage 2 carrier switch, mirrored from the HTTP proxy via the same
+    // applyPortalCarrierSwap helper. With portalSigner null (Stage 2
+    // default and the legacy production carrier) wsHeaders keeps Bearer
+    // admin token unchanged. With portalSigner active and subEmail
+    // resolved from the upgrade credentials, Authorization is replaced
+    // with the portal-minted proof.
+    const wsHeaders: Record<string, string> = {
+      Authorization: `Bearer ${token}`,
+    };
+    applyPortalCarrierSwap({ forwardHeaders: wsHeaders, portalSigner, subEmail });
+
     const serverWs = new WebSocket(wsTargetUrl, {
-      headers: { Authorization: `Bearer ${token}` },
+      headers: wsHeaders,
     });
 
     let alive = true;

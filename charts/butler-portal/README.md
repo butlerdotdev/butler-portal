@@ -39,6 +39,9 @@ helm install butler-portal oci://ghcr.io/butlerdotdev/charts/butler-portal \
 | `butlerAuth.existingSecret` | `""` | **Required.** Name of an existing Secret in the release namespace holding the butler-server service-account credentials. Chart render fails if this is unset. |
 | `butlerAuth.usernameKey` | `username` | Key inside the Secret that holds the username. |
 | `butlerAuth.passwordKey` | `password` | Key inside the Secret that holds the password. |
+| `butlerSigning.existingSecret` | `""` | Optional. When set, names a Secret holding the Ed25519 private key the portal uses to mint signed identity proofs for butler-server (Stage 2 of the portal-JWT carrier work). When unset, the portal uses the legacy admin Bearer plus `X-Butler-User-Email` carrier (the pre-Stage-2 behavior). |
+| `butlerSigning.keyKey` | `key` | Key inside the signing Secret that holds the PEM-encoded private key bytes. |
+| `butlerSigning.kid` | `""` | Required when `butlerSigning.existingSecret` is set. The kid stamped in each minted proof's JWT header. Must match the kid under which butler-server has the corresponding public key registered (via `BUTLER_PORTAL_PUBKEY`). |
 | `appConfig.baseUrl` | `http://localhost:7007` | Base URL the portal advertises for frontend + backend. |
 | `image.repository` | `ghcr.io/butlerdotdev/butler-portal` | Container image. |
 | `image.tag` | `""` | Image tag (defaults to chart `appVersion`). |

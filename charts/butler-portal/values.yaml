@@ -73,6 +73,30 @@ butlerAuth:
   # Key inside the Secret that holds the password.
   passwordKey: password
 
+# Stage 2 portal-JWT signing key (optional). When set, butler-portal mints
+# short-lived Ed25519 proofs and uses them as the outgoing Authorization
+# Bearer in calls to butler-server; the legacy X-Butler-User-Email
+# impersonation header is omitted on those calls. butler-server must have
+# the matching public key configured via BUTLER_PORTAL_PUBKEY before this
+# is activated in production; mounting the key Secret without the matching
+# pubkey on the server side will cause requests to be rejected.
+#
+# Leave butlerSigning.existingSecret empty (the default) to keep the
+# legacy carrier byte-identical. The chart does not require this field.
+butlerSigning:
+  # Name of an existing Secret in the release namespace holding the
+  # Ed25519 private key in PEM (PKCS#8) form. The Secret is mounted as a
+  # file at /etc/butler-portal/signing-key/key and read by PortalSigner
+  # at plugin init.
+  existingSecret: ""
+  # Key inside the Secret that holds the PEM bytes. Default "key".
+  keyKey: key
+  # kid the portal stamps on every proof's JWT header. Must match the kid
+  # under which butler-server has the public key configured (the kid PEM
+  # header set when the public key was provisioned). Required when
+  # existingSecret is set.
+  kid: ""
+
 # PostgreSQL via CloudNativePG
 # Requires the CNPG operator to be installed in the cluster
 postgresql:

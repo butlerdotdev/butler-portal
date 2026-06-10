@@ -78,6 +78,24 @@ spec:
                 secretKeyRef:
                   name: {{ .Values.butlerAuth.existingSecret }}
                   key: {{ .Values.butlerAuth.passwordKey | default "password" }}
+            {{- if .Values.butlerSigning.existingSecret }}
+            # Stage 2 portal-JWT signer config. When butlerSigning is set,
+            # the backend mounts the Ed25519 private key as a file (below)
+            # and reads it via butler.signing.keyPath; the kid is plumbed
+            # via env so PortalSigner stamps each proof correctly. With
+            # butlerSigning unset, neither env is exported and PortalSigner
+            # stays dormant; the legacy admin Bearer carrier runs unchanged.
+            - name: BUTLER_SIGNING_KEY_PATH
+              value: /etc/butler-portal/signing-key/key
+            - name: BUTLER_SIGNING_KID
+              value: {{ required "butlerSigning.kid is required when butlerSigning.existingSecret is set; see chart README for details." .Values.butlerSigning.kid | quote }}
+            {{- end }}
+          {{- if .Values.butlerSigning.existingSecret }}
+          volumeMounts:
+            - name: butler-signing-key
+              mountPath: /etc/butler-portal/signing-key
+              readOnly: true
+          {{- end }}
           livenessProbe:
             httpGet:
               path: /healthcheck
@@ -92,6 +110,16 @@ spec:
             periodSeconds: 5
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
+      {{- if .Values.butlerSigning.existingSecret }}
+      volumes:
+        - name: butler-signing-key
+          secret:
+            secretName: {{ .Values.butlerSigning.existingSecret }}
+            defaultMode: 0400
+            items:
+              - key: {{ .Values.butlerSigning.keyKey | default "key" }}
+                path: key
+      {{- end }}
       {{- with .Values.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}
