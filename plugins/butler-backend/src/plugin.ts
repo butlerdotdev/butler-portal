@@ -19,6 +19,7 @@ import {
   createBackendPlugin,
 } from '@backstage/backend-plugin-api';
 import { AuthManager } from './service/AuthManager';
+import { loadPortalSigner } from './service/PortalSigner';
 import { createRouter } from './router';
 import { validateButlerAuth } from './validation';
 
@@ -98,6 +99,22 @@ export const butlerPlugin = createBackendPlugin({
         await authManager.login();
         logger.info('Authenticated to butler-server');
 
+        // Stage 2 signing-proof carrier: optional. When both
+        // butler.signing.keyPath and butler.signing.kid are configured AND
+        // the key file is present at the path, a PortalSigner is
+        // constructed and the proxy + WS relay use it to mint Ed25519
+        // proofs that butler-server's portal-JWT verifier accepts. When
+        // either config is unset or the key file is absent, the signer is
+        // null and the legacy admin Bearer + X-Butler-User-Email carrier
+        // is preserved byte-identically. This is the dormant-until-mounted
+        // shape that keeps Stage 2's deploy a no-op until Stage 3 lands
+        // the SealedSecret and configures butler-server's pubkey.
+        const portalSigner = loadPortalSigner({
+          keyPath: config.getOptionalString('butler.signing.keyPath'),
+          kid: config.getOptionalString('butler.signing.kid'),
+          logger: logger.child({ service: 'butler-portal-signer' }),
+        });
+
         // Create the proxy router
         const router = await createRouter({
           baseUrl,
@@ -106,6 +123,7 @@ export const butlerPlugin = createBackendPlugin({
           userInfo,
           auth,
           logger: logger.child({ service: 'butler-router' }),
+          portalSigner,
         });
 
         // Router is mounted under Backstage's default-deny auth gate.

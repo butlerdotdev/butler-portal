@@ -70,6 +70,15 @@ butler:
   auth:
     username: ${BUTLER_SERVICE_ACCOUNT_USER}
     password: ${BUTLER_SERVICE_ACCOUNT_PASSWORD}
+  # Stage 2 portal-JWT signing config. Both fields are optional: when
+  # unset the legacy admin Bearer + X-Butler-User-Email carrier is used.
+  # When both are set AND the key file at keyPath exists, the plugin
+  # constructs a PortalSigner that mints proofs replacing the legacy
+  # Authorization on calls to butler-server. The chart sets these envs
+  # only when butlerSigning.existingSecret is configured.
+  signing:
+    kid: ${BUTLER_SIGNING_KID:-}
+    keyPath: ${BUTLER_SIGNING_KEY_PATH:-}
 
 pipeline:
   vectorBinaryPath: vector
