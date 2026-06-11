@@ -52,6 +52,8 @@ import { WorkspacesPluginPage } from '@internal/plugin-workspaces';
 import { RegistryPage } from '@internal/plugin-registry';
 import { PipelinePage } from '@internal/plugin-pipeline';
 import { AppearanceSettings } from './components/settings/AppearanceSettings';
+import { BUTLER_LABS_PLUGINS } from './components/plugins/butlerLabsPluginsMeta';
+import { PluginNotEnabledPage } from './components/plugins/PluginNotEnabledPage';
 
 const app = createApp({
 	apis,
@@ -100,17 +102,28 @@ const app = createApp({
 });
 
 // AppRoutes lives inside the React tree so useApi(configApiRef) is callable.
-// Each Butler-Labs-branded Route is inline-conditioned on plugins.<name>.enabled.
-// A wrapper component would not work: FlatRoutes' child-selector reads
-// props.path on its direct children, recurses only into Fragment and elements
-// tagged core.featureFlagged, and silently drops anything else. Inline
-// conditional is the only composing-with-FlatRoutes form.
+// Butler-Labs-branded plugins are always mounted at their route. The element
+// rendered depends on the per-plugin flag:
+//
+//   plugins.<name>.enabled=true  -> the real plugin page (ButlerPage, ...)
+//   plugins.<name>.enabled=false -> PluginNotEnabledPage (branded, with a
+//                                   call to action). The backend gate stays
+//                                   genuinely off either way -- see
+//                                   packages/backend/src/butlerLabsPluginGates.ts.
+//
+// Always-mounting the route is the discoverability change: a deep link or
+// shared URL to /registry/* now lands on a polished "not enabled here" page
+// rather than Backstage's generic NotFound, uniformly across internal and
+// external deployments.
 export const AppRoutes = () => {
 	const config = useApi(configApiRef);
 	const butlerEnabled = config.getOptionalBoolean('plugins.butler.enabled') ?? false;
 	const workspacesEnabled = config.getOptionalBoolean('plugins.workspaces.enabled') ?? false;
 	const registryEnabled = config.getOptionalBoolean('plugins.registry.enabled') ?? false;
 	const pipelineEnabled = config.getOptionalBoolean('plugins.pipeline.enabled') ?? false;
+	const pluginMeta = Object.fromEntries(
+		BUTLER_LABS_PLUGINS.map(p => [p.configKey, p]),
+	);
 
 	return (
 		<FlatRoutes>
@@ -163,10 +176,46 @@ export const AppRoutes = () => {
 			</Route>
 			<Route path="/catalog-graph" element={<CatalogGraphPage />} />
 			<Route path="/notifications" element={<NotificationsPage />} />
-			{butlerEnabled && <Route path="/butler/*" element={<ButlerPage />} />}
-			{workspacesEnabled && <Route path="/workspaces/*" element={<WorkspacesPluginPage />} />}
-			{registryEnabled && <Route path="/registry/*" element={<RegistryPage />} />}
-			{pipelineEnabled && <Route path="/pipeline/*" element={<PipelinePage />} />}
+			<Route
+				path="/butler/*"
+				element={
+					butlerEnabled ? (
+						<ButlerPage />
+					) : (
+						<PluginNotEnabledPage meta={pluginMeta.butler} />
+					)
+				}
+			/>
+			<Route
+				path="/workspaces/*"
+				element={
+					workspacesEnabled ? (
+						<WorkspacesPluginPage />
+					) : (
+						<PluginNotEnabledPage meta={pluginMeta.workspaces} />
+					)
+				}
+			/>
+			<Route
+				path="/registry/*"
+				element={
+					registryEnabled ? (
+						<RegistryPage />
+					) : (
+						<PluginNotEnabledPage meta={pluginMeta.registry} />
+					)
+				}
+			/>
+			<Route
+				path="/pipeline/*"
+				element={
+					pipelineEnabled ? (
+						<PipelinePage />
+					) : (
+						<PluginNotEnabledPage meta={pluginMeta.pipeline} />
+					)
+				}
+			/>
 		</FlatRoutes>
 	);
 };

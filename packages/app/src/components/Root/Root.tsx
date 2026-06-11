@@ -7,13 +7,16 @@ import ExtensionIcon from '@material-ui/icons/Extension';
 import LibraryBooks from '@material-ui/icons/LibraryBooks';
 import CreateComponentIcon from '@material-ui/icons/AddCircleOutline';
 import StorageIcon from '@material-ui/icons/Storage';
-import TimelineIcon from '@material-ui/icons/Timeline';
-import CloudIcon from '@material-ui/icons/Cloud';
-import ViewQuiltIcon from '@material-ui/icons/ViewQuilt';
 import LogoFull from './LogoFull';
 import LogoIcon from './LogoIcon';
 import ButlerLabsIcon from './ButlerLabsIcon';
 import { GitHubIcon, DiscordIcon, DocsIcon, WebsiteIcon } from './ExternalLinkIcons';
+import {
+	BUTLER_LABS_PLUGINS,
+	ButlerLabsPluginMeta,
+	pluginEnabledConfigKey,
+} from '../plugins/butlerLabsPluginsMeta';
+import { ButlerLabsSubmenuItem } from './ButlerLabsSubmenuItem';
 import {
 	Sidebar,
 	sidebarConfig,
@@ -45,9 +48,6 @@ const brandIcon = (Icon: any) => (props: any) => {
 
 const BrandExtensionIcon = brandIcon(ExtensionIcon);
 const BrandStorageIcon = brandIcon(StorageIcon);
-const BrandCloudIcon = brandIcon(CloudIcon);
-const BrandViewQuiltIcon = brandIcon(ViewQuiltIcon);
-const BrandTimelineIcon = brandIcon(TimelineIcon);
 
 const useSidebarLogoStyles = makeStyles({
 	root: {
@@ -79,22 +79,21 @@ const SidebarLogo = () => {
 
 export const Root = ({ children }: PropsWithChildren<{}>) => {
 	const config = useApi(configApiRef);
-	const butler = config.getOptionalBoolean('plugins.butler.enabled') ?? false;
-	const workspaces = config.getOptionalBoolean('plugins.workspaces.enabled') ?? false;
-	const registry = config.getOptionalBoolean('plugins.registry.enabled') ?? false;
-	const pipeline = config.getOptionalBoolean('plugins.pipeline.enabled') ?? false;
-	const anyButlerLabs = butler || workspaces || registry || pipeline;
-	// Parent group click target picks the first enabled plugin (sidebar
-	// order: butler > workspaces > registry > pipeline) so the click never
-	// lands on a disabled-route 404. Assignments run lowest-priority first
-	// so the highest-priority truthy match overwrites last. Falls back to
-	// 'butler' when all four are off; the parent SidebarItem is hidden in
-	// that case so the target is never followed.
-	let butlerLabsTarget = 'butler';
-	if (pipeline) butlerLabsTarget = 'pipeline';
-	if (registry) butlerLabsTarget = 'registry';
-	if (workspaces) butlerLabsTarget = 'workspaces';
-	if (butler) butlerLabsTarget = 'butler';
+	const enabledByKey = Object.fromEntries(
+		BUTLER_LABS_PLUGINS.map(p => [
+			p.configKey,
+			config.getOptionalBoolean(pluginEnabledConfigKey(p)) ?? false,
+		]),
+	) as Record<ButlerLabsPluginMeta['configKey'], boolean>;
+
+	// The parent "Butler Labs" group is always visible -- discoverability is
+	// uniform across internal and external deployments. The group's click
+	// target is the first enabled plugin's route so a click never lands on a
+	// disabled-route page; if all four are disabled the target falls back to
+	// the first plugin (Butler) whose route renders the branded
+	// PluginNotEnabledPage rather than Backstage's NotFound.
+	const firstEnabled = BUTLER_LABS_PLUGINS.find(p => enabledByKey[p.configKey]);
+	const butlerLabsTarget = (firstEnabled ?? BUTLER_LABS_PLUGINS[0]).routePath;
 
 	return (
 		<SidebarPage>
@@ -121,19 +120,18 @@ export const Root = ({ children }: PropsWithChildren<{}>) => {
 					<SidebarItem icon={LibraryBooks} to="docs" text="Docs" />
 					<SidebarItem icon={CreateComponentIcon} to="create" text="Create..." />
 
-					{anyButlerLabs && (
-						<>
-							<SidebarDivider />
-							<SidebarItem icon={ButlerLabsIcon} to={butlerLabsTarget} text="Butler Labs">
-								<SidebarSubmenu title="Butler Labs">
-									{butler && <SidebarSubmenuItem title="Butler" to="butler" icon={BrandCloudIcon} />}
-									{workspaces && <SidebarSubmenuItem title="Chambers" to="workspaces" icon={BrandViewQuiltIcon} />}
-									{registry && <SidebarSubmenuItem title="Keeper" to="registry" icon={BrandStorageIcon} />}
-									{pipeline && <SidebarSubmenuItem title="Herald" to="pipeline" icon={BrandTimelineIcon} />}
-								</SidebarSubmenu>
-							</SidebarItem>
-						</>
-					)}
+					<SidebarDivider />
+					<SidebarItem icon={ButlerLabsIcon} to={butlerLabsTarget} text="Butler Labs">
+						<SidebarSubmenu title="Butler Labs">
+							{BUTLER_LABS_PLUGINS.map(meta => (
+								<ButlerLabsSubmenuItem
+									key={meta.configKey}
+									meta={meta}
+									enabled={enabledByKey[meta.configKey]}
+								/>
+							))}
+						</SidebarSubmenu>
+					</SidebarItem>
 				</SidebarGroup>
 
 				<SidebarSpace />
