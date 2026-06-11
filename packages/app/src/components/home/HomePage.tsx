@@ -1,4 +1,4 @@
-import React from 'react';
+import { useEffect, useState } from 'react';
 import { makeStyles, Grid, Typography, Box } from '@material-ui/core';
 import { Page, Content } from '@backstage/core-components';
 import {
@@ -7,15 +7,7 @@ import {
 } from '@backstage/plugin-home';
 import { SearchContextProvider } from '@backstage/plugin-search-react';
 import { HomePageSearchBar } from '@backstage/plugin-search';
-import AddCircleOutlineIcon from '@material-ui/icons/AddCircleOutline';
-import CategoryIcon from '@material-ui/icons/Category';
-import MenuBookIcon from '@material-ui/icons/MenuBook';
-import CodeIcon from '@material-ui/icons/Code';
-import CloudIcon from '@material-ui/icons/Cloud';
-import ViewQuiltIcon from '@material-ui/icons/ViewQuilt';
-import StorageIcon from '@material-ui/icons/Storage';
-import TimelineIcon from '@material-ui/icons/Timeline';
-import ArrowForwardIcon from '@material-ui/icons/ArrowForward';
+import { HomeNavigationCards } from './HomeNavigationCards';
 
 const typewriterPrompts = [
 	'Search for Kubernetes clusters...',
@@ -33,13 +25,13 @@ function useTypewriter(
 	deletingMs = 30,
 	pauseMs = 2500,
 ): string {
-	const [text, setText] = React.useState('');
-	const [promptIdx, setPromptIdx] = React.useState(0);
-	const [phase, setPhase] = React.useState<
+	const [text, setText] = useState('');
+	const [promptIdx, setPromptIdx] = useState(0);
+	const [phase, setPhase] = useState<
 		'typing' | 'pausing' | 'deleting' | 'waiting'
 	>('typing');
 
-	React.useEffect(() => {
+	useEffect(() => {
 		const prompt = prompts[promptIdx];
 		let timeout: ReturnType<typeof setTimeout>;
 
@@ -72,6 +64,8 @@ function useTypewriter(
 					setPromptIdx(prev => (prev + 1) % prompts.length);
 					setPhase('typing');
 				}, 400);
+				break;
+			default:
 				break;
 		}
 
@@ -152,67 +146,6 @@ const useStyles = makeStyles(theme => ({
 	section: {
 		marginBottom: theme.spacing(4),
 	},
-	navCard: {
-		backgroundColor: theme.palette.background.paper,
-		borderRadius: 12,
-		padding: theme.spacing(2.5),
-		border: `1px solid ${(theme.palette as any).border || '#262626'}`,
-		cursor: 'pointer',
-		transition: 'all 0.2s ease',
-		height: '100%',
-		display: 'flex',
-		alignItems: 'flex-start',
-		gap: theme.spacing(2),
-		textDecoration: 'none',
-		'&:hover': {
-			borderColor: theme.palette.primary.main,
-			transform: 'translateY(-1px)',
-			boxShadow: `0 4px 16px ${theme.palette.type === 'dark' ? 'rgba(34, 197, 94, 0.1)' : 'rgba(0, 0, 0, 0.08)'}`,
-		},
-		'&:hover $navArrow': {
-			opacity: 1,
-			color: theme.palette.primary.main,
-		},
-	},
-	navIconBox: {
-		width: 44,
-		height: 44,
-		borderRadius: 10,
-		display: 'flex',
-		alignItems: 'center',
-		justifyContent: 'center',
-		flexShrink: 0,
-		backgroundColor: `${theme.palette.primary.main}15`,
-		color: theme.palette.primary.main,
-		'& svg': {
-			fontSize: 22,
-		},
-	},
-	navContent: {
-		flex: 1,
-		minWidth: 0,
-		overflow: 'hidden',
-	},
-	navTitle: {
-		fontSize: '0.925rem',
-		fontWeight: 600,
-		color: theme.palette.text.primary,
-		lineHeight: 1.3,
-	},
-	navDesc: {
-		fontSize: '0.8rem',
-		color: theme.palette.text.secondary,
-		lineHeight: 1.4,
-		marginTop: 2,
-	},
-	navArrow: {
-		fontSize: 16,
-		color: theme.palette.text.secondary,
-		opacity: 0,
-		transition: 'all 0.2s ease',
-		marginTop: 2,
-		flexShrink: 0,
-	},
 	widgetCard: {
 		backgroundColor: theme.palette.background.paper,
 		borderRadius: 12,
@@ -233,32 +166,6 @@ const useStyles = makeStyles(theme => ({
 		padding: theme.spacing(1.5),
 	},
 }));
-
-const NavigationCard = ({
-	icon,
-	title,
-	description,
-	href,
-}: {
-	icon: React.ReactNode;
-	title: string;
-	description: string;
-	href: string;
-}) => {
-	const classes = useStyles();
-	return (
-		<a href={href} className={classes.navCard}>
-			<div className={classes.navIconBox}>
-				{icon}
-			</div>
-			<div className={classes.navContent}>
-				<Typography className={classes.navTitle}>{title}</Typography>
-				<Typography className={classes.navDesc}>{description}</Typography>
-			</div>
-			<ArrowForwardIcon className={classes.navArrow} />
-		</a>
-	);
-};
 
 export const HomePage = () => {
 	const classes = useStyles();
@@ -286,35 +193,10 @@ export const HomePage = () => {
 							</div>
 						</div>
 
-						{/* Navigation */}
-						<Box className={classes.section}>
-							<Grid container spacing={2}>
-								<Grid item xs={12} sm={6} lg={3}>
-									<NavigationCard icon={<CloudIcon />} title="Butler" description="Kubernetes clusters, teams, and infrastructure" href="/butler" />
-								</Grid>
-								<Grid item xs={12} sm={6} lg={3}>
-									<NavigationCard icon={<ViewQuiltIcon />} title="Chambers" description="Private development environments, prepared and ready" href="/workspaces" />
-								</Grid>
-								<Grid item xs={12} sm={6} lg={3}>
-									<NavigationCard icon={<StorageIcon />} title="Keeper" description="Governed stores for infrastructure code" href="/registry" />
-								</Grid>
-								<Grid item xs={12} sm={6} lg={3}>
-									<NavigationCard icon={<TimelineIcon />} title="Herald" description="Telemetry routing at fleet scale" href="/pipeline" />
-								</Grid>
-								<Grid item xs={12} sm={6} lg={3}>
-									<NavigationCard icon={<AddCircleOutlineIcon />} title="Create" description="Scaffold services with golden path templates" href="/create" />
-								</Grid>
-								<Grid item xs={12} sm={6} lg={3}>
-									<NavigationCard icon={<CategoryIcon />} title="Catalog" description="Browse services, APIs, and infrastructure" href="/catalog" />
-								</Grid>
-								<Grid item xs={12} sm={6} lg={3}>
-									<NavigationCard icon={<MenuBookIcon />} title="Documentation" description="Technical docs for platform components" href="/docs" />
-								</Grid>
-								<Grid item xs={12} sm={6} lg={3}>
-									<NavigationCard icon={<CodeIcon />} title="APIs" description="Explore API specifications and schemas" href="/api-docs" />
-								</Grid>
-							</Grid>
-						</Box>
+						{/* Navigation. Butler Labs cards live in HomeNavigationCards so
+							the gate logic is unit-testable without HomePage's Search,
+							Catalog, and Home plugin API dependencies. */}
+						<HomeNavigationCards />
 
 						{/* Activity */}
 						<Box className={classes.section}>
