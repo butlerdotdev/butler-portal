@@ -14,13 +14,13 @@
  * limitations under the License.
  */
 
+import { Content, Header, Page } from '@backstage/core-components';
 import {
-  Content,
-  EmptyState,
-  Header,
-  Page,
-} from '@backstage/core-components';
-import { makeStyles } from '@material-ui/core';
+  Box,
+  Chip,
+  Typography,
+  makeStyles,
+} from '@material-ui/core';
 import {
   ButlerLabsPluginMeta,
   pluginEnabledConfigKey,
@@ -28,29 +28,142 @@ import {
 
 // PluginNotEnabledPage replaces Backstage's generic NotFound page when a user
 // reaches a Butler Labs plugin's route while the plugin is gated off for this
-// deployment. The page is intentional, branded, and uniform across every
-// gated plugin: shipping uniformly across internal + external deployments is
-// the design call -- the same disabled-but-discoverable surface signals the
-// product roadmap to every user, regardless of which deployment they are on.
+// deployment. Branded, hero-illustrated, themed to match butlerlabs.dev's
+// product surface so it never reads as a leftover error screen. Uniform
+// across internal and external deployments: every viewer sees the
+// brand, the role, and the path to enable.
 //
-// The page uses Backstage's EmptyState with `missing="info"` to match the
-// existing in-app precedent (EntityPage's "No CI/CD available" surface). The
-// Page + Header + Content layout mirrors the structure every other Butler
-// page uses so this never reads as a leftover error screen.
-//
-// This file changes only the frontend presentation. The backend gate stays
-// genuinely off: when plugins.<name>.enabled is false the corresponding
-// /api/<plugin>/* routes return 404 because the backend feature is never
-// loaded. See packages/backend/src/butlerLabsPluginGates.ts.
+// The backend gate stays genuinely off: when plugins.<name>.enabled is false
+// the corresponding /api/<plugin>/* routes return 404 because the backend
+// feature is never loaded. See packages/backend/src/butlerLabsPluginGates.ts.
 
 const useStyles = makeStyles(theme => ({
-  configKey: {
-    fontFamily: theme.typography.fontFamily,
+  hero: {
+    position: 'relative',
+    overflow: 'hidden',
+    minHeight: 560,
+    padding: theme.spacing(6, 6),
+    borderRadius: 14,
+    backgroundColor: theme.palette.background.paper,
+    border: `1px solid ${(theme.palette as any).border || theme.palette.divider}`,
+    display: 'grid',
+    gridTemplateColumns: 'minmax(0, 1fr) minmax(280px, 460px)',
+    columnGap: theme.spacing(6),
+    alignItems: 'center',
+    [theme.breakpoints.down('sm')]: {
+      gridTemplateColumns: '1fr',
+      minHeight: 'unset',
+      padding: theme.spacing(4, 3),
+    },
+  },
+  // Soft brand-tinted glow behind the mascot.
+  glow: {
+    position: 'absolute',
+    right: -120,
+    top: -120,
+    width: 720,
+    height: 720,
+    pointerEvents: 'none',
+    background: `radial-gradient(circle at 50% 50%, ${theme.palette.primary.main}22 0%, ${theme.palette.primary.main}10 35%, transparent 70%)`,
+    [theme.breakpoints.down('sm')]: {
+      display: 'none',
+    },
+  },
+  copy: {
+    position: 'relative',
+    zIndex: 1,
+    maxWidth: 640,
+  },
+  statusRow: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: theme.spacing(1.25),
+    marginBottom: theme.spacing(2),
+  },
+  statusDot: {
+    width: 8,
+    height: 8,
+    borderRadius: '50%',
+    backgroundColor: theme.palette.text.secondary,
+    opacity: 0.6,
+  },
+  statusText: {
+    color: theme.palette.text.secondary,
+    textTransform: 'uppercase',
+    letterSpacing: '0.08em',
+    fontSize: '0.78rem',
+    fontWeight: 600,
+  },
+  brandName: {
+    fontSize: '3.25rem',
+    fontWeight: 700,
+    color: theme.palette.text.primary,
+    lineHeight: 1.05,
+    marginBottom: theme.spacing(0.5),
+    [theme.breakpoints.down('sm')]: { fontSize: '2.25rem' },
+  },
+  role: {
+    fontSize: '1.1rem',
+    fontWeight: 500,
+    color: theme.palette.primary.main,
+    fontStyle: 'italic',
+    marginBottom: theme.spacing(3),
+  },
+  origin: {
+    fontSize: '1.0625rem',
+    lineHeight: 1.65,
+    color: theme.palette.text.primary,
+    marginBottom: theme.spacing(4),
+  },
+  enableCard: {
     backgroundColor: theme.palette.background.default,
+    border: `1px solid ${(theme.palette as any).border || theme.palette.divider}`,
+    borderRadius: 10,
+    padding: theme.spacing(2.25, 2.5),
+  },
+  enableHeading: {
+    fontSize: '0.78rem',
+    fontWeight: 700,
+    textTransform: 'uppercase',
+    letterSpacing: '0.08em',
+    color: theme.palette.text.secondary,
+    marginBottom: theme.spacing(1),
+  },
+  enableBody: {
+    fontSize: '0.95rem',
+    color: theme.palette.text.primary,
+    lineHeight: 1.55,
+    display: 'flex',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    gap: theme.spacing(0.75),
+  },
+  codeChip: {
+    fontFamily:
+      '"JetBrains Mono", "Fira Code", ui-monospace, SFMono-Regular, Menlo, monospace',
+    backgroundColor: theme.palette.background.paper,
     border: `1px solid ${theme.palette.divider}`,
-    borderRadius: theme.shape.borderRadius,
-    padding: `${theme.spacing(0.25)}px ${theme.spacing(0.75)}px`,
-    fontSize: '0.95em',
+    color: theme.palette.text.primary,
+    height: 26,
+    fontSize: '0.85rem',
+  },
+  mascotSlot: {
+    position: 'relative',
+    zIndex: 1,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: 380,
+    [theme.breakpoints.down('sm')]: { minHeight: 260, marginTop: theme.spacing(3) },
+  },
+  mascot: {
+    width: '100%',
+    maxWidth: 440,
+    height: 'auto',
+    objectFit: 'contain',
+    filter: 'drop-shadow(0 24px 40px rgba(0,0,0,0.45))',
+    userSelect: 'none',
+    pointerEvents: 'none',
   },
 }));
 
@@ -66,24 +179,52 @@ export const PluginNotEnabledPage = ({
     <Page themeId="home">
       <Header
         title={meta.brandName}
-        subtitle="Available but not enabled for this deployment"
+        subtitle={meta.role}
       />
       <Content>
-        <EmptyState
-          missing="info"
-          title={`${meta.brandName} is not enabled here`}
-          description={
-            <>
-              {meta.longDescription}
-              <br />
-              <br />
-              To enable it for this deployment, ask your administrator to set{' '}
-              <span className={classes.configKey}>{configKey}</span> to{' '}
-              <span className={classes.configKey}>true</span> in the portal's
-              Helm values, then reconcile the deployment.
-            </>
-          }
-        />
+        <Box className={classes.hero}>
+          <div className={classes.glow} />
+          <div className={classes.copy}>
+            <div className={classes.statusRow}>
+              <span className={classes.statusDot} />
+              <span className={classes.statusText}>
+                Available — not enabled for this deployment
+              </span>
+            </div>
+            <Typography variant="h1" className={classes.brandName}>
+              {meta.brandName}
+            </Typography>
+            <Typography className={classes.role}>{meta.role}</Typography>
+            <Typography className={classes.origin}>{meta.origin}</Typography>
+            <Box className={classes.enableCard}>
+              <Typography className={classes.enableHeading}>
+                Enable for this deployment
+              </Typography>
+              <Typography component="div" className={classes.enableBody}>
+                <span>Ask your administrator to set</span>
+                <Chip
+                  size="small"
+                  label={configKey}
+                  className={classes.codeChip}
+                />
+                <span>to</span>
+                <Chip
+                  size="small"
+                  label="true"
+                  className={classes.codeChip}
+                />
+                <span>in the portal's Helm values.</span>
+              </Typography>
+            </Box>
+          </div>
+          <div className={classes.mascotSlot}>
+            <img
+              className={classes.mascot}
+              src={meta.mascotPath}
+              alt={`${meta.brandName} mascot`}
+            />
+          </div>
+        </Box>
       </Content>
     </Page>
   );

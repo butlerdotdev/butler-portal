@@ -94,25 +94,26 @@ describe('App route gate (PluginNotEnabledPage vs real plugin page)', () => {
     const r = await renderWithFlags({});
     for (const meta of BUTLER_LABS_PLUGINS) {
       expect(r.queryByTestId(`real-${meta.configKey}-page`)).toBeNull();
-      // The branded page shows the plugin's brand name in its EmptyState
-      // title; multiple text occurrences are normal because Header subtitle
-      // and EmptyState title both reference the brand.
-      expect(
-        r.queryAllByText(new RegExp(`${meta.brandName} is not enabled here`)).length,
-      ).toBeGreaterThan(0);
+      // The branded page renders the plugin's themed role (e.g. "The Head
+      // Butler"), the origin description from butlerlabs.dev, and the
+      // mascot illustration -- all per-plugin pinned by the meta.
+      expect(r.queryAllByText(meta.role).length).toBeGreaterThan(0);
+      const mascot = r.container.querySelector(
+        `img[src="${meta.mascotPath}"]`,
+      );
+      expect(mascot).not.toBeNull();
     }
   });
 
   it('renders the real page for an enabled plugin and the not-enabled page for the others', async () => {
     const r = await renderWithFlags({ butler: true });
     expect(r.queryByTestId('real-butler-page')).not.toBeNull();
-    expect(r.queryAllByText(/Butler is not enabled here/).length).toBe(0);
+    // Butler's themed role no longer appears because the real page renders.
+    expect(r.queryAllByText('The Head Butler').length).toBe(0);
     for (const other of ['workspaces', 'registry', 'pipeline']) {
       expect(r.queryByTestId(`real-${other}-page`)).toBeNull();
       const meta = BUTLER_LABS_PLUGINS.find(p => p.configKey === other)!;
-      expect(
-        r.queryAllByText(new RegExp(`${meta.brandName} is not enabled here`)).length,
-      ).toBeGreaterThan(0);
+      expect(r.queryAllByText(meta.role).length).toBeGreaterThan(0);
     }
   });
 
@@ -125,21 +126,20 @@ describe('App route gate (PluginNotEnabledPage vs real plugin page)', () => {
     });
     for (const meta of BUTLER_LABS_PLUGINS) {
       expect(r.queryByTestId(`real-${meta.configKey}-page`)).not.toBeNull();
-      expect(
-        r.queryAllByText(new RegExp(`${meta.brandName} is not enabled here`)).length,
-      ).toBe(0);
+      expect(r.queryAllByText(meta.role).length).toBe(0);
     }
   });
 
   it('points the not-enabled page at the correct config key for each plugin', async () => {
     // Disable all four and confirm the page tells the user exactly which key
     // to flip. The config-key copy is what the operator needs to enable the
-    // plugin from the Helm values block.
+    // plugin from the Helm values block. The Chip from Material-UI renders
+    // the label inside a nested span, so the assertion is on the chip label
+    // string anywhere in the rendered tree.
     const r = await renderWithFlags({});
     for (const meta of BUTLER_LABS_PLUGINS) {
       expect(
-        r.queryAllByText(new RegExp(`plugins\\.${meta.configKey}\\.enabled`))
-          .length,
+        r.queryAllByText(`plugins.${meta.configKey}.enabled`).length,
       ).toBeGreaterThan(0);
     }
   });

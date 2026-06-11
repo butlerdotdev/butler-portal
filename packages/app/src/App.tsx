@@ -101,123 +101,25 @@ const app = createApp({
 	},
 });
 
-// AppRoutes lives inside the React tree so useApi(configApiRef) is callable.
-// Butler-Labs-branded plugins are always mounted at their route. The element
-// rendered depends on the per-plugin flag:
-//
-//   plugins.<name>.enabled=true  -> the real plugin page (ButlerPage, ...)
-//   plugins.<name>.enabled=false -> PluginNotEnabledPage (branded, with a
-//                                   call to action). The backend gate stays
-//                                   genuinely off either way -- see
-//                                   packages/backend/src/butlerLabsPluginGates.ts.
-//
-// Always-mounting the route is the discoverability change: a deep link or
-// shared URL to /registry/* now lands on a polished "not enabled here" page
-// rather than Backstage's generic NotFound, uniformly across internal and
-// external deployments.
-export const AppRoutes = () => {
+// Per-plugin route element switcher. Reads plugins.<configKey>.enabled and
+// renders either the real plugin page (an enabled deployment runs the real
+// plugin code) or PluginNotEnabledPage (a disabled deployment shows the
+// branded "available but not enabled" page). The route itself is always
+// mounted at module scope so createApp's plugin discovery sees it and the
+// other routable extensions in the tree -- moving any of this into a
+// function component would hide the static routes from discovery and break
+// the Sidebar Settings component's useRouteRef call against user-settings.
+const ButlerLabsRouteElement = (props: {
+	configKey: 'butler' | 'workspaces' | 'registry' | 'pipeline';
+	enabledElement: JSX.Element;
+}) => {
 	const config = useApi(configApiRef);
-	const butlerEnabled = config.getOptionalBoolean('plugins.butler.enabled') ?? false;
-	const workspacesEnabled = config.getOptionalBoolean('plugins.workspaces.enabled') ?? false;
-	const registryEnabled = config.getOptionalBoolean('plugins.registry.enabled') ?? false;
-	const pipelineEnabled = config.getOptionalBoolean('plugins.pipeline.enabled') ?? false;
-	const pluginMeta = Object.fromEntries(
-		BUTLER_LABS_PLUGINS.map(p => [p.configKey, p]),
-	);
-
-	return (
-		<FlatRoutes>
-			<Route path="/" element={<HomePage />} />
-			<Route path="/catalog" element={<CatalogIndexPage />} />
-			<Route
-				path="/catalog/:namespace/:kind/:name"
-				element={<CatalogEntityPage />}
-			>
-				{entityPage}
-			</Route>
-			<Route path="/docs" element={<TechDocsIndexPage />} />
-			<Route
-				path="/docs/:namespace/:kind/:name/*"
-				element={<TechDocsReaderPage />}
-			>
-				<TechDocsAddons>
-					<ReportIssue />
-				</TechDocsAddons>
-			</Route>
-			<Route path="/create" element={<ScaffolderPage />} />
-			<Route path="/api-docs" element={<ApiExplorerPage />} />
-			<Route
-				path="/catalog-import"
-				element={
-					<RequirePermission permission={catalogEntityCreatePermission}>
-						<CatalogImportPage />
-					</RequirePermission>
-				}
-			/>
-			<Route path="/search" element={<SearchPage />}>
-				{searchPage}
-			</Route>
-			<Route path="/settings" element={<UserSettingsPage />}>
-				<SettingsLayout>
-					<SettingsLayout.Route path="general" title="General">
-						<Grid container direction="row" spacing={3}>
-							<Grid item xs={12} md={6}>
-								<UserSettingsProfileCard />
-							</Grid>
-							<Grid item xs={12} md={6}>
-								<AppearanceSettings />
-							</Grid>
-							<Grid item xs={12} md={6}>
-								<UserSettingsIdentityCard />
-							</Grid>
-						</Grid>
-					</SettingsLayout.Route>
-				</SettingsLayout>
-			</Route>
-			<Route path="/catalog-graph" element={<CatalogGraphPage />} />
-			<Route path="/notifications" element={<NotificationsPage />} />
-			<Route
-				path="/butler/*"
-				element={
-					butlerEnabled ? (
-						<ButlerPage />
-					) : (
-						<PluginNotEnabledPage meta={pluginMeta.butler} />
-					)
-				}
-			/>
-			<Route
-				path="/workspaces/*"
-				element={
-					workspacesEnabled ? (
-						<WorkspacesPluginPage />
-					) : (
-						<PluginNotEnabledPage meta={pluginMeta.workspaces} />
-					)
-				}
-			/>
-			<Route
-				path="/registry/*"
-				element={
-					registryEnabled ? (
-						<RegistryPage />
-					) : (
-						<PluginNotEnabledPage meta={pluginMeta.registry} />
-					)
-				}
-			/>
-			<Route
-				path="/pipeline/*"
-				element={
-					pipelineEnabled ? (
-						<PipelinePage />
-					) : (
-						<PluginNotEnabledPage meta={pluginMeta.pipeline} />
-					)
-				}
-			/>
-		</FlatRoutes>
-	);
+	const enabled =
+		config.getOptionalBoolean(`plugins.${props.configKey}.enabled`) ?? false;
+	const meta =
+		BUTLER_LABS_PLUGINS.find(p => p.configKey === props.configKey) ??
+		BUTLER_LABS_PLUGINS[0];
+	return enabled ? props.enabledElement : <PluginNotEnabledPage meta={meta} />;
 };
 
 export default app.createRoot(
@@ -227,7 +129,93 @@ export default app.createRoot(
 		<SignalsDisplay />
 		<AppRouter>
 			<Root>
-				<AppRoutes />
+				<FlatRoutes>
+					<Route path="/" element={<HomePage />} />
+					<Route path="/catalog" element={<CatalogIndexPage />} />
+					<Route
+						path="/catalog/:namespace/:kind/:name"
+						element={<CatalogEntityPage />}
+					>
+						{entityPage}
+					</Route>
+					<Route path="/docs" element={<TechDocsIndexPage />} />
+					<Route
+						path="/docs/:namespace/:kind/:name/*"
+						element={<TechDocsReaderPage />}
+					>
+						<TechDocsAddons>
+							<ReportIssue />
+						</TechDocsAddons>
+					</Route>
+					<Route path="/create" element={<ScaffolderPage />} />
+					<Route path="/api-docs" element={<ApiExplorerPage />} />
+					<Route
+						path="/catalog-import"
+						element={
+							<RequirePermission permission={catalogEntityCreatePermission}>
+								<CatalogImportPage />
+							</RequirePermission>
+						}
+					/>
+					<Route path="/search" element={<SearchPage />}>
+						{searchPage}
+					</Route>
+					<Route path="/settings" element={<UserSettingsPage />}>
+						<SettingsLayout>
+							<SettingsLayout.Route path="general" title="General">
+								<Grid container direction="row" spacing={3}>
+									<Grid item xs={12} md={6}>
+										<UserSettingsProfileCard />
+									</Grid>
+									<Grid item xs={12} md={6}>
+										<AppearanceSettings />
+									</Grid>
+									<Grid item xs={12} md={6}>
+										<UserSettingsIdentityCard />
+									</Grid>
+								</Grid>
+							</SettingsLayout.Route>
+						</SettingsLayout>
+					</Route>
+					<Route path="/catalog-graph" element={<CatalogGraphPage />} />
+					<Route path="/notifications" element={<NotificationsPage />} />
+					<Route
+						path="/butler/*"
+						element={
+							<ButlerLabsRouteElement
+								configKey="butler"
+								enabledElement={<ButlerPage />}
+							/>
+						}
+					/>
+					<Route
+						path="/workspaces/*"
+						element={
+							<ButlerLabsRouteElement
+								configKey="workspaces"
+								enabledElement={<WorkspacesPluginPage />}
+							/>
+						}
+					/>
+					<Route
+						path="/registry/*"
+						element={
+							<ButlerLabsRouteElement
+								configKey="registry"
+								enabledElement={<RegistryPage />}
+							/>
+						}
+					/>
+					<Route
+						path="/pipeline/*"
+						element={
+							<ButlerLabsRouteElement
+								configKey="pipeline"
+								enabledElement={<PipelinePage />}
+							/>
+						}
+					/>
+				</FlatRoutes>
 			</Root>
 		</AppRouter>
 	</>,
