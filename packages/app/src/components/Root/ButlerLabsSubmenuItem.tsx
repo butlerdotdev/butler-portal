@@ -74,6 +74,14 @@ export const ButlerLabsSubmenuItem = ({
 
   const tooltipBody = `${meta.brandName} -- ${meta.shortDescription} Available but not enabled for this deployment. Ask your administrator to set ${pluginEnabledConfigKey(meta)} to true.`;
 
+  // Material-UI v4 Tooltip attaches aria-describedby to the cloned child
+  // element while open (set in core/Tooltip.js around the cloneElement
+  // call). SidebarSubmenuItem does not accept aria props for pass-through,
+  // so the cloned child is this wrapping span. The aria-label here gives
+  // the disabled state its own screen-reader-readable name independent of
+  // the describedby; assistive tech that walks the ancestor chain when
+  // announcing the focused inner anchor picks up both the describedby and
+  // the disabled state.
   return (
     <Tooltip
       title={tooltipBody}
@@ -84,6 +92,7 @@ export const ButlerLabsSubmenuItem = ({
       <span
         className={disabledClasses.wrapper}
         aria-disabled="true"
+        aria-label={`${meta.brandName}: available but not enabled for this deployment.`}
         data-testid={`butler-labs-submenu-item-disabled-${meta.configKey}`}
       >
         {item}

@@ -154,6 +154,11 @@ const NavigationCard = ({
 		</a>
 	);
 	if (disabled && tooltipBody) {
+		// Material-UI v4 Tooltip attaches aria-describedby to the cloned child
+		// element while open. The card's outer element is the anchor itself,
+		// so the describedby lands directly on the focused tab target --
+		// screen readers announce the tooltip body when keyboard focus
+		// reaches the card.
 		return (
 			<Tooltip
 				title={tooltipBody}
