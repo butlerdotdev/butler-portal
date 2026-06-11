@@ -1,4 +1,5 @@
 import { PropsWithChildren } from 'react';
+import { configApiRef, useApi } from '@backstage/core-plugin-api';
 import { makeStyles } from '@material-ui/core';
 import HomeIcon from '@material-ui/icons/Home';
 import CategoryIcon from '@material-ui/icons/Category';
@@ -76,64 +77,88 @@ const SidebarLogo = () => {
 	);
 };
 
-export const Root = ({ children }: PropsWithChildren<{}>) => (
-	<SidebarPage>
-		<Sidebar>
-			<SidebarLogo />
-			<SidebarGroup label="Search" icon={<SearchIcon />} to="/search">
-				<SidebarSearchModal />
-			</SidebarGroup>
-			<SidebarDivider />
+export const Root = ({ children }: PropsWithChildren<{}>) => {
+	const config = useApi(configApiRef);
+	const butler = config.getOptionalBoolean('plugins.butler.enabled') ?? false;
+	const workspaces = config.getOptionalBoolean('plugins.workspaces.enabled') ?? false;
+	const registry = config.getOptionalBoolean('plugins.registry.enabled') ?? false;
+	const pipeline = config.getOptionalBoolean('plugins.pipeline.enabled') ?? false;
+	const anyButlerLabs = butler || workspaces || registry || pipeline;
+	// Parent group click target picks the first enabled plugin (sidebar
+	// order: butler > workspaces > registry > pipeline) so the click never
+	// lands on a disabled-route 404. Assignments run lowest-priority first
+	// so the highest-priority truthy match overwrites last. Falls back to
+	// 'butler' when all four are off; the parent SidebarItem is hidden in
+	// that case so the target is never followed.
+	let butlerLabsTarget = 'butler';
+	if (pipeline) butlerLabsTarget = 'pipeline';
+	if (registry) butlerLabsTarget = 'registry';
+	if (workspaces) butlerLabsTarget = 'workspaces';
+	if (butler) butlerLabsTarget = 'butler';
 
-			<SidebarGroup label="Menu" icon={<MenuIcon />}>
-				<SidebarItem icon={HomeIcon} to="/" text="Home" />
+	return (
+		<SidebarPage>
+			<Sidebar>
+				<SidebarLogo />
+				<SidebarGroup label="Search" icon={<SearchIcon />} to="/search">
+					<SidebarSearchModal />
+				</SidebarGroup>
+				<SidebarDivider />
 
-				<SidebarItem icon={CategoryIcon} to="catalog" text="Catalog">
-					<SidebarSubmenu title="Catalog">
-						<SidebarSubmenuItem title="Components" to="catalog?filters[kind]=component" icon={BrandExtensionIcon} />
-						<SidebarSubmenuItem title="Systems" to="catalog?filters[kind]=system" icon={BrandStorageIcon} />
-						<SidebarSubmenuItem title="APIs" to="catalog?filters[kind]=api" icon={BrandExtensionIcon} />
-						<SidebarSubmenuItem title="Resources" to="catalog?filters[kind]=resource" icon={BrandStorageIcon} />
-					</SidebarSubmenu>
+				<SidebarGroup label="Menu" icon={<MenuIcon />}>
+					<SidebarItem icon={HomeIcon} to="/" text="Home" />
+
+					<SidebarItem icon={CategoryIcon} to="catalog" text="Catalog">
+						<SidebarSubmenu title="Catalog">
+							<SidebarSubmenuItem title="Components" to="catalog?filters[kind]=component" icon={BrandExtensionIcon} />
+							<SidebarSubmenuItem title="Systems" to="catalog?filters[kind]=system" icon={BrandStorageIcon} />
+							<SidebarSubmenuItem title="APIs" to="catalog?filters[kind]=api" icon={BrandExtensionIcon} />
+							<SidebarSubmenuItem title="Resources" to="catalog?filters[kind]=resource" icon={BrandStorageIcon} />
+						</SidebarSubmenu>
+					</SidebarItem>
+
+					<SidebarItem icon={ExtensionIcon} to="api-docs" text="APIs" />
+					<SidebarItem icon={LibraryBooks} to="docs" text="Docs" />
+					<SidebarItem icon={CreateComponentIcon} to="create" text="Create..." />
+
+					{anyButlerLabs && (
+						<>
+							<SidebarDivider />
+							<SidebarItem icon={ButlerLabsIcon} to={butlerLabsTarget} text="Butler Labs">
+								<SidebarSubmenu title="Butler Labs">
+									{butler && <SidebarSubmenuItem title="Butler" to="butler" icon={BrandCloudIcon} />}
+									{workspaces && <SidebarSubmenuItem title="Chambers" to="workspaces" icon={BrandViewQuiltIcon} />}
+									{registry && <SidebarSubmenuItem title="Keeper" to="registry" icon={BrandStorageIcon} />}
+									{pipeline && <SidebarSubmenuItem title="Herald" to="pipeline" icon={BrandTimelineIcon} />}
+								</SidebarSubmenu>
+							</SidebarItem>
+						</>
+					)}
+				</SidebarGroup>
+
+				<SidebarSpace />
+				<SidebarDivider />
+
+				<SidebarItem icon={WebsiteIcon} text="Butler Labs" onClick={() => window.open('https://butlerlabs.dev', '_blank')}>
+					<div />
 				</SidebarItem>
-
-				<SidebarItem icon={ExtensionIcon} to="api-docs" text="APIs" />
-				<SidebarItem icon={LibraryBooks} to="docs" text="Docs" />
-				<SidebarItem icon={CreateComponentIcon} to="create" text="Create..." />
+				<SidebarItem icon={DocsIcon} text="Docs" onClick={() => window.open('https://docs.butlerlabs.dev', '_blank')}>
+					<div />
+				</SidebarItem>
+				<SidebarItem icon={GitHubIcon} text="GitHub" onClick={() => window.open('https://github.com/butlerdotdev', '_blank')}>
+					<div />
+				</SidebarItem>
+				<SidebarItem icon={DiscordIcon} text="Discord" onClick={() => window.open('https://discord.gg/cAzWG9qz3K', '_blank')}>
+					<div />
+				</SidebarItem>
 
 				<SidebarDivider />
-				<SidebarItem icon={ButlerLabsIcon} to="butler" text="Butler Labs">
-					<SidebarSubmenu title="Butler Labs">
-						<SidebarSubmenuItem title="Butler" to="butler" icon={BrandCloudIcon} />
-						<SidebarSubmenuItem title="Chambers" to="workspaces" icon={BrandViewQuiltIcon} />
-						<SidebarSubmenuItem title="Keeper" to="registry" icon={BrandStorageIcon} />
-						<SidebarSubmenuItem title="Herald" to="pipeline" icon={BrandTimelineIcon} />
-					</SidebarSubmenu>
-				</SidebarItem>
-			</SidebarGroup>
 
-			<SidebarSpace />
-			<SidebarDivider />
-
-			<SidebarItem icon={WebsiteIcon} text="Butler Labs" onClick={() => window.open('https://butlerlabs.dev', '_blank')}>
-				<div />
-			</SidebarItem>
-			<SidebarItem icon={DocsIcon} text="Docs" onClick={() => window.open('https://docs.butlerlabs.dev', '_blank')}>
-				<div />
-			</SidebarItem>
-			<SidebarItem icon={GitHubIcon} text="GitHub" onClick={() => window.open('https://github.com/butlerdotdev', '_blank')}>
-				<div />
-			</SidebarItem>
-			<SidebarItem icon={DiscordIcon} text="Discord" onClick={() => window.open('https://discord.gg/cAzWG9qz3K', '_blank')}>
-				<div />
-			</SidebarItem>
-
-			<SidebarDivider />
-
-			<SidebarGroup label="Settings" icon={<SettingsIcon />} to="/settings">
-				<SidebarSettings />
-			</SidebarGroup>
-		</Sidebar>
-		{children}
-	</SidebarPage>
-);
+				<SidebarGroup label="Settings" icon={<SettingsIcon />} to="/settings">
+					<SidebarSettings />
+				</SidebarGroup>
+			</Sidebar>
+			{children}
+		</SidebarPage>
+	);
+};

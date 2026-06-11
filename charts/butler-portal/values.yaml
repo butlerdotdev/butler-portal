@@ -139,3 +139,33 @@ extraEnv: []
 #     secretKeyRef:
 #       name: google-auth
 #       key: clientId
+
+# Per-plugin runtime enable/disable. Mirrors the app-config schema at
+# plugins.<name>.enabled. Defaults OFF for all Butler-Labs-branded plugins:
+# external customers who install butler-portal without overriding these get
+# the stock Backstage IDP shell (catalog, scaffolder, TechDocs, search) with
+# no Butler Labs surface. Butler Labs' own deployment overrides all four to
+# true in its HelmRelease.
+#
+# Toggling a plugin from false to true on a running install requires a rolling
+# restart of the portal pod (env-var change), which Helm handles via the
+# standard Deployment update.
+#
+# Plugin -> Butler Labs sidebar name mapping:
+#   butler     -> Butler
+#   workspaces -> Chambers
+#   registry   -> Keeper
+#   pipeline   -> Herald
+#
+# Note: workspaces (Chambers) is a frontend-only plugin that proxies butler-server
+# through the butler-backend. Enabling plugins.workspaces.enabled without
+# plugins.butler.enabled gives you the UI but every API call from it will fail.
+plugins:
+  butler:
+    enabled: false
+  workspaces:
+    enabled: false
+  registry:
+    enabled: false
+  pipeline:
+    enabled: false

@@ -50,9 +50,54 @@ helm install butler-portal oci://ghcr.io/butlerdotdev/charts/butler-portal \
 | `registry.baseUrl` | `""` | Base URL the registry plugin advertises. |
 | `registry.github.secretName` | `""` | Secret holding a GitHub PAT for `repository_dispatch` and commit status. |
 | `extraEnv` | `[]` | Free-form env entries appended to the portal container. `BUTLER_SERVICE_ACCOUNT_USER` and `BUTLER_SERVICE_ACCOUNT_PASSWORD` injected here are overridden by the chart-managed `secretKeyRef` (positioned last, last-wins). |
+| `plugins.butler.enabled` | `false` | Enable the Butler plugin (Backstage frontend route + backend proxy to butler-server). Default off so external deployments fail safe. |
+| `plugins.workspaces.enabled` | `false` | Enable the Workspaces / Chambers plugin (frontend only; proxies butler-server via the butler-backend plugin). Default off. Setting this without `plugins.butler.enabled=true` gives you the UI but every API call fails. |
+| `plugins.registry.enabled` | `false` | Enable the Registry / Keeper plugin (IaC artifact registry) and its catalog entity provider. Default off. The catalog entity provider piggy-backs on this flag; no separate value. |
+| `plugins.pipeline.enabled` | `false` | Enable the Pipeline / Herald plugin (VRL DSL + fleet agents). Default off. |
 | `ingress.enabled` | `false` | Enable the chart-managed `Ingress` resource. |
 
 For the full list, see [`values.yaml`](./values.yaml).
+
+## Plugin enablement
+
+`butler-portal` ships four Butler-Labs-branded plugins, each gated by a
+`plugins.<name>.enabled` value that defaults to `false`. The fail-safe default
+means a customer who installs the chart without overrides gets the stock
+Backstage IDP (catalog, scaffolder, TechDocs, search, kubernetes, notifications,
+signals) with no Butler Labs surface.
+
+The plugin-to-sidebar-name mapping:
+
+| Values key | Sidebar name | Type |
+|---|---|---|
+| `plugins.butler.enabled` | Butler | Frontend route + backend proxy |
+| `plugins.workspaces.enabled` | Chambers | Frontend only (proxies via butler-backend) |
+| `plugins.registry.enabled` | Keeper | Frontend route + backend + catalog entity provider |
+| `plugins.pipeline.enabled` | Herald | Frontend route + backend |
+
+Enable plugins via values overrides:
+
+```yaml
+plugins:
+  butler:
+    enabled: true
+  registry:
+    enabled: true
+```
+
+A `false` plugin is genuinely off: the backend `register()` never runs, the
+`/api/<plugin>/*` routes do not exist (404), the frontend route is absent from
+the React tree, and the sidebar item is hidden. When all four are off, the
+"Butler Labs" sidebar group hides entirely.
+
+`workspaces` (Chambers) is frontend-only and proxies butler-server via the
+butler-backend plugin. Enabling `plugins.workspaces.enabled` without
+`plugins.butler.enabled` gives you the UI, but every API call from it fails.
+
+The `registry` flag also gates the chart's registry-backend catalog entity
+provider (a separate `backend.add` for the `RegistryEntityProvider`). There is
+no independent flag for the catalog module; turning registry off ensures no
+stale entity ingestion runs.
 
 ## Migrating from 0.1.x to 0.2.0
 

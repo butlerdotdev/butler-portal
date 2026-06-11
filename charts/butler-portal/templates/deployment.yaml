@@ -75,6 +75,18 @@ spec:
             {{- with .Values.extraEnv }}
             {{- toYaml . | nindent 12 }}
             {{- end }}
+            # Per-plugin runtime gates. Backstage parses APP_CONFIG_* values as
+            # JSON; the literal strings "true" / "false" map to JSON booleans.
+            # Positioned after extraEnv so chart-managed values win over any
+            # user extraEnv override.
+            - name: APP_CONFIG_plugins_butler_enabled
+              value: {{ .Values.plugins.butler.enabled | quote }}
+            - name: APP_CONFIG_plugins_workspaces_enabled
+              value: {{ .Values.plugins.workspaces.enabled | quote }}
+            - name: APP_CONFIG_plugins_registry_enabled
+              value: {{ .Values.plugins.registry.enabled | quote }}
+            - name: APP_CONFIG_plugins_pipeline_enabled
+              value: {{ .Values.plugins.pipeline.enabled | quote }}
             # Service-account credentials for butler-server. Positioned last so
             # the chart-managed secretKeyRef wins over any extraEnv override.
             - name: BUTLER_SERVICE_ACCOUNT_USER

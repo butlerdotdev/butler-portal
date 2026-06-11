@@ -35,7 +35,7 @@ import {
 	SignInPage,
 	type SignInProviderConfig,
 } from '@backstage/core-components';
-import { googleAuthApiRef } from '@backstage/core-plugin-api';
+import { configApiRef, googleAuthApiRef, useApi } from '@backstage/core-plugin-api';
 import { createApp } from '@backstage/app-defaults';
 import { AppRouter, FlatRoutes } from '@backstage/core-app-api';
 import { CatalogGraphPage } from '@backstage/plugin-catalog-graph';
@@ -99,65 +99,77 @@ const app = createApp({
 	},
 });
 
-// ... rest stays the same
+// AppRoutes lives inside the React tree so useApi(configApiRef) is callable.
+// Each Butler-Labs-branded Route is inline-conditioned on plugins.<name>.enabled.
+// A wrapper component would not work: FlatRoutes' child-selector reads
+// props.path on its direct children, recurses only into Fragment and elements
+// tagged core.featureFlagged, and silently drops anything else. Inline
+// conditional is the only composing-with-FlatRoutes form.
+export const AppRoutes = () => {
+	const config = useApi(configApiRef);
+	const butlerEnabled = config.getOptionalBoolean('plugins.butler.enabled') ?? false;
+	const workspacesEnabled = config.getOptionalBoolean('plugins.workspaces.enabled') ?? false;
+	const registryEnabled = config.getOptionalBoolean('plugins.registry.enabled') ?? false;
+	const pipelineEnabled = config.getOptionalBoolean('plugins.pipeline.enabled') ?? false;
 
-const routes = (
-	<FlatRoutes>
-		<Route path="/" element={<HomePage />} />
-		<Route path="/catalog" element={<CatalogIndexPage />} />
-		<Route
-			path="/catalog/:namespace/:kind/:name"
-			element={<CatalogEntityPage />}
-		>
-			{entityPage}
-		</Route>
-		<Route path="/docs" element={<TechDocsIndexPage />} />
-		<Route
-			path="/docs/:namespace/:kind/:name/*"
-			element={<TechDocsReaderPage />}
-		>
-			<TechDocsAddons>
-				<ReportIssue />
-			</TechDocsAddons>
-		</Route>
-		<Route path="/create" element={<ScaffolderPage />} />
-		<Route path="/api-docs" element={<ApiExplorerPage />} />
-		<Route
-			path="/catalog-import"
-			element={
-				<RequirePermission permission={catalogEntityCreatePermission}>
-					<CatalogImportPage />
-				</RequirePermission>
-			}
-		/>
-		<Route path="/search" element={<SearchPage />}>
-			{searchPage}
-		</Route>
-		<Route path="/settings" element={<UserSettingsPage />}>
-			<SettingsLayout>
-				<SettingsLayout.Route path="general" title="General">
-					<Grid container direction="row" spacing={3}>
-						<Grid item xs={12} md={6}>
-							<UserSettingsProfileCard />
+	return (
+		<FlatRoutes>
+			<Route path="/" element={<HomePage />} />
+			<Route path="/catalog" element={<CatalogIndexPage />} />
+			<Route
+				path="/catalog/:namespace/:kind/:name"
+				element={<CatalogEntityPage />}
+			>
+				{entityPage}
+			</Route>
+			<Route path="/docs" element={<TechDocsIndexPage />} />
+			<Route
+				path="/docs/:namespace/:kind/:name/*"
+				element={<TechDocsReaderPage />}
+			>
+				<TechDocsAddons>
+					<ReportIssue />
+				</TechDocsAddons>
+			</Route>
+			<Route path="/create" element={<ScaffolderPage />} />
+			<Route path="/api-docs" element={<ApiExplorerPage />} />
+			<Route
+				path="/catalog-import"
+				element={
+					<RequirePermission permission={catalogEntityCreatePermission}>
+						<CatalogImportPage />
+					</RequirePermission>
+				}
+			/>
+			<Route path="/search" element={<SearchPage />}>
+				{searchPage}
+			</Route>
+			<Route path="/settings" element={<UserSettingsPage />}>
+				<SettingsLayout>
+					<SettingsLayout.Route path="general" title="General">
+						<Grid container direction="row" spacing={3}>
+							<Grid item xs={12} md={6}>
+								<UserSettingsProfileCard />
+							</Grid>
+							<Grid item xs={12} md={6}>
+								<AppearanceSettings />
+							</Grid>
+							<Grid item xs={12} md={6}>
+								<UserSettingsIdentityCard />
+							</Grid>
 						</Grid>
-						<Grid item xs={12} md={6}>
-							<AppearanceSettings />
-						</Grid>
-						<Grid item xs={12} md={6}>
-							<UserSettingsIdentityCard />
-						</Grid>
-					</Grid>
-				</SettingsLayout.Route>
-			</SettingsLayout>
-		</Route>
-		<Route path="/catalog-graph" element={<CatalogGraphPage />} />
-		<Route path="/notifications" element={<NotificationsPage />} />
-		<Route path="/butler/*" element={<ButlerPage />} />
-		<Route path="/workspaces/*" element={<WorkspacesPluginPage />} />
-		<Route path="/registry/*" element={<RegistryPage />} />
-		<Route path="/pipeline/*" element={<PipelinePage />} />
-	</FlatRoutes>
-);
+					</SettingsLayout.Route>
+				</SettingsLayout>
+			</Route>
+			<Route path="/catalog-graph" element={<CatalogGraphPage />} />
+			<Route path="/notifications" element={<NotificationsPage />} />
+			{butlerEnabled && <Route path="/butler/*" element={<ButlerPage />} />}
+			{workspacesEnabled && <Route path="/workspaces/*" element={<WorkspacesPluginPage />} />}
+			{registryEnabled && <Route path="/registry/*" element={<RegistryPage />} />}
+			{pipelineEnabled && <Route path="/pipeline/*" element={<PipelinePage />} />}
+		</FlatRoutes>
+	);
+};
 
 export default app.createRoot(
 	<>
@@ -165,7 +177,9 @@ export default app.createRoot(
 		<OAuthRequestDialog />
 		<SignalsDisplay />
 		<AppRouter>
-			<Root>{routes}</Root>
+			<Root>
+				<AppRoutes />
+			</Root>
 		</AppRouter>
 	</>,
 );

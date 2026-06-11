@@ -7,6 +7,11 @@
  */
 
 import { createBackend } from '@backstage/backend-defaults';
+import {
+  coreServices,
+  createBackendFeatureLoader,
+} from '@backstage/backend-plugin-api';
+import { selectEnabledButlerLabsPlugins } from './butlerLabsPluginGates';
 
 const backend = createBackend();
 
@@ -71,14 +76,50 @@ backend.add(import('@backstage/plugin-kubernetes-backend'));
 backend.add(import('@backstage/plugin-notifications-backend'));
 backend.add(import('@backstage/plugin-signals-backend'));
 
-// butler plugin
-backend.add(import('@internal/plugin-butler-backend'));
-
-// registry plugin
-backend.add(import('@internal/plugin-registry-backend'));
-backend.add(import('@internal/plugin-registry-backend/catalog'));
-
-// pipeline plugin
-backend.add(import('@internal/plugin-pipeline-backend'));
+// Butler-Labs-branded plugins (butler/Chambers/Keeper/Herald) are runtime-gated
+// per plugins.<name>.enabled in app-config. createBackendFeatureLoader is the
+// idiomatic mechanism: it receives coreServices.rootConfig as a dep and yields
+// features at backend-init time, so the gate runs inside the backend lifecycle
+// rather than at module scope where config isn't yet available. Stock Backstage
+// plugins above are unconditional.
+//
+// Genuine off: when a flag is false the import is never yielded, so the plugin's
+// register() never runs, httpRouter.use(...) never mounts, and the corresponding
+// /api/* routes return 404. Hidden-but-live is not a failure mode here.
+//
+// registry-backend/catalog (the RegistryEntityProvider) piggy-backs on
+// plugins.registry.enabled. A separate flag invites a misconfiguration where
+// catalog discovery runs against a missing registry plugin.
+backend.add(
+  createBackendFeatureLoader({
+    deps: { config: coreServices.rootConfig },
+    async *loader({ config }) {
+      // Spec list lives in butlerLabsPluginGates.ts so the selection logic
+      // is unit-testable without booting the backend. Dynamic imports stay
+      // here so the module loads only when the flag is true.
+      for (const spec of selectEnabledButlerLabsPlugins(config)) {
+        for (const moduleId of spec.modules) {
+          // workspaces is frontend-only; not represented in any spec.
+          switch (moduleId) {
+            case '@internal/plugin-butler-backend':
+              yield import('@internal/plugin-butler-backend');
+              break;
+            case '@internal/plugin-registry-backend':
+              yield import('@internal/plugin-registry-backend');
+              break;
+            case '@internal/plugin-registry-backend/catalog':
+              yield import('@internal/plugin-registry-backend/catalog');
+              break;
+            case '@internal/plugin-pipeline-backend':
+              yield import('@internal/plugin-pipeline-backend');
+              break;
+            default:
+              throw new Error(`unknown Butler Labs plugin module: ${moduleId}`);
+          }
+        }
+      }
+    },
+  }),
+);
 
 backend.start();
