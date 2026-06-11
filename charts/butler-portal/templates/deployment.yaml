@@ -19,6 +19,15 @@ spec:
         {{- toYaml . | nindent 8 }}
       {{- end }}
       serviceAccountName: {{ include "butler-portal.serviceAccountName" . }}
+      {{- if .Values.butlerSigning.existingSecret }}
+      securityContext:
+        # The backstage container runs as the node user (UID 1000, GID 1000)
+        # per packages/backend/Dockerfile. fsGroup sets the mounted Secret
+        # file's group ownership to 1000 and joins the container's
+        # supplementary groups, so a 0440 mode grants read via the group bit
+        # without exposing the private key to other UIDs on the node.
+        fsGroup: 1000
+      {{- end }}
       containers:
         - name: backstage
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
@@ -115,7 +124,11 @@ spec:
         - name: butler-signing-key
           secret:
             secretName: {{ .Values.butlerSigning.existingSecret }}
-            defaultMode: 0400
+            # 0440 + fsGroup 1000 (set on the PodSpec above): owner root reads,
+            # group 1000 reads, others get nothing. The container's node user
+            # (UID 1000) joins GID 1000 via fsGroup and reads via the group
+            # bit. 0400 would require root and the container is non-root.
+            defaultMode: 0440
             items:
               - key: {{ .Values.butlerSigning.keyKey | default "key" }}
                 path: key
