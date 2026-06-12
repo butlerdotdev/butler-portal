@@ -29,7 +29,11 @@ jobs:
         run: helm lint ./charts/butler-portal
 
       - name: Install helm-unittest plugin
-        run: helm plugin install --verify=false https://github.com/helm-unittest/helm-unittest --version 0.5.2
+        # Pinned to a known-good version. The --verify flag was added in
+        # helm 4.x; the workflow pins helm 3.14.0 above so this is the
+        # plain install command (helm 3 has no signature verification on
+        # plugins to disable).
+        run: helm plugin install https://github.com/helm-unittest/helm-unittest --version 0.5.2
 
       - name: Run helm-unittest suite (per-plugin gates + partial overrides)
         run: helm unittest ./charts/butler-portal
