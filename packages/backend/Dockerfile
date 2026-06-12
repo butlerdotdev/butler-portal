@@ -76,4 +76,14 @@ COPY --chown=node:node examples ./examples
 COPY --chown=node:node packages/backend/dist/bundle.tar.gz app-config*.yaml ./
 RUN tar xzf bundle.tar.gz && rm bundle.tar.gz
 
+# Ship packages/app/config.d.ts so Backstage's config-loader can resolve the
+# frontend-package configSchema declaration at backend boot. The bundle ships
+# packages/app/dist/.config-schema.json (pre-compiled), but the runtime
+# config-loader still resolves the raw .d.ts file referenced by
+# packages/app/package.json's `configSchema` field; without it, boot fails
+# with "Invalid schema in packages/app/config.d.ts, missing Config export"
+# before any plugin loader runs. Copying preserves the source path so the
+# loader finds it at /app/packages/app/config.d.ts.
+COPY --chown=node:node packages/app/config.d.ts packages/app/config.d.ts
+
 CMD ["node", "packages/backend", "--config", "app-config.yaml", "--config", "app-config.production.yaml"]
