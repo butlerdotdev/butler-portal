@@ -110,18 +110,27 @@ describe('HomeNavigationCards Butler Labs gates', () => {
     }
   });
 
-  it('wraps each disabled card in a MUI Tooltip whose body references the brand and the config key to flip (library-level focus/hover open behavior is tested by MUI itself)', async () => {
-    // MUI v4 Tooltip mounts the popup via a Portal; combined with jsdom
-    // timers this makes assertions on the open-on-focus path timing-
-    // fragile. The structural assertion here is that the card's outer
-    // element is the focused anchor (so aria-describedby lands directly on
-    // it when the tooltip does open) and the brand and config-key strings
-    // appear in the rendered tree, confirming the Tooltip's title body is
-    // wired through.
+  it('surfaces the brand name and the themed Origin lore on each disabled card (config-key call-to-action lives on PluginNotEnabledPage, covered by AppRoutes.test.tsx)', async () => {
+    // The card hover-tooltip was intentionally removed: the disabled state
+    // now reads through the visual treatment (greyed wrapper, mascot
+    // watermark, brand-tinted glow) and the inline Origin badge whose
+    // tooltip carries the themed role. The config-key copy moved to
+    // PluginNotEnabledPage, which the click lands on, so this test pins the
+    // homepage surface and leaves the operator call-to-action to the
+    // not-enabled page tests.
     const r = await renderCards({});
     const card = r.queryByTestId('homepage-card-registry-disabled') as HTMLElement | null;
     expect(card?.tagName).toBe('A');
+    // Brand name on the card itself.
     expect(r.container.innerHTML).toMatch(/Keeper/);
-    expect(r.container.innerHTML).toMatch(/plugins\.registry\.enabled/);
+    // Origin badge wired up with the themed hint as a MUI Tooltip title.
+    // MUI v4 renders string titles to the HTML title attribute on the
+    // cloned child, so the lore appears in container.innerHTML even when
+    // the tooltip popper is not open.
+    const originBadge = r.container.querySelector(
+      '[aria-label="Keeper origin"]',
+    );
+    expect(originBadge).not.toBeNull();
+    expect(r.container.innerHTML).toMatch(/Keeper of the Wardrobe/);
   });
 });

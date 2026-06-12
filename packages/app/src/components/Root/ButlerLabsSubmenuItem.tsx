@@ -38,8 +38,11 @@ const brandIcon = (Icon: any) => (props: any) => {
 // enabled item -- the route element in App.tsx renders the branded
 // PluginNotEnabledPage when the flag is off, so clicking still feels like a
 // well-formed action rather than a dead link.
-const useDisabledItemStyles = makeStyles(() => ({
+const useItemStyles = makeStyles(theme => ({
   wrapper: {
+    display: 'block',
+  },
+  disabledWrapper: {
     opacity: 0.45,
     cursor: 'not-allowed',
     display: 'block',
@@ -47,6 +50,43 @@ const useDisabledItemStyles = makeStyles(() => ({
       cursor: 'not-allowed',
       textDecoration: 'none',
     },
+  },
+  tip: {
+    backgroundColor: theme.palette.background.paper,
+    border: `1px solid ${theme.palette.divider}`,
+    color: theme.palette.text.primary,
+    padding: theme.spacing(1.25, 1.5),
+    maxWidth: 280,
+    boxShadow: '0 8px 24px rgba(0,0,0,0.35)',
+  },
+  tipRole: {
+    fontStyle: 'italic',
+    fontWeight: 600,
+    color: theme.palette.primary.main,
+    fontSize: '0.85rem',
+    marginBottom: theme.spacing(0.5),
+  },
+  tipDesc: {
+    fontSize: '0.85rem',
+    lineHeight: 1.5,
+    opacity: 0.92,
+  },
+  tipDisabled: {
+    marginTop: theme.spacing(1),
+    paddingTop: theme.spacing(1),
+    borderTop: `1px solid ${theme.palette.divider}`,
+    fontSize: '0.78rem',
+    opacity: 0.85,
+    lineHeight: 1.5,
+  },
+  tipKey: {
+    fontFamily:
+      '"JetBrains Mono", "Fira Code", ui-monospace, SFMono-Regular, Menlo, monospace',
+    fontSize: '0.78rem',
+    backgroundColor: theme.palette.background.default,
+    border: `1px solid ${theme.palette.divider}`,
+    padding: '0 4px',
+    borderRadius: 3,
   },
 }));
 
@@ -57,8 +97,9 @@ export const ButlerLabsSubmenuItem = ({
   meta: ButlerLabsPluginMeta;
   enabled: boolean;
 }) => {
-  const disabledClasses = useDisabledItemStyles();
+  const classes = useItemStyles();
   const BrandedIcon = brandIcon(meta.icon);
+  const configKey = pluginEnabledConfigKey(meta);
 
   const item = (
     <SidebarSubmenuItem
@@ -68,32 +109,46 @@ export const ButlerLabsSubmenuItem = ({
     />
   );
 
-  if (enabled) {
-    return item;
-  }
-
-  const tooltipBody = `${meta.brandName} -- ${meta.shortDescription} Available but not enabled for this deployment. Ask your administrator to set ${pluginEnabledConfigKey(meta)} to true.`;
+  const tooltipContent = (
+    <>
+      <div className={classes.tipRole}>{meta.role}</div>
+      <div className={classes.tipDesc}>{meta.shortDescription}</div>
+      {!enabled && (
+        <div className={classes.tipDisabled}>
+          Available, not enabled for this deployment. Ask your administrator
+          to set <span className={classes.tipKey}>{configKey}</span> to{' '}
+          <span className={classes.tipKey}>true</span>.
+        </div>
+      )}
+    </>
+  );
 
   // Material-UI v4 Tooltip attaches aria-describedby to the cloned child
-  // element while open (set in core/Tooltip.js around the cloneElement
-  // call). SidebarSubmenuItem does not accept aria props for pass-through,
-  // so the cloned child is this wrapping span. The aria-label here gives
-  // the disabled state its own screen-reader-readable name independent of
-  // the describedby; assistive tech that walks the ancestor chain when
-  // announcing the focused inner anchor picks up both the describedby and
-  // the disabled state.
+  // element while open. SidebarSubmenuItem does not accept aria props for
+  // pass-through, so the cloned child is the wrapping span. The aria-label
+  // on the disabled wrapper gives the disabled state its own
+  // screen-reader-readable name independent of the describedby.
   return (
     <Tooltip
-      title={tooltipBody}
+      title={tooltipContent}
       placement="right"
       enterDelay={250}
       enterNextDelay={250}
+      classes={{ tooltip: classes.tip }}
     >
       <span
-        className={disabledClasses.wrapper}
-        aria-disabled="true"
-        aria-label={`${meta.brandName}: available but not enabled for this deployment.`}
-        data-testid={`butler-labs-submenu-item-disabled-${meta.configKey}`}
+        className={enabled ? classes.wrapper : classes.disabledWrapper}
+        aria-disabled={!enabled || undefined}
+        aria-label={
+          enabled
+            ? undefined
+            : `${meta.brandName}: available but not enabled for this deployment.`
+        }
+        data-testid={
+          enabled
+            ? undefined
+            : `butler-labs-submenu-item-disabled-${meta.configKey}`
+        }
       >
         {item}
       </span>

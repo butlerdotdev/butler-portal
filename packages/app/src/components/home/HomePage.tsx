@@ -85,26 +85,30 @@ const useStyles = makeStyles(theme => ({
 		},
 	},
 	welcomeTitle: {
-		fontSize: '2rem',
-		fontWeight: 600,
+		fontSize: '2.5rem',
+		fontWeight: 700,
 		color: theme.palette.text.primary,
 		fontFamily: '"Inter", sans-serif',
+		lineHeight: 1.1,
+		letterSpacing: '-0.015em',
 		[theme.breakpoints.down('xs')]: {
-			fontSize: '1.5rem',
+			fontSize: '1.75rem',
 		},
 	},
 	welcomeSubtitle: {
-		fontSize: '1rem',
+		fontSize: '1.05rem',
 		color: theme.palette.text.secondary,
-		marginTop: 4,
+		marginTop: theme.spacing(1),
+		lineHeight: 1.5,
+		maxWidth: 720,
 	},
 	'@keyframes borderShimmer': {
 		'0%': { transform: 'rotate(0deg)' },
 		'100%': { transform: 'rotate(360deg)' },
 	},
 	searchBarContainer: {
-		maxWidth: 600,
-		marginTop: theme.spacing(2.5),
+		maxWidth: 640,
+		marginTop: theme.spacing(3),
 		marginBottom: theme.spacing(5),
 	},
 	searchBarWrapper: {
@@ -153,17 +157,24 @@ const useStyles = makeStyles(theme => ({
 		overflow: 'hidden',
 		height: '100%',
 	},
-	widgetHeader: {
-		padding: theme.spacing(2, 2.5),
-		borderBottom: `1px solid ${(theme.palette as any).border || '#262626'}`,
+	activitySectionHeader: {
+		display: 'flex',
+		alignItems: 'center',
+		gap: theme.spacing(1.5),
+		marginBottom: theme.spacing(1.5),
 	},
-	widgetTitle: {
-		fontSize: '0.875rem',
-		fontWeight: 600,
-		color: theme.palette.text.secondary,
+	activitySectionLabel: {
+		fontSize: '0.72rem',
+		fontWeight: 700,
+		letterSpacing: '0.14em',
+		textTransform: 'uppercase',
+		color: theme.palette.primary.main,
+		opacity: 0.85,
 	},
-	widgetContent: {
-		padding: theme.spacing(1.5),
+	activitySectionRule: {
+		flex: 1,
+		height: 1,
+		background: `linear-gradient(to right, ${theme.palette.primary.main}40, transparent 70%)`,
 	},
 }));
 
@@ -181,8 +192,8 @@ export const HomePage = () => {
 							Welcome to Butler Portal
 						</Typography>
 						<Typography className={classes.welcomeSubtitle}>
-							Your internal developer platform. Discover services, manage
-							infrastructure, and ship faster.
+							Your butlers are ready. Pick a chamber, summon a tool, or
+							search the estate.
 						</Typography>
 						<div className={classes.searchBarContainer}>
 							<div className={classes.searchBarWrapper}>
@@ -198,31 +209,25 @@ export const HomePage = () => {
 							Catalog, and Home plugin API dependencies. */}
 						<HomeNavigationCards />
 
-						{/* Activity */}
+						{/* Activity. The Starred and Recently Visited Backstage widgets
+							ship their own internal headings, so the outer chrome here is
+							deliberately header-free to avoid the doubled-title visual. */}
+						<div className={classes.activitySectionHeader}>
+							<span className={classes.activitySectionLabel}>
+								Your activity
+							</span>
+							<span className={classes.activitySectionRule} aria-hidden="true" />
+						</div>
 						<Box className={classes.section}>
 							<Grid container spacing={2}>
 								<Grid item xs={12} md={6}>
 									<div className={classes.widgetCard}>
-										<div className={classes.widgetHeader}>
-											<Typography className={classes.widgetTitle}>
-												Starred
-											</Typography>
-										</div>
-										<div className={classes.widgetContent}>
-											<HomePageStarredEntities />
-										</div>
+										<HomePageStarredEntities />
 									</div>
 								</Grid>
 								<Grid item xs={12} md={6}>
 									<div className={classes.widgetCard}>
-										<div className={classes.widgetHeader}>
-											<Typography className={classes.widgetTitle}>
-												Recently Visited
-											</Typography>
-										</div>
-										<div className={classes.widgetContent}>
-											<HomePageRecentlyVisited />
-										</div>
+										<HomePageRecentlyVisited />
 									</div>
 								</Grid>
 							</Grid>

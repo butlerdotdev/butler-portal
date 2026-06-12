@@ -17,6 +17,7 @@ import {
 	pluginEnabledConfigKey,
 } from '../plugins/butlerLabsPluginsMeta';
 import { ButlerLabsSubmenuItem } from './ButlerLabsSubmenuItem';
+import { SidebarSectionLabel } from './SidebarSectionLabel';
 import {
 	Sidebar,
 	sidebarConfig,
@@ -104,6 +105,7 @@ export const Root = ({ children }: PropsWithChildren<{}>) => {
 				</SidebarGroup>
 				<SidebarDivider />
 
+				<SidebarSectionLabel label="Platform" />
 				<SidebarGroup label="Menu" icon={<MenuIcon />}>
 					<SidebarItem icon={HomeIcon} to="/" text="Home" />
 
@@ -120,7 +122,7 @@ export const Root = ({ children }: PropsWithChildren<{}>) => {
 					<SidebarItem icon={LibraryBooks} to="docs" text="Docs" />
 					<SidebarItem icon={CreateComponentIcon} to="create" text="Create..." />
 
-					<SidebarDivider />
+					<SidebarSectionLabel label="Butler Labs" />
 					<SidebarItem icon={ButlerLabsIcon} to={butlerLabsTarget} text="Butler Labs">
 						<SidebarSubmenu title="Butler Labs">
 							{BUTLER_LABS_PLUGINS.map(meta => (
@@ -137,6 +139,7 @@ export const Root = ({ children }: PropsWithChildren<{}>) => {
 				<SidebarSpace />
 				<SidebarDivider />
 
+				<SidebarSectionLabel label="Connect" />
 				<SidebarItem icon={WebsiteIcon} text="Butler Labs" onClick={() => window.open('https://butlerlabs.dev', '_blank')}>
 					<div />
 				</SidebarItem>
@@ -150,8 +153,7 @@ export const Root = ({ children }: PropsWithChildren<{}>) => {
 					<div />
 				</SidebarItem>
 
-				<SidebarDivider />
-
+				<SidebarSectionLabel label="Account" />
 				<SidebarGroup label="Settings" icon={<SettingsIcon />} to="/settings">
 					<SidebarSettings />
 				</SidebarGroup>

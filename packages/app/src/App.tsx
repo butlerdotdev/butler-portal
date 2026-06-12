@@ -103,23 +103,32 @@ const app = createApp({
 
 // Per-plugin route element switcher. Reads plugins.<configKey>.enabled and
 // renders either the real plugin page (an enabled deployment runs the real
-// plugin code) or PluginNotEnabledPage (a disabled deployment shows the
-// branded "available but not enabled" page). The route itself is always
-// mounted at module scope so createApp's plugin discovery sees it and the
-// other routable extensions in the tree -- moving any of this into a
-// function component would hide the static routes from discovery and break
-// the Sidebar Settings component's useRouteRef call against user-settings.
-const ButlerLabsRouteElement = (props: {
+// plugin code, passed in as children so createApp's plugin discovery sees
+// the routable extension at module-evaluation time) or PluginNotEnabledPage
+// (a disabled deployment shows the branded "available but not enabled"
+// page).
+//
+// The routable extension MUST come in via `children`, not an arbitrary
+// prop. Backstage's discovery walker recurses into props.children and
+// props.element; it does not introspect custom-component props. Passing
+// <WorkspacesPluginPage /> as e.g. `enabledElement={...}` would make the
+// element invisible to discovery, and the moment the flag flipped to true
+// React would try to mount a routable extension whose rootRouteRef was
+// never indexed -- the "was not discovered in the app element tree" crash.
+const ButlerLabsRouteElement = ({
+	configKey,
+	children,
+}: {
 	configKey: 'butler' | 'workspaces' | 'registry' | 'pipeline';
-	enabledElement: JSX.Element;
+	children: React.ReactNode;
 }) => {
 	const config = useApi(configApiRef);
 	const enabled =
-		config.getOptionalBoolean(`plugins.${props.configKey}.enabled`) ?? false;
+		config.getOptionalBoolean(`plugins.${configKey}.enabled`) ?? false;
 	const meta =
-		BUTLER_LABS_PLUGINS.find(p => p.configKey === props.configKey) ??
+		BUTLER_LABS_PLUGINS.find(p => p.configKey === configKey) ??
 		BUTLER_LABS_PLUGINS[0];
-	return enabled ? props.enabledElement : <PluginNotEnabledPage meta={meta} />;
+	return enabled ? <>{children}</> : <PluginNotEnabledPage meta={meta} />;
 };
 
 export default app.createRoot(
@@ -182,37 +191,33 @@ export default app.createRoot(
 					<Route
 						path="/butler/*"
 						element={
-							<ButlerLabsRouteElement
-								configKey="butler"
-								enabledElement={<ButlerPage />}
-							/>
+							<ButlerLabsRouteElement configKey="butler">
+								<ButlerPage />
+							</ButlerLabsRouteElement>
 						}
 					/>
 					<Route
 						path="/workspaces/*"
 						element={
-							<ButlerLabsRouteElement
-								configKey="workspaces"
-								enabledElement={<WorkspacesPluginPage />}
-							/>
+							<ButlerLabsRouteElement configKey="workspaces">
+								<WorkspacesPluginPage />
+							</ButlerLabsRouteElement>
 						}
 					/>
 					<Route
 						path="/registry/*"
 						element={
-							<ButlerLabsRouteElement
-								configKey="registry"
-								enabledElement={<RegistryPage />}
-							/>
+							<ButlerLabsRouteElement configKey="registry">
+								<RegistryPage />
+							</ButlerLabsRouteElement>
 						}
 					/>
 					<Route
 						path="/pipeline/*"
 						element={
-							<ButlerLabsRouteElement
-								configKey="pipeline"
-								enabledElement={<PipelinePage />}
-							/>
+							<ButlerLabsRouteElement configKey="pipeline">
+								<PipelinePage />
+							</ButlerLabsRouteElement>
 						}
 					/>
 				</FlatRoutes>
