@@ -11,6 +11,7 @@ import {
   coreServices,
   createBackendFeatureLoader,
 } from '@backstage/backend-plugin-api';
+import { dynamicPluginsFeatureLoader } from '@backstage/backend-dynamic-feature-service';
 import { selectEnabledButlerLabsPlugins } from './butlerLabsPluginGates';
 
 const backend = createBackend();
@@ -121,5 +122,23 @@ backend.add(
     },
   }),
 );
+
+// Customer-installed dynamic plugins (0.5.0+). Loads plugins from the
+// path configured at dynamicPlugins.rootDirectory in app-config -- the
+// chart's optional init container populates that directory at pod start.
+// Runs alongside the static Butler-Labs gates above; they are independent
+// paths. A customer can ship their own backend plugin in their own OCI
+// registry, reference it in HelmRelease values, and it loads here with
+// the same lifecycle a built-in plugin gets.
+//
+// Operator-controlled, not license-checked: an operator enables a plugin
+// by referencing it in dynamicPlugins.plugins[] -- no entitlement call,
+// no remote check. This is the open-product model: software is fully open
+// and complete; the operator decides what runs in their portal.
+//
+// When dynamicPlugins.rootDirectory is unset (the default), the loader
+// is a no-op: no directory to scan, no plugins to register, no error.
+// Non-adopters render identically to the pre-0.5.0 backend.
+backend.add(dynamicPluginsFeatureLoader());
 
 backend.start();
