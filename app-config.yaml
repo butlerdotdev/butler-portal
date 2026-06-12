@@ -18,7 +18,7 @@ backend:
   database:
     client: better-sqlite3
     connection: ':memory:'
-  # Auth policy enforced — management API requires Backstage auth.
+  # Auth policy enforced -- management API requires Backstage auth.
   # Protocol endpoints (Terraform, Helm, OCI, webhooks) remain unauthenticated.
 
 permission:
@@ -58,6 +58,23 @@ scaffolder:
   defaultAuthor:
     name: Butler Portal
     email: butler-portal@butlerlabs.dev
+
+# Per-plugin runtime enable/disable. Default OFF for all Butler-Labs-branded
+# plugins so external customer deployments fail safe: a deployment without
+# overrides gets the stock Backstage IDP shell (catalog, scaffolder, TechDocs,
+# search) with no Butler Labs surface. Butler Labs' own deployment overrides
+# these to true in its HelmRelease (clusters/butler-portal/apps/butler-portal/
+# helmrelease.yaml). The per-plugin config blocks below (butler, registry,
+# pipeline) are only read when their plugin is enabled.
+plugins:
+  butler:
+    enabled: false
+  workspaces:
+    enabled: false
+  registry:
+    enabled: false
+  pipeline:
+    enabled: false
 
 butler:
   # Local dev fallback to localhost:8080 is intentional; pointed at a wrong

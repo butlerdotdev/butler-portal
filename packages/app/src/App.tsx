@@ -52,6 +52,7 @@ import { WorkspacesPluginPage } from '@internal/plugin-workspaces';
 import { RegistryPage } from '@internal/plugin-registry';
 import { PipelinePage } from '@internal/plugin-pipeline';
 import { AppearanceSettings } from './components/settings/AppearanceSettings';
+import { ButlerLabsRouteElement } from './components/plugins/ButlerLabsRouteElement';
 
 const app = createApp({
 	apis,
@@ -99,73 +100,97 @@ const app = createApp({
 	},
 });
 
-// ... rest stays the same
-
-const routes = (
-	<FlatRoutes>
-		<Route path="/" element={<HomePage />} />
-		<Route path="/catalog" element={<CatalogIndexPage />} />
-		<Route
-			path="/catalog/:namespace/:kind/:name"
-			element={<CatalogEntityPage />}
-		>
-			{entityPage}
-		</Route>
-		<Route path="/docs" element={<TechDocsIndexPage />} />
-		<Route
-			path="/docs/:namespace/:kind/:name/*"
-			element={<TechDocsReaderPage />}
-		>
-			<TechDocsAddons>
-				<ReportIssue />
-			</TechDocsAddons>
-		</Route>
-		<Route path="/create" element={<ScaffolderPage />} />
-		<Route path="/api-docs" element={<ApiExplorerPage />} />
-		<Route
-			path="/catalog-import"
-			element={
-				<RequirePermission permission={catalogEntityCreatePermission}>
-					<CatalogImportPage />
-				</RequirePermission>
-			}
-		/>
-		<Route path="/search" element={<SearchPage />}>
-			{searchPage}
-		</Route>
-		<Route path="/settings" element={<UserSettingsPage />}>
-			<SettingsLayout>
-				<SettingsLayout.Route path="general" title="General">
-					<Grid container direction="row" spacing={3}>
-						<Grid item xs={12} md={6}>
-							<UserSettingsProfileCard />
-						</Grid>
-						<Grid item xs={12} md={6}>
-							<AppearanceSettings />
-						</Grid>
-						<Grid item xs={12} md={6}>
-							<UserSettingsIdentityCard />
-						</Grid>
-					</Grid>
-				</SettingsLayout.Route>
-			</SettingsLayout>
-		</Route>
-		<Route path="/catalog-graph" element={<CatalogGraphPage />} />
-		<Route path="/notifications" element={<NotificationsPage />} />
-		<Route path="/butler/*" element={<ButlerPage />} />
-		<Route path="/workspaces/*" element={<WorkspacesPluginPage />} />
-		<Route path="/registry/*" element={<RegistryPage />} />
-		<Route path="/pipeline/*" element={<PipelinePage />} />
-	</FlatRoutes>
-);
-
 export default app.createRoot(
 	<>
 		<AlertDisplay />
 		<OAuthRequestDialog />
 		<SignalsDisplay />
 		<AppRouter>
-			<Root>{routes}</Root>
+			<Root>
+				<FlatRoutes>
+					<Route path="/" element={<HomePage />} />
+					<Route path="/catalog" element={<CatalogIndexPage />} />
+					<Route
+						path="/catalog/:namespace/:kind/:name"
+						element={<CatalogEntityPage />}
+					>
+						{entityPage}
+					</Route>
+					<Route path="/docs" element={<TechDocsIndexPage />} />
+					<Route
+						path="/docs/:namespace/:kind/:name/*"
+						element={<TechDocsReaderPage />}
+					>
+						<TechDocsAddons>
+							<ReportIssue />
+						</TechDocsAddons>
+					</Route>
+					<Route path="/create" element={<ScaffolderPage />} />
+					<Route path="/api-docs" element={<ApiExplorerPage />} />
+					<Route
+						path="/catalog-import"
+						element={
+							<RequirePermission permission={catalogEntityCreatePermission}>
+								<CatalogImportPage />
+							</RequirePermission>
+						}
+					/>
+					<Route path="/search" element={<SearchPage />}>
+						{searchPage}
+					</Route>
+					<Route path="/settings" element={<UserSettingsPage />}>
+						<SettingsLayout>
+							<SettingsLayout.Route path="general" title="General">
+								<Grid container direction="row" spacing={3}>
+									<Grid item xs={12} md={6}>
+										<UserSettingsProfileCard />
+									</Grid>
+									<Grid item xs={12} md={6}>
+										<AppearanceSettings />
+									</Grid>
+									<Grid item xs={12} md={6}>
+										<UserSettingsIdentityCard />
+									</Grid>
+								</Grid>
+							</SettingsLayout.Route>
+						</SettingsLayout>
+					</Route>
+					<Route path="/catalog-graph" element={<CatalogGraphPage />} />
+					<Route path="/notifications" element={<NotificationsPage />} />
+					<Route
+						path="/butler/*"
+						element={
+							<ButlerLabsRouteElement configKey="butler">
+								<ButlerPage />
+							</ButlerLabsRouteElement>
+						}
+					/>
+					<Route
+						path="/workspaces/*"
+						element={
+							<ButlerLabsRouteElement configKey="workspaces">
+								<WorkspacesPluginPage />
+							</ButlerLabsRouteElement>
+						}
+					/>
+					<Route
+						path="/registry/*"
+						element={
+							<ButlerLabsRouteElement configKey="registry">
+								<RegistryPage />
+							</ButlerLabsRouteElement>
+						}
+					/>
+					<Route
+						path="/pipeline/*"
+						element={
+							<ButlerLabsRouteElement configKey="pipeline">
+								<PipelinePage />
+							</ButlerLabsRouteElement>
+						}
+					/>
+				</FlatRoutes>
+			</Root>
 		</AppRouter>
 	</>,
 );

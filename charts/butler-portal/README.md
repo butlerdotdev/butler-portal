@@ -7,11 +7,11 @@ Deploys [Butler Portal](https://github.com/butlerdotdev/butler-portal), a Backst
 - Kubernetes 1.27+
 - Helm 3.14+
 - An installation of the [CloudNativePG](https://cloudnative-pg.io/) operator in the cluster (the chart provisions a `Cluster` resource by default; set `postgresql.enabled=false` to bring your own database)
-- A Secret in the release namespace containing the butler-server service-account credentials. See below.
+- A Secret in the release namespace containing the butler-server service-account credentials, ONLY if you are enabling the Butler plugin (`plugins.butler.enabled=true`). External customers running the stock Backstage IDP do not need this.
 
-## Create the service-account Secret (required)
+## Create the service-account Secret (only when Butler is enabled)
 
-The chart fails to render unless `butlerAuth.existingSecret` points at a Secret in the release namespace with the keys `username` and `password`. Create it first:
+When `plugins.butler.enabled=true`, the chart requires `butlerAuth.existingSecret` to point at a Secret in the release namespace with the keys `username` and `password`. Create it first:
 
 ```bash
 kubectl create secret generic butler-server-auth \
@@ -22,21 +22,24 @@ kubectl create secret generic butler-server-auth \
 
 The keys can be customized via `butlerAuth.usernameKey` and `butlerAuth.passwordKey` if your existing Secret uses different field names.
 
+When `plugins.butler.enabled=false` (the chart default), the Butler service-account env vars are not rendered into the Deployment and no Secret is required.
+
 ## Install
 
 ```bash
 helm install butler-portal oci://ghcr.io/butlerdotdev/charts/butler-portal \
-  --version 0.2.0 \
+  --version 0.4.0 \
   --namespace butler-portal \
-  --create-namespace \
-  --set butlerAuth.existingSecret=butler-server-auth
+  --create-namespace
 ```
+
+If you are enabling Butler, also pass `--set butlerAuth.existingSecret=butler-server-auth` and `--set plugins.butler.enabled=true`.
 
 ## Configuration
 
 | Key | Default | Description |
 |---|---|---|
-| `butlerAuth.existingSecret` | `""` | **Required.** Name of an existing Secret in the release namespace holding the butler-server service-account credentials. Chart render fails if this is unset. |
+| `butlerAuth.existingSecret` | `""` | **Required when `plugins.butler.enabled=true`.** Name of an existing Secret in the release namespace holding the butler-server service-account credentials. Chart render fails if Butler is enabled and this is unset. Not consulted when Butler is off. |
 | `butlerAuth.usernameKey` | `username` | Key inside the Secret that holds the username. |
 | `butlerAuth.passwordKey` | `password` | Key inside the Secret that holds the password. |
 | `butlerSigning.existingSecret` | `""` | Optional. When set, names a Secret holding the Ed25519 private key the portal uses to mint signed identity proofs for butler-server (Stage 2 of the portal-JWT carrier work). When unset, the portal uses the legacy admin Bearer plus `X-Butler-User-Email` carrier (the pre-Stage-2 behavior). |
@@ -50,9 +53,179 @@ helm install butler-portal oci://ghcr.io/butlerdotdev/charts/butler-portal \
 | `registry.baseUrl` | `""` | Base URL the registry plugin advertises. |
 | `registry.github.secretName` | `""` | Secret holding a GitHub PAT for `repository_dispatch` and commit status. |
 | `extraEnv` | `[]` | Free-form env entries appended to the portal container. `BUTLER_SERVICE_ACCOUNT_USER` and `BUTLER_SERVICE_ACCOUNT_PASSWORD` injected here are overridden by the chart-managed `secretKeyRef` (positioned last, last-wins). |
+| `plugins.butler.enabled` | `false` | Enable the Butler plugin (Backstage frontend route + backend proxy to butler-server). Default off so external deployments fail safe. |
+| `plugins.workspaces.enabled` | `false` | Enable the Workspaces / Chambers plugin (frontend only; proxies butler-server via the butler-backend plugin). Default off. Chambers depends on Butler at runtime; setting this without `plugins.butler.enabled=true` renders a branded "Chambers requires Butler" page on the Chambers route instead of letting the UI fail open. |
+| `plugins.registry.enabled` | `false` | Enable the Registry / Keeper plugin (IaC artifact registry) and its catalog entity provider. Default off. The catalog entity provider piggy-backs on this flag; no separate value. |
+| `plugins.pipeline.enabled` | `false` | Enable the Pipeline / Herald plugin (VRL DSL + fleet agents). Default off. |
 | `ingress.enabled` | `false` | Enable the chart-managed `Ingress` resource. |
 
 For the full list, see [`values.yaml`](./values.yaml).
+
+## Plugin enablement
+
+`butler-portal` ships four Butler-Labs-branded plugins, each gated by a
+`plugins.<name>.enabled` value that defaults to `false`. The fail-safe default
+means a customer who installs the chart without overrides gets the stock
+Backstage IDP (catalog, scaffolder, TechDocs, search, kubernetes, notifications,
+signals) with no Butler Labs surface.
+
+The plugin-to-sidebar-name mapping:
+
+| Values key | Sidebar name | Type |
+|---|---|---|
+| `plugins.butler.enabled` | Butler | Frontend route + backend proxy |
+| `plugins.workspaces.enabled` | Chambers | Frontend only (proxies via butler-backend) |
+| `plugins.registry.enabled` | Keeper | Frontend route + backend + catalog entity provider |
+| `plugins.pipeline.enabled` | Herald | Frontend route + backend |
+
+Enable plugins via values overrides:
+
+```yaml
+plugins:
+  butler:
+    enabled: true
+  registry:
+    enabled: true
+```
+
+### What "off" means per layer
+
+The four flags are honored differently at the backend and frontend layers
+because operators reach the two surfaces through different paths.
+
+**Backend (genuinely off).** When a plugin's flag is `false`, the backend's
+`createBackendFeatureLoader` never `yield`s the plugin module. The plugin's
+`register()` never runs and the corresponding `/api/<plugin>/*` routes are
+genuinely absent from the Express router. Requests against them return
+plain `404 Not Found` (not `401`, not a sham success). For the Registry
+plugin, the catalog entity provider also stays unregistered, so
+`GET /api/catalog/entities?filter=kind=registry-module` returns `[]`.
+
+**Frontend (discoverable but disabled).** When a flag is `false`, the
+frontend route is still mounted, but the route element renders a branded
+"available, not enabled for this deployment" page instead of the real
+plugin shell. The sidebar item is still rendered in a greyed,
+`aria-disabled` wrapper with a tooltip naming the exact
+`plugins.<name>.enabled` key the operator needs to flip. The homepage card
+for that plugin is rendered in the same greyed state. Clicking either
+lands on the branded not-enabled page (never a 404 in the user's face).
+
+This asymmetry is deliberate. The backend is the security and reachability
+boundary, so off must mean off: an external customer cannot poke
+unauthorized endpoints. The frontend is the discoverability surface, so
+the disabled state advertises what Butler Labs offers and tells the
+operator how to enable it.
+
+Disabled plugin JS source is still bundled into the customer's image
+(runtime gating, not build-time exclusion). The disabled code never
+executes, but if intellectual-property exposure of the disabled plugins
+is a concern, a future per-customer Dockerfile arg can exclude them at
+build time. Not in scope for `0.4.0`.
+
+### Chambers depends on Butler at runtime
+
+Chambers (`plugins.workspaces.enabled`) is a frontend-only plugin that
+proxies every backend call through the Butler backend
+(`butlerApiRef` -> `/api/butler/*`). Enabling Chambers without Butler is a
+genuinely broken state: every Chambers page would render, then silently
+fail every API call against the 404'd `/api/butler/*` route.
+
+The chart and frontend treat this as a configuration mistake. When
+`plugins.workspaces.enabled=true` and `plugins.butler.enabled=false`, the
+Chambers route renders a branded "Chambers requires Butler" variant of
+the not-enabled page that names `plugins.butler.enabled` as the key to
+flip. The real Chambers UI does not mount. Operators see the
+misconfiguration the first time they click into the route, not as a
+trickle of broken API toasts.
+
+To run Chambers, set both:
+
+```yaml
+plugins:
+  butler:
+    enabled: true
+  workspaces:
+    enabled: true
+```
+
+### Registry flag also gates catalog ingestion
+
+The `plugins.registry.enabled` flag gates the chart's registry-backend
+catalog entity provider (a separate `backend.add` for the
+`RegistryEntityProvider`). There is no independent flag for the catalog
+module; turning registry off ensures no stale entity ingestion runs.
+
+## Chart-image sequencing
+
+The container image referenced by the chart (`image.repository:image.tag`)
+defaults to `ghcr.io/butlerdotdev/butler-portal:<chart appVersion>`. For
+the `0.4.0` chart, that is `ghcr.io/butlerdotdev/butler-portal:0.4.0`. The
+chart cannot pull an image that has not been published. Two coordinated
+releases govern this:
+
+1. The `butler-portal-v0.4.0` git tag on the application repository
+   triggers the image build and publish. CI tags the image as `0.4.0`.
+2. The `butler-portal-v0.4.0` chart tag triggers the chart publish to
+   `oci://ghcr.io/butlerdotdev/charts`.
+
+If you `helm install --version 0.4.0` before the image is published, pods
+sit in `ImagePullBackOff`. Either wait until the image is published or
+pin an `image.tag` that already exists:
+
+```yaml
+image:
+  tag: "0.3.1"  # or whatever image tag is currently published
+```
+
+The chart's behaviour does not depend on the image tag; the per-plugin
+gates work against any image that ships the matching backend code. The
+tag pin is purely about which application binary you want to run.
+
+## Migrating from 0.3.x to 0.4.0
+
+`0.4.0` introduces the per-plugin runtime gates documented in the previous
+section. All four `plugins.<name>.enabled` values default to `false`. For
+upgraders this is a behavior change: a deployment that previously ran every
+plugin out of the box now serves the stock Backstage IDP shell with no
+Butler Labs plugins until each one is explicitly opted into.
+
+Two upgrade paths.
+
+**Butler Labs internal deployment (or any deployment that ran every plugin
+before).** Add a `plugins:` block to your values that enables all four:
+
+```yaml
+plugins:
+  butler:
+    enabled: true
+  workspaces:
+    enabled: true
+  registry:
+    enabled: true
+  pipeline:
+    enabled: true
+butlerAuth:
+  existingSecret: butler-server-auth
+```
+
+Then `helm upgrade butler-portal --version 0.4.0 --reuse-values -f values.yaml`.
+Without this block, all four plugins go dark on the next reconcile.
+
+**External customer running the stock IDP.** No values change needed beyond
+the chart version bump. The fail-safe defaults match the intent.
+
+Other notes:
+
+- `butlerAuth.existingSecret` is no longer required for installs that leave
+  `plugins.butler.enabled=false`. The chart-managed `BUTLER_SERVICE_ACCOUNT_*`
+  env vars are only rendered when Butler is enabled.
+- `appVersion` moves to `0.4.0` so the default image tag matches the chart.
+  Pin `image.tag` if you need to override.
+- A partial values override (only `plugins.butler.enabled` set, others
+  unset) is safe: missing sub-flags fall back to `false` via
+  `default false` in the template. Earlier WIP versions of this gate
+  crashed the backend at startup with a `Failed to parse JSON-serialized
+  config value` error when an unset sub-flag rendered as the empty string.
 
 ## Migrating from 0.1.x to 0.2.0
 

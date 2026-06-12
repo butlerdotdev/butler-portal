@@ -1,4 +1,5 @@
 import { PropsWithChildren } from 'react';
+import { configApiRef, useApi } from '@backstage/core-plugin-api';
 import { makeStyles } from '@material-ui/core';
 import HomeIcon from '@material-ui/icons/Home';
 import CategoryIcon from '@material-ui/icons/Category';
@@ -6,13 +7,17 @@ import ExtensionIcon from '@material-ui/icons/Extension';
 import LibraryBooks from '@material-ui/icons/LibraryBooks';
 import CreateComponentIcon from '@material-ui/icons/AddCircleOutline';
 import StorageIcon from '@material-ui/icons/Storage';
-import TimelineIcon from '@material-ui/icons/Timeline';
-import CloudIcon from '@material-ui/icons/Cloud';
-import ViewQuiltIcon from '@material-ui/icons/ViewQuilt';
 import LogoFull from './LogoFull';
 import LogoIcon from './LogoIcon';
 import ButlerLabsIcon from './ButlerLabsIcon';
 import { GitHubIcon, DiscordIcon, DocsIcon, WebsiteIcon } from './ExternalLinkIcons';
+import {
+	BUTLER_LABS_PLUGINS,
+	ButlerLabsConfigKey,
+	getButlerLabsPluginRuntimeState,
+} from '../plugins/butlerLabsPluginsMeta';
+import { ButlerLabsSubmenuItem } from './ButlerLabsSubmenuItem';
+import { SidebarSectionLabel } from './SidebarSectionLabel';
 import {
 	Sidebar,
 	sidebarConfig,
@@ -44,9 +49,6 @@ const brandIcon = (Icon: any) => (props: any) => {
 
 const BrandExtensionIcon = brandIcon(ExtensionIcon);
 const BrandStorageIcon = brandIcon(StorageIcon);
-const BrandCloudIcon = brandIcon(CloudIcon);
-const BrandViewQuiltIcon = brandIcon(ViewQuiltIcon);
-const BrandTimelineIcon = brandIcon(TimelineIcon);
 
 const useSidebarLogoStyles = makeStyles({
 	root: {
@@ -76,64 +78,101 @@ const SidebarLogo = () => {
 	);
 };
 
-export const Root = ({ children }: PropsWithChildren<{}>) => (
-	<SidebarPage>
-		<Sidebar>
-			<SidebarLogo />
-			<SidebarGroup label="Search" icon={<SearchIcon />} to="/search">
-				<SidebarSearchModal />
-			</SidebarGroup>
-			<SidebarDivider />
+export const Root = ({ children }: PropsWithChildren<{}>) => {
+	const config = useApi(configApiRef);
+	// Runtime state per plugin: own flag plus its dependsOn chain. Chambers
+	// reads as disabled in the sidebar when plugins.workspaces.enabled is
+	// true but plugins.butler.enabled is false, matching what the
+	// homepage card and the route element will render. Single source of
+	// truth for "is this plugin available" across all three surfaces.
+	const stateByKey = Object.fromEntries(
+		BUTLER_LABS_PLUGINS.map(p => [
+			p.configKey,
+			getButlerLabsPluginRuntimeState(config, p),
+		]),
+	) as Record<
+		ButlerLabsConfigKey,
+		ReturnType<typeof getButlerLabsPluginRuntimeState>
+	>;
 
-			<SidebarGroup label="Menu" icon={<MenuIcon />}>
-				<SidebarItem icon={HomeIcon} to="/" text="Home" />
+	// The parent "Butler Labs" group is always visible -- discoverability is
+	// uniform across internal and external deployments. The group's click
+	// target is the first runtime-enabled plugin's route so a click never
+	// lands on a disabled-route page; if all four are disabled the target
+	// falls back to the first plugin (Butler) whose route renders the
+	// branded PluginNotEnabledPage rather than Backstage's NotFound.
+	const firstEnabled = BUTLER_LABS_PLUGINS.find(
+		p => stateByKey[p.configKey].enabled,
+	);
+	const butlerLabsTarget = (firstEnabled ?? BUTLER_LABS_PLUGINS[0]).routePath;
 
-				<SidebarItem icon={CategoryIcon} to="catalog" text="Catalog">
-					<SidebarSubmenu title="Catalog">
-						<SidebarSubmenuItem title="Components" to="catalog?filters[kind]=component" icon={BrandExtensionIcon} />
-						<SidebarSubmenuItem title="Systems" to="catalog?filters[kind]=system" icon={BrandStorageIcon} />
-						<SidebarSubmenuItem title="APIs" to="catalog?filters[kind]=api" icon={BrandExtensionIcon} />
-						<SidebarSubmenuItem title="Resources" to="catalog?filters[kind]=resource" icon={BrandStorageIcon} />
-					</SidebarSubmenu>
-				</SidebarItem>
-
-				<SidebarItem icon={ExtensionIcon} to="api-docs" text="APIs" />
-				<SidebarItem icon={LibraryBooks} to="docs" text="Docs" />
-				<SidebarItem icon={CreateComponentIcon} to="create" text="Create..." />
-
+	return (
+		<SidebarPage>
+			<Sidebar>
+				<SidebarLogo />
+				<SidebarGroup label="Search" icon={<SearchIcon />} to="/search">
+					<SidebarSearchModal />
+				</SidebarGroup>
 				<SidebarDivider />
-				<SidebarItem icon={ButlerLabsIcon} to="butler" text="Butler Labs">
-					<SidebarSubmenu title="Butler Labs">
-						<SidebarSubmenuItem title="Butler" to="butler" icon={BrandCloudIcon} />
-						<SidebarSubmenuItem title="Chambers" to="workspaces" icon={BrandViewQuiltIcon} />
-						<SidebarSubmenuItem title="Keeper" to="registry" icon={BrandStorageIcon} />
-						<SidebarSubmenuItem title="Herald" to="pipeline" icon={BrandTimelineIcon} />
-					</SidebarSubmenu>
+
+				<SidebarSectionLabel label="Platform" />
+				<SidebarGroup label="Menu" icon={<MenuIcon />}>
+					<SidebarItem icon={HomeIcon} to="/" text="Home" />
+
+					<SidebarItem icon={CategoryIcon} to="catalog" text="Catalog">
+						<SidebarSubmenu title="Catalog">
+							<SidebarSubmenuItem title="Components" to="catalog?filters[kind]=component" icon={BrandExtensionIcon} />
+							<SidebarSubmenuItem title="Systems" to="catalog?filters[kind]=system" icon={BrandStorageIcon} />
+							<SidebarSubmenuItem title="APIs" to="catalog?filters[kind]=api" icon={BrandExtensionIcon} />
+							<SidebarSubmenuItem title="Resources" to="catalog?filters[kind]=resource" icon={BrandStorageIcon} />
+						</SidebarSubmenu>
+					</SidebarItem>
+
+					<SidebarItem icon={ExtensionIcon} to="api-docs" text="APIs" />
+					<SidebarItem icon={LibraryBooks} to="docs" text="Docs" />
+					<SidebarItem icon={CreateComponentIcon} to="create" text="Create..." />
+
+					<SidebarSectionLabel label="Butler Labs" />
+					<SidebarItem icon={ButlerLabsIcon} to={butlerLabsTarget} text="Butler Labs">
+						<SidebarSubmenu title="Butler Labs">
+							{BUTLER_LABS_PLUGINS.map(meta => {
+								const state = stateByKey[meta.configKey];
+								return (
+									<ButlerLabsSubmenuItem
+										key={meta.configKey}
+										meta={meta}
+										enabled={state.enabled}
+										missingDependency={state.missingDependency}
+									/>
+								);
+							})}
+						</SidebarSubmenu>
+					</SidebarItem>
+				</SidebarGroup>
+
+				<SidebarSpace />
+				<SidebarDivider />
+
+				<SidebarSectionLabel label="Connect" />
+				<SidebarItem icon={WebsiteIcon} text="Butler Labs" onClick={() => window.open('https://butlerlabs.dev', '_blank')}>
+					<div />
 				</SidebarItem>
-			</SidebarGroup>
+				<SidebarItem icon={DocsIcon} text="Docs" onClick={() => window.open('https://docs.butlerlabs.dev', '_blank')}>
+					<div />
+				</SidebarItem>
+				<SidebarItem icon={GitHubIcon} text="GitHub" onClick={() => window.open('https://github.com/butlerdotdev', '_blank')}>
+					<div />
+				</SidebarItem>
+				<SidebarItem icon={DiscordIcon} text="Discord" onClick={() => window.open('https://discord.gg/cAzWG9qz3K', '_blank')}>
+					<div />
+				</SidebarItem>
 
-			<SidebarSpace />
-			<SidebarDivider />
-
-			<SidebarItem icon={WebsiteIcon} text="Butler Labs" onClick={() => window.open('https://butlerlabs.dev', '_blank')}>
-				<div />
-			</SidebarItem>
-			<SidebarItem icon={DocsIcon} text="Docs" onClick={() => window.open('https://docs.butlerlabs.dev', '_blank')}>
-				<div />
-			</SidebarItem>
-			<SidebarItem icon={GitHubIcon} text="GitHub" onClick={() => window.open('https://github.com/butlerdotdev', '_blank')}>
-				<div />
-			</SidebarItem>
-			<SidebarItem icon={DiscordIcon} text="Discord" onClick={() => window.open('https://discord.gg/cAzWG9qz3K', '_blank')}>
-				<div />
-			</SidebarItem>
-
-			<SidebarDivider />
-
-			<SidebarGroup label="Settings" icon={<SettingsIcon />} to="/settings">
-				<SidebarSettings />
-			</SidebarGroup>
-		</Sidebar>
-		{children}
-	</SidebarPage>
-);
+				<SidebarSectionLabel label="Account" />
+				<SidebarGroup label="Settings" icon={<SettingsIcon />} to="/settings">
+					<SidebarSettings />
+				</SidebarGroup>
+			</Sidebar>
+			{children}
+		</SidebarPage>
+	);
+};
