@@ -84,14 +84,25 @@ const renderProbeUnderGate = async (butler: boolean, workspaces: boolean) => {
   });
 
   // The render tree mirrors App.tsx's shape: FlatRoutes > Route > Butler-
-  // LabsRouteElement > routable-extension-as-children. mountedRoutes binds
-  // the probe's routeRef to the same path the Route assigns so useRouteRef
-  // inside the wrapper resolves cleanly. The "was not discovered" error
-  // fires when Backstage's walker does NOT find the routable extension in
-  // its discovery pass over the JSX tree (because it sat in a prop the
-  // walker does not introspect); with the children pattern, the walker
-  // descends into ButlerLabsRouteElement and indexes the routable
-  // extension's mountPoint successfully.
+  // LabsRouteElement > routable-extension-as-children. The Route's
+  // `path="/probe/*"` element-prop wiring is what assigns the routable
+  // extension's mountPoint to a real path so its RoutableExtensionWrapper
+  // can render. mountedRoutes is INTENTIONALLY NOT used: passing the
+  // routeRef in mountedRoutes papers over the discovery walker entirely
+  // (the test would pass even when the walker missed the extension),
+  // defeating the regression net. Without mountedRoutes the walker IS
+  // the only source of truth for whether ProbeRoutableExtension is
+  // discoverable -- mirroring the production createApp pipeline.
+  //
+  // Mutation-checked: changing ButlerLabsRouteElement to accept the
+  // routable extension via an `enabledElement` prop instead of
+  // `children` and updating this call site to match makes the walker
+  // miss the extension and produces the exact original
+  //   "Routable extension component with mount point routeRef
+  //    {type=absolute,id=butler-labs-route-element-probe} was not
+  //    discovered in the app element tree"
+  // error at render time. The current shape passes; the bug shape
+  // fails. That is the contract this file pins.
   return renderInTestApp(
     <TestApiProvider apis={[[configApiRef, config]]}>
       <FlatRoutes>
@@ -105,10 +116,7 @@ const renderProbeUnderGate = async (butler: boolean, workspaces: boolean) => {
         />
       </FlatRoutes>
     </TestApiProvider>,
-    {
-      mountedRoutes: { '/probe': probeRouteRef },
-      routeEntries: ['/probe'],
-    },
+    { routeEntries: ['/probe'] },
   );
 };
 
