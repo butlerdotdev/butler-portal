@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 
+import { Config } from '@backstage/config';
 import { IconComponent } from '@backstage/core-plugin-api';
 import CloudIcon from '@material-ui/icons/Cloud';
 import StorageIcon from '@material-ui/icons/Storage';
@@ -21,15 +22,19 @@ import TimelineIcon from '@material-ui/icons/Timeline';
 import ViewQuiltIcon from '@material-ui/icons/ViewQuilt';
 
 // Single source of truth for the four Butler-Labs-branded plugins. The
-// sidebar (Root.tsx) and the per-plugin not-enabled page (PluginNotEnabledPage)
-// both consume this so the label, route, config key, icon, and copy never
-// drift between the two surfaces. The role and origin strings match the
-// butlerlabs.dev product copy so the not-enabled page reads like the rest
-// of the brand surface.
+// sidebar (Root.tsx), the homepage cards (HomeNavigationCards.tsx), the
+// per-plugin not-enabled page (PluginNotEnabledPage), and the route-
+// element switcher (ButlerLabsRouteElement) all consume this so the
+// label, route, config key, icon, copy, and runtime dependency model
+// never drift between surfaces. The role and origin strings match the
+// butlerlabs.dev product copy so the not-enabled page reads like the
+// rest of the brand surface.
 
 // Stable string union for every Butler-Labs-branded plugin's config flag.
 // Single source of truth for the union: App.tsx, the submenu, the
-// route-element switcher, and the tests all import this type.
+// route-element switcher, and the tests all import this type. Pair this
+// with PLUGIN_META_BY_KEY below so TypeScript enforces that every value
+// in the union has an entry in the metadata table.
 export type ButlerLabsConfigKey =
   | 'butler'
   | 'workspaces'
@@ -55,18 +60,26 @@ export type ButlerLabsPluginMeta = {
   icon: IconComponent;
   /**
    * Another Butler Labs plugin whose backend this plugin proxies through.
-   * When set, enabling this plugin is not enough on its own: the dependency's
-   * backend feature must also be loaded or every /api/<dep>/* call returns
-   * 404 and the page silently fails. The route-element switcher checks
-   * this and renders the dependency-missing variant of PluginNotEnabledPage
-   * when the dependency is off. Undefined means no Butler Labs runtime
-   * dependency (the plugin is self-contained at the backend layer).
+   * When set, enabling this plugin is not enough on its own: the
+   * dependency's backend feature must also be loaded or every
+   * /api/<dep>/* call returns 404 and the page silently fails. The
+   * route-element switcher and the surface (homepage + sidebar) check
+   * this and render the disabled treatment when the dependency is off.
+   * Undefined means no Butler Labs runtime dependency (the plugin is
+   * self-contained at the backend layer).
    */
   dependsOn?: ButlerLabsConfigKey;
 };
 
-export const BUTLER_LABS_PLUGINS: ButlerLabsPluginMeta[] = [
-  {
+// Plugin metadata, keyed by configKey. Typed as Record<...> so adding a
+// value to ButlerLabsConfigKey without a matching entry here is a
+// compile error -- the type system enforces the union <-> table
+// invariant that hand-rolled .find(...)! lookups used to lose.
+export const PLUGIN_META_BY_KEY: Record<
+  ButlerLabsConfigKey,
+  ButlerLabsPluginMeta
+> = {
+  butler: {
     configKey: 'butler',
     brandName: 'Butler',
     role: 'The Head Butler',
@@ -77,7 +90,7 @@ export const BUTLER_LABS_PLUGINS: ButlerLabsPluginMeta[] = [
     shortDescription: 'Cluster and platform management for butler-server.',
     icon: CloudIcon,
   },
-  {
+  workspaces: {
     configKey: 'workspaces',
     brandName: 'Chambers',
     role: "The Chamberlain's Domain",
@@ -87,14 +100,15 @@ export const BUTLER_LABS_PLUGINS: ButlerLabsPluginMeta[] = [
     routePath: 'workspaces',
     shortDescription: 'Developer workspace provisioning and access.',
     icon: ViewQuiltIcon,
-    // Chambers is a frontend plugin that proxies every backend call through
-    // butler-backend (butlerApiRef). With Butler off, butler-backend never
-    // loads, /api/butler/* routes are 404, and every Chambers page silently
-    // breaks. The route-element switcher surfaces this as a deliberate
-    // "Chambers requires Butler" page instead of letting the UI fail open.
+    // Chambers is a frontend plugin that proxies every backend call
+    // through butler-backend (butlerApiRef). With Butler off, butler-
+    // backend never loads, /api/butler/* routes are 404, and every
+    // Chambers page silently breaks. The route-element switcher AND the
+    // surfaces (sidebar + homepage card) treat this as a disabled state
+    // so the operator sees the misconfiguration before clicking through.
     dependsOn: 'butler',
   },
-  {
+  registry: {
     configKey: 'registry',
     brandName: 'Keeper',
     role: 'The Keeper of the Wardrobe',
@@ -105,7 +119,7 @@ export const BUTLER_LABS_PLUGINS: ButlerLabsPluginMeta[] = [
     shortDescription: 'IaC registry, governance, and execution.',
     icon: StorageIcon,
   },
-  {
+  pipeline: {
     configKey: 'pipeline',
     brandName: 'Herald',
     role: 'The Estate Herald',
@@ -116,7 +130,21 @@ export const BUTLER_LABS_PLUGINS: ButlerLabsPluginMeta[] = [
     shortDescription: 'Telemetry routing at fleet scale.',
     icon: TimelineIcon,
   },
-];
+};
+
+// Iterator form of the metadata table for the (rare) cases that want a
+// stable order: sidebar layout, homepage card grid. The TS Object.values
+// signature on a Record loses the value type, so re-typed as
+// ReadonlyArray<ButlerLabsPluginMeta>.
+export const BUTLER_LABS_PLUGINS: ReadonlyArray<ButlerLabsPluginMeta> =
+  Object.values(PLUGIN_META_BY_KEY);
+
+// Typed accessor for a single plugin's metadata. The union+Record pairing
+// makes this total: PLUGIN_META_BY_KEY[key] is always defined, no
+// runtime undefined case to handle.
+export const getPluginMeta = (
+  key: ButlerLabsConfigKey,
+): ButlerLabsPluginMeta => PLUGIN_META_BY_KEY[key];
 
 // Config key for whether a Butler Labs plugin is enabled in this deployment.
 // The same string appears in app-config.yaml, the Helm values block, and the
@@ -124,3 +152,52 @@ export const BUTLER_LABS_PLUGINS: ButlerLabsPluginMeta[] = [
 export const pluginEnabledConfigKey = (
   meta: ButlerLabsPluginMeta,
 ): string => `plugins.${meta.configKey}.enabled`;
+
+// Whether the plugin's own runtime flag is on. Does NOT consider
+// dependencies; getButlerLabsPluginRuntimeState is the full check.
+export const isPluginEnabled = (
+  config: Pick<Config, 'getOptionalBoolean'>,
+  meta: ButlerLabsPluginMeta,
+): boolean =>
+  config.getOptionalBoolean(pluginEnabledConfigKey(meta)) ?? false;
+
+// Full runtime state for a Butler Labs plugin: enabled if and only if
+// the plugin's flag is on AND, if it has a dependsOn, the dependency's
+// flag is also on. When the dependency is the failing link,
+// missingDependency carries the dependency's metadata so consumers
+// (sidebar, homepage card, route-element switcher) can render the
+// dependency-aware copy variant rather than the generic "off" treatment.
+//
+// Single source of truth for the runtime gate logic. Consumed by:
+//   - ButlerLabsRouteElement.tsx (which page to render at the route)
+//   - HomeNavigationCards.tsx (homepage card grey vs. live)
+//   - Root.tsx -> ButlerLabsSubmenuItem (sidebar item grey vs. live)
+// Keeping the three surfaces aligned on this helper means flipping a
+// flag in app-config always moves all three together; a sidebar that
+// reads as enabled while the homepage card is greyed (or vice versa)
+// is the inconsistency this helper exists to prevent.
+export type ButlerLabsPluginRuntimeState = {
+  enabled: boolean;
+  /**
+   * Present only when meta.dependsOn is set, meta is on, and the
+   * dependency is off. Names the off dependency so the surface can
+   * render "<meta> requires <dep>" copy.
+   */
+  missingDependency?: ButlerLabsPluginMeta;
+};
+
+export const getButlerLabsPluginRuntimeState = (
+  config: Pick<Config, 'getOptionalBoolean'>,
+  meta: ButlerLabsPluginMeta,
+): ButlerLabsPluginRuntimeState => {
+  if (!isPluginEnabled(config, meta)) {
+    return { enabled: false };
+  }
+  if (meta.dependsOn) {
+    const depMeta = getPluginMeta(meta.dependsOn);
+    if (!isPluginEnabled(config, depMeta)) {
+      return { enabled: false, missingDependency: depMeta };
+    }
+  }
+  return { enabled: true };
+};

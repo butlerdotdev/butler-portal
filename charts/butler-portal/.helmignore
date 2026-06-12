@@ -1,0 +1,22 @@
+# Patterns to ignore when packaging the chart for distribution. helm
+# package walks the chart directory tree and includes every file by
+# default; entries here are excluded from the resulting tarball so
+# customers who helm pull the chart do not receive test fixtures or
+# unrelated scratch artifacts.
+
+# Backup and editor noise
+*.bak
+*.orig
+*.swp
+*~
+.DS_Store
+
+# helm-unittest suite. The tests run in CI against the source chart;
+# they are not part of the published distribution and have no value
+# to a customer running helm install.
+tests/
+__snapshot__/
+
+# Anything an operator might drop next to the chart while iterating
+.values.local.yaml
+local-*.yaml

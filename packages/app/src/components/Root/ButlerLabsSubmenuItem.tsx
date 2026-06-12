@@ -30,6 +30,23 @@ const brandIcon = (Icon: any) => (props: any) => {
 	return <Icon {...props} className={classes.brand} />;
 };
 
+// aria-label resolver for the disabled-state wrapper. Kept as a flat
+// function (rather than a nested ternary) so the three-state output is
+// readable and so eslint's no-nested-ternary rule does not flag the
+// callsite. Enabled items get no aria-label; disabled items get either
+// the dependency-aware or the standard not-enabled copy.
+const disabledAriaLabel = (
+	enabled: boolean,
+	meta: ButlerLabsPluginMeta,
+	missingDependency?: ButlerLabsPluginMeta,
+): string | undefined => {
+	if (enabled) return undefined;
+	if (missingDependency) {
+		return `${meta.brandName}: requires ${missingDependency.brandName} which is off.`;
+	}
+	return `${meta.brandName}: available but not enabled for this deployment.`;
+};
+
 // SidebarSubmenuItem has no disabled prop, no className, no style escape.
 // The disabled affordance is composed at the wrapper level: a Material-UI
 // Tooltip carries the descriptive copy on hover and keyboard focus, and a
@@ -93,13 +110,24 @@ const useItemStyles = makeStyles(theme => ({
 export const ButlerLabsSubmenuItem = ({
 	meta,
 	enabled,
+	missingDependency,
 }: {
 	meta: ButlerLabsPluginMeta;
 	enabled: boolean;
+	/**
+	 * Set when meta's own flag is on but its dependsOn dependency is off
+	 * (the Chambers+!Butler case). When present, the tooltip names the
+	 * dependency's config key (plugins.<dep>.enabled) instead of meta's
+	 * own key -- enabling meta will not fix the runtime gap.
+	 */
+	missingDependency?: ButlerLabsPluginMeta;
 }) => {
 	const classes = useItemStyles();
 	const BrandedIcon = brandIcon(meta.icon);
 	const configKey = pluginEnabledConfigKey(meta);
+	const dependencyConfigKey = missingDependency
+		? pluginEnabledConfigKey(missingDependency)
+		: undefined;
 	const wrapperRef = useRef<HTMLSpanElement>(null);
 
 	// SidebarSubmenuItem renders a react-router NavLink (an <a>) we cannot
@@ -136,9 +164,24 @@ export const ButlerLabsSubmenuItem = ({
 			<div className={classes.tipDesc}>{meta.shortDescription}</div>
 			{!enabled && (
 				<div className={classes.tipDisabled}>
-					Available, not enabled for this deployment. Ask your administrator
-					to set <span className={classes.tipKey}>{configKey}</span> to{' '}
-					<span className={classes.tipKey}>true</span>.
+					{missingDependency && dependencyConfigKey ? (
+						<>
+							Requires {missingDependency.brandName} which is off.{' '}
+							{meta.brandName} proxies its backend through{' '}
+							{missingDependency.brandName}. Ask your administrator to set{' '}
+							<span className={classes.tipKey}>
+								{dependencyConfigKey}
+							</span>{' '}
+							to <span className={classes.tipKey}>true</span>.
+						</>
+					) : (
+						<>
+							Available, not enabled for this deployment. Ask your
+							administrator to set{' '}
+							<span className={classes.tipKey}>{configKey}</span> to{' '}
+							<span className={classes.tipKey}>true</span>.
+						</>
+					)}
 				</div>
 			)}
 		</>
@@ -161,11 +204,7 @@ export const ButlerLabsSubmenuItem = ({
 				ref={wrapperRef}
 				className={enabled ? classes.wrapper : classes.disabledWrapper}
 				aria-disabled={enabled ? undefined : true}
-				aria-label={
-					enabled
-						? undefined
-						: `${meta.brandName}: available but not enabled for this deployment.`
-				}
+				aria-label={disabledAriaLabel(enabled, meta, missingDependency)}
 				data-testid={
 					enabled
 						? undefined

@@ -140,7 +140,11 @@ tests:
   # butlerAuth is gated on plugins.butler.enabled: an external customer who
   # leaves Butler off has no reason to provision a Secret for credentials
   # nothing will use. The BUTLER_SERVICE_ACCOUNT_* env vars (and their
-  # required butlerAuth.existingSecret) only render when butler is on.
+  # required butlerAuth.existingSecret) only render when butler is on. The
+  # assertion pins absence by name alone so a regression that hard-codes
+  # the env entry (even with a non-empty secretKeyRef.name) is still
+  # caught: contentValue matches a partial document, so omitting the
+  # secretKeyRef sub-object asserts on the env entry name only.
   - it: butlerAuth env vars not rendered when butler is off (no Secret required)
     set:
       plugins:
@@ -157,10 +161,11 @@ tests:
           path: spec.template.spec.containers[0].env
           content:
             name: BUTLER_SERVICE_ACCOUNT_USER
-            valueFrom:
-              secretKeyRef:
-                name: ""
-                key: username
+          any: true
+      - notContains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: BUTLER_SERVICE_ACCOUNT_PASSWORD
           any: true
 
   - it: butlerAuth env vars rendered with secretKeyRef when butler is on
@@ -205,3 +210,51 @@ tests:
     asserts:
       - hasDocuments:
           count: 1
+
+  # String-typed booleans foot-gun. Go template's `if` treats non-empty
+  # strings as truthy, so a values override that passes
+  # plugins.butler.enabled: "false" (string, e.g. from a FluxCD HelmRelease
+  # that round-tripped the value through YAML) used to render "false" as
+  # the env value AND fire the butlerAuth gate, demanding a Secret for a
+  # backend that was off. The eq toString "true" guard in the template
+  # normalises this: only literal true (boolean or "true" string) lights
+  # up the butlerAuth block.
+  - it: string "false" for plugins.butler.enabled does not trigger butlerAuth gate
+    set:
+      plugins:
+        butler:
+          enabled: "false"
+        workspaces:
+          enabled: "false"
+        registry:
+          enabled: "false"
+        pipeline:
+          enabled: "false"
+    asserts:
+      - notContains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: BUTLER_SERVICE_ACCOUNT_USER
+          any: true
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: APP_CONFIG_plugins_butler_enabled
+            value: "false"
+
+  - it: string "true" for plugins.butler.enabled DOES trigger butlerAuth gate (operator-typed string-true is honored)
+    set:
+      plugins:
+        butler:
+          enabled: "true"
+      butlerAuth:
+        existingSecret: butler-auth-string-true
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: BUTLER_SERVICE_ACCOUNT_USER
+            valueFrom:
+              secretKeyRef:
+                name: butler-auth-string-true
+                key: username

@@ -155,6 +155,32 @@ catalog entity provider (a separate `backend.add` for the
 `RegistryEntityProvider`). There is no independent flag for the catalog
 module; turning registry off ensures no stale entity ingestion runs.
 
+## Chart-image sequencing
+
+The container image referenced by the chart (`image.repository:image.tag`)
+defaults to `ghcr.io/butlerdotdev/butler-portal:<chart appVersion>`. For
+the `0.4.0` chart, that is `ghcr.io/butlerdotdev/butler-portal:0.4.0`. The
+chart cannot pull an image that has not been published. Two coordinated
+releases govern this:
+
+1. The `butler-portal-v0.4.0` git tag on the application repository
+   triggers the image build and publish. CI tags the image as `0.4.0`.
+2. The `butler-portal-v0.4.0` chart tag triggers the chart publish to
+   `oci://ghcr.io/butlerdotdev/charts`.
+
+If you `helm install --version 0.4.0` before the image is published, pods
+sit in `ImagePullBackOff`. Either wait until the image is published or
+pin an `image.tag` that already exists:
+
+```yaml
+image:
+  tag: "0.3.1"  # or whatever image tag is currently published
+```
+
+The chart's behaviour does not depend on the image tag; the per-plugin
+gates work against any image that ships the matching backend code. The
+tag pin is purely about which application binary you want to run.
+
 ## Migrating from 0.3.x to 0.4.0
 
 `0.4.0` introduces the per-plugin runtime gates documented in the previous

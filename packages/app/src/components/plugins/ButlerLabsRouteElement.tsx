@@ -17,16 +17,15 @@
 import { ReactNode } from 'react';
 import { configApiRef, useApi } from '@backstage/core-plugin-api';
 import {
-  BUTLER_LABS_PLUGINS,
   ButlerLabsConfigKey,
-  ButlerLabsPluginMeta,
-  pluginEnabledConfigKey,
+  getButlerLabsPluginRuntimeState,
+  getPluginMeta,
 } from './butlerLabsPluginsMeta';
 import { PluginNotEnabledPage } from './PluginNotEnabledPage';
 
-// Per-plugin route element switcher. Reads plugins.<configKey>.enabled (and
-// the dependency's flag if the plugin has one) and renders one of three
-// outcomes:
+// Per-plugin route element switcher. Reads the plugin's runtime state
+// (plugin flag plus, if applicable, its dependency's flag) and renders
+// one of three outcomes:
 //
 //   1. enabled, deps satisfied  -> children (the real plugin page)
 //   2. enabled, deps NOT satisfied -> PluginNotEnabledPage with the
@@ -45,9 +44,11 @@ import { PluginNotEnabledPage } from './PluginNotEnabledPage';
 // discovered in the app element tree" the first time a flag flipped to
 // true. See AppDiscovery.test.tsx for the regression net over this layer.
 //
-// Lives in its own module (not inline in App.tsx) so AppRoutes.test.tsx
-// can import and exercise the real component instead of a hand-rolled
-// stand-in.
+// The runtime-state check is delegated to
+// getButlerLabsPluginRuntimeState so this component, HomeNavigationCards,
+// and Root.tsx (sidebar) all gate identically. A surface drift (sidebar
+// reads as enabled while the route lands on PluginNotEnabledPage) is
+// what that helper is here to prevent.
 export const ButlerLabsRouteElement = ({
   configKey,
   children,
@@ -56,32 +57,16 @@ export const ButlerLabsRouteElement = ({
   children: ReactNode;
 }) => {
   const config = useApi(configApiRef);
-  const meta = BUTLER_LABS_PLUGINS.find(
-    (p): p is ButlerLabsPluginMeta => p.configKey === configKey,
-  )!;
-  const enabled =
-    config.getOptionalBoolean(pluginEnabledConfigKey(meta)) ?? false;
+  const meta = getPluginMeta(configKey);
+  const state = getButlerLabsPluginRuntimeState(config, meta);
 
-  if (!enabled) {
-    return <PluginNotEnabledPage meta={meta} />;
+  if (!state.enabled) {
+    return (
+      <PluginNotEnabledPage
+        meta={meta}
+        dependencyMeta={state.missingDependency}
+      />
+    );
   }
-
-  // Plugin is on. If it has a runtime dependency on another Butler Labs
-  // plugin, check that too. Chambers (workspaces) depends on Butler at the
-  // backend layer because every page proxies through butlerApiRef -> the
-  // butler-backend feature loader. workspaces=true with butler=false is a
-  // genuinely broken state, so we render the dependency-missing variant
-  // rather than letting the plugin silently 404 on every API call.
-  if (meta.dependsOn) {
-    const depMeta = BUTLER_LABS_PLUGINS.find(
-      (p): p is ButlerLabsPluginMeta => p.configKey === meta.dependsOn,
-    )!;
-    const depEnabled =
-      config.getOptionalBoolean(pluginEnabledConfigKey(depMeta)) ?? false;
-    if (!depEnabled) {
-      return <PluginNotEnabledPage meta={meta} dependencyMeta={depMeta} />;
-    }
-  }
-
   return <>{children}</>;
 };

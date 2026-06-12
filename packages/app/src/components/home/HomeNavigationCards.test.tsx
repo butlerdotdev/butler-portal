@@ -77,6 +77,31 @@ describe('HomeNavigationCards Butler Labs gates', () => {
     }
   });
 
+  it('renders Chambers as disabled on the homepage when workspaces is on but Butler is off (surface consistency with the sidebar and the not-enabled page)', async () => {
+    // The dependency model: Chambers needs Butler's backend at runtime.
+    // The route element renders the "Chambers requires Butler" page on
+    // click; the sidebar item is greyed. The homepage card must match or
+    // the user sees an enabled card that lands on a disabled page, which
+    // is the surface drift the runtime-state helper exists to prevent.
+    const r = await renderCards({ workspaces: true });
+    expect(r.queryByTestId('homepage-card-workspaces')).toBeNull();
+    const dependencyBlocked = r.queryByTestId(
+      'homepage-card-workspaces-disabled',
+    );
+    expect(dependencyBlocked).not.toBeNull();
+    expect(dependencyBlocked?.getAttribute('aria-disabled')).toBe('true');
+    // Sanity: the unrelated plugins follow their own flags. Butler's flag
+    // is false here so it is also disabled, but that is not the dep case.
+    expect(r.queryByTestId('homepage-card-butler-disabled')).not.toBeNull();
+  });
+
+  it('renders Chambers as enabled when both workspaces and butler are on (Butler Labs deployment baseline)', async () => {
+    const r = await renderCards({ workspaces: true, butler: true });
+    expect(r.queryByTestId('homepage-card-workspaces')).not.toBeNull();
+    expect(r.queryByTestId('homepage-card-workspaces-disabled')).toBeNull();
+    expect(r.queryByTestId('homepage-card-butler')).not.toBeNull();
+  });
+
   it('renders every card as enabled (no -disabled suffix) when every flag is on (Butler Labs deployment)', async () => {
     const r = await renderCards({
       butler: true,

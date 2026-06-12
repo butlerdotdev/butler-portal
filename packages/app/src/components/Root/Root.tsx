@@ -13,8 +13,8 @@ import ButlerLabsIcon from './ButlerLabsIcon';
 import { GitHubIcon, DiscordIcon, DocsIcon, WebsiteIcon } from './ExternalLinkIcons';
 import {
 	BUTLER_LABS_PLUGINS,
-	ButlerLabsPluginMeta,
-	pluginEnabledConfigKey,
+	ButlerLabsConfigKey,
+	getButlerLabsPluginRuntimeState,
 } from '../plugins/butlerLabsPluginsMeta';
 import { ButlerLabsSubmenuItem } from './ButlerLabsSubmenuItem';
 import { SidebarSectionLabel } from './SidebarSectionLabel';
@@ -80,20 +80,30 @@ const SidebarLogo = () => {
 
 export const Root = ({ children }: PropsWithChildren<{}>) => {
 	const config = useApi(configApiRef);
-	const enabledByKey = Object.fromEntries(
+	// Runtime state per plugin: own flag plus its dependsOn chain. Chambers
+	// reads as disabled in the sidebar when plugins.workspaces.enabled is
+	// true but plugins.butler.enabled is false, matching what the
+	// homepage card and the route element will render. Single source of
+	// truth for "is this plugin available" across all three surfaces.
+	const stateByKey = Object.fromEntries(
 		BUTLER_LABS_PLUGINS.map(p => [
 			p.configKey,
-			config.getOptionalBoolean(pluginEnabledConfigKey(p)) ?? false,
+			getButlerLabsPluginRuntimeState(config, p),
 		]),
-	) as Record<ButlerLabsPluginMeta['configKey'], boolean>;
+	) as Record<
+		ButlerLabsConfigKey,
+		ReturnType<typeof getButlerLabsPluginRuntimeState>
+	>;
 
 	// The parent "Butler Labs" group is always visible -- discoverability is
 	// uniform across internal and external deployments. The group's click
-	// target is the first enabled plugin's route so a click never lands on a
-	// disabled-route page; if all four are disabled the target falls back to
-	// the first plugin (Butler) whose route renders the branded
-	// PluginNotEnabledPage rather than Backstage's NotFound.
-	const firstEnabled = BUTLER_LABS_PLUGINS.find(p => enabledByKey[p.configKey]);
+	// target is the first runtime-enabled plugin's route so a click never
+	// lands on a disabled-route page; if all four are disabled the target
+	// falls back to the first plugin (Butler) whose route renders the
+	// branded PluginNotEnabledPage rather than Backstage's NotFound.
+	const firstEnabled = BUTLER_LABS_PLUGINS.find(
+		p => stateByKey[p.configKey].enabled,
+	);
 	const butlerLabsTarget = (firstEnabled ?? BUTLER_LABS_PLUGINS[0]).routePath;
 
 	return (
@@ -125,13 +135,17 @@ export const Root = ({ children }: PropsWithChildren<{}>) => {
 					<SidebarSectionLabel label="Butler Labs" />
 					<SidebarItem icon={ButlerLabsIcon} to={butlerLabsTarget} text="Butler Labs">
 						<SidebarSubmenu title="Butler Labs">
-							{BUTLER_LABS_PLUGINS.map(meta => (
-								<ButlerLabsSubmenuItem
-									key={meta.configKey}
-									meta={meta}
-									enabled={enabledByKey[meta.configKey]}
-								/>
-							))}
+							{BUTLER_LABS_PLUGINS.map(meta => {
+								const state = stateByKey[meta.configKey];
+								return (
+									<ButlerLabsSubmenuItem
+										key={meta.configKey}
+										meta={meta}
+										enabled={state.enabled}
+										missingDependency={state.missingDependency}
+									/>
+								);
+							})}
 						</SidebarSubmenu>
 					</SidebarItem>
 				</SidebarGroup>

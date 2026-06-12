@@ -82,11 +82,19 @@ spec:
             # so a partial values override (plugins: {} or plugins.butler set
             # but plugins.workspaces left nil) renders "false" instead of "",
             # which JSON.parse would reject and crash the backend at startup.
+            #
+            # Go template's `if` treats non-empty strings as truthy, so a
+            # values override that passes plugins.X.enabled: "false" (string)
+            # would render the value as "false" but ALSO trigger the
+            # butlerAuth Secret gate. Normalise by stringifying and
+            # comparing to the literal "true" so only a real true (boolean
+            # or "true" string) activates Butler.
             {{- $plugins := default (dict) .Values.plugins }}
             {{- $butler := default (dict) $plugins.butler }}
             {{- $workspaces := default (dict) $plugins.workspaces }}
             {{- $registry := default (dict) $plugins.registry }}
             {{- $pipeline := default (dict) $plugins.pipeline }}
+            {{- $butlerEnabled := eq (toString (default false $butler.enabled)) "true" }}
             - name: APP_CONFIG_plugins_butler_enabled
               value: {{ default false $butler.enabled | quote }}
             - name: APP_CONFIG_plugins_workspaces_enabled
@@ -95,7 +103,7 @@ spec:
               value: {{ default false $registry.enabled | quote }}
             - name: APP_CONFIG_plugins_pipeline_enabled
               value: {{ default false $pipeline.enabled | quote }}
-            {{- if default false $butler.enabled }}
+            {{- if $butlerEnabled }}
             # Service-account credentials for butler-server. Only rendered
             # when plugins.butler.enabled is true: an external customer who
             # leaves Butler off has no reason to provision a dead Secret.

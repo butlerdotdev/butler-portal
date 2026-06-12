@@ -28,14 +28,41 @@ jobs:
       - name: Lint chart
         run: helm lint ./charts/butler-portal
 
-      - name: Verify fail-guard fires when butlerAuth.existingSecret is unset
+      - name: Install helm-unittest plugin
+        run: helm plugin install --verify=false https://github.com/helm-unittest/helm-unittest --version 0.5.2
+
+      - name: Run helm-unittest suite (per-plugin gates + partial overrides)
+        run: helm unittest ./charts/butler-portal
+
+      # Chart defaults (all four plugins off) must render successfully.
+      # External customers install with no overrides; if defaults fail
+      # the chart is broken for everyone but Butler Labs.
+      - name: Verify chart defaults render with all plugins off (external customer fail-safe)
         run: |
           set +e
           OUT=$(helm template butler-portal ./charts/butler-portal 2>&1)
           RC=$?
           set -e
+          if [ $RC -ne 0 ]; then
+            echo "ERROR: helm template failed with default values. External customer install would break."
+            echo "$OUT" | tail -20
+            exit 1
+          fi
+          echo "OK: chart defaults render with RC=0."
+
+      # The butlerAuth required-guard MUST fire when Butler is enabled and
+      # no Secret is provided. This is the genuine misconfiguration check
+      # the chart owes operators who are turning Butler on for the first
+      # time. With the sweep's plugins.butler.enabled gate around the
+      # required block, this only fires in the butler-on case.
+      - name: Verify butlerAuth required-guard fires when butler is on and Secret is unset
+        run: |
+          set +e
+          OUT=$(helm template butler-portal ./charts/butler-portal --set plugins.butler.enabled=true 2>&1)
+          RC=$?
+          set -e
           if [ $RC -eq 0 ]; then
-            echo "ERROR: helm template rendered successfully with no butlerAuth.existingSecret. The required-guard is not firing."
+            echo "ERROR: helm template rendered successfully with plugins.butler.enabled=true and no butlerAuth.existingSecret. The required-guard is not firing."
             echo "$OUT" | tail -20
             exit 1
           fi
@@ -44,7 +71,24 @@ jobs:
             echo "$OUT" | tail -20
             exit 1
           fi
-          echo "OK: required-guard fired with the expected message."
+          echo "OK: required-guard fired with the expected message when Butler is on."
+
+      # Butler on with a Secret provided MUST render successfully (the
+      # internal Butler Labs deployment path).
+      - name: Verify chart renders with butler on and butlerAuth.existingSecret set (internal deployment path)
+        run: |
+          set +e
+          OUT=$(helm template butler-portal ./charts/butler-portal \
+            --set plugins.butler.enabled=true \
+            --set butlerAuth.existingSecret=butler-server-auth 2>&1)
+          RC=$?
+          set -e
+          if [ $RC -ne 0 ]; then
+            echo "ERROR: helm template failed with butler on and Secret set. The internal deployment path is broken."
+            echo "$OUT" | tail -20
+            exit 1
+          fi
+          echo "OK: chart renders with butler on + Secret."
 
   release:
     if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')

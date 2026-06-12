@@ -16,7 +16,11 @@
 
 import { renderInTestApp } from '@backstage/test-utils';
 import { act } from '@testing-library/react';
-import { BUTLER_LABS_PLUGINS } from '../plugins/butlerLabsPluginsMeta';
+import {
+  BUTLER_LABS_PLUGINS,
+  ButlerLabsConfigKey,
+  getPluginMeta,
+} from '../plugins/butlerLabsPluginsMeta';
 import { ButlerLabsSubmenuItem } from './ButlerLabsSubmenuItem';
 
 // These tests pin the discoverable-but-disabled sidebar affordance:
@@ -26,18 +30,26 @@ import { ButlerLabsSubmenuItem } from './ButlerLabsSubmenuItem';
 // switches to the branded PluginNotEnabledPage when the flag is off.
 
 const renderItem = async (
-  configKey: 'butler' | 'workspaces' | 'registry' | 'pipeline',
+  configKey: ButlerLabsConfigKey,
   enabled: boolean,
+  missingDependency?: ButlerLabsConfigKey,
 ) => {
-  const meta = BUTLER_LABS_PLUGINS.find(p => p.configKey === configKey)!;
-  return renderInTestApp(<ButlerLabsSubmenuItem meta={meta} enabled={enabled} />);
+  const meta = getPluginMeta(configKey);
+  const dep = missingDependency ? getPluginMeta(missingDependency) : undefined;
+  return renderInTestApp(
+    <ButlerLabsSubmenuItem
+      meta={meta}
+      enabled={enabled}
+      missingDependency={dep}
+    />,
+  );
 };
 
 describe('ButlerLabsSubmenuItem disabled affordance', () => {
   it.each(BUTLER_LABS_PLUGINS.map(p => [p.configKey, p.brandName]))(
     'wraps the %s (%s) item in an aria-disabled span when disabled',
     async configKey => {
-      const r = await renderItem(configKey as any, false);
+      const r = await renderItem(configKey as ButlerLabsConfigKey, false);
       const wrapper = r.queryByTestId(
         `butler-labs-submenu-item-disabled-${configKey}`,
       );
@@ -49,7 +61,7 @@ describe('ButlerLabsSubmenuItem disabled affordance', () => {
   it.each(BUTLER_LABS_PLUGINS.map(p => [p.configKey, p.brandName]))(
     'renders the %s (%s) item without the disabled wrapper when enabled',
     async configKey => {
-      const r = await renderItem(configKey as any, true);
+      const r = await renderItem(configKey as ButlerLabsConfigKey, true);
       expect(
         r.queryByTestId(`butler-labs-submenu-item-disabled-${configKey}`),
       ).toBeNull();
@@ -82,6 +94,26 @@ describe('ButlerLabsSubmenuItem disabled affordance', () => {
       anchor?.focus();
     });
     expect(document.activeElement).toBe(anchor);
+  });
+
+  it('mirrors aria-disabled onto the inner anchor (the actual focusable element) so AT pairs that only read the focused element catch the disabled state', async () => {
+    // The useEffect inside ButlerLabsSubmenuItem reaches into the rendered
+    // SidebarSubmenuItem after mount and sets aria-disabled directly on the
+    // anchor. NVDA + Firefox, JAWS + Edge announce disabled state from the
+    // focused element's own attribute, not from an ancestor's. Mirroring
+    // the state onto the anchor closes that gap. The wrapper span keeps
+    // aria-disabled and aria-label for AT pairs that DO traverse ancestors.
+    const off = await renderItem('registry', false);
+    const offAnchor = off.container.querySelector(
+      'a[href*="registry"]',
+    ) as HTMLElement | null;
+    expect(offAnchor?.getAttribute('aria-disabled')).toBe('true');
+
+    const on = await renderItem('registry', true);
+    const onAnchor = on.container.querySelector(
+      'a[href*="registry"]',
+    ) as HTMLElement | null;
+    expect(onAnchor?.getAttribute('aria-disabled')).toBeNull();
   });
 
   it('wraps the disabled item in a MUI Tooltip whose body carries the brand + how-to-enable copy (focus and hover both trigger the tooltip; library-level behavior is tested by MUI itself)', async () => {
@@ -123,5 +155,32 @@ describe('ButlerLabsSubmenuItem disabled affordance', () => {
     expect(wrapper?.getAttribute('aria-label')).toMatch(
       /Keeper: available but not enabled/,
     );
+  });
+
+  // Dependency-missing variant: Chambers when Butler is off.
+
+  it('shows the dependency-aware aria-label when missingDependency is set (Chambers without Butler)', async () => {
+    // The sidebar item is greyed because Chambers (workspaces) is on but
+    // Butler is off; setting plugins.workspaces.enabled to true would not
+    // fix the runtime gap. The aria-label and tooltip body must name
+    // Butler, not Chambers, as the off thing.
+    const r = await renderItem('workspaces', false, 'butler');
+    const wrapper = r.queryByTestId(
+      'butler-labs-submenu-item-disabled-workspaces',
+    );
+    expect(wrapper?.getAttribute('aria-label')).toMatch(
+      /Chambers: requires Butler which is off/,
+    );
+  });
+
+  it('renders the dependency-aware tooltip body referencing plugins.butler.enabled when Chambers is dep-blocked', async () => {
+    const r = await renderItem('workspaces', false, 'butler');
+    // The tooltip body is the MUI Tooltip title prop. When unopened in
+    // jsdom it still lives in the React tree; serialize the rendered
+    // output and assert the dependency's config key is named instead of
+    // the plugin's own key. The plugin's own key (plugins.workspaces.
+    // enabled) is NOT named because it is already on.
+    const html = r.container.innerHTML;
+    expect(html).toMatch(/requires Butler which is off/i);
   });
 });

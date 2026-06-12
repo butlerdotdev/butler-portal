@@ -29,8 +29,9 @@ import TimelineIcon from '@material-ui/icons/Timeline';
 import ViewQuiltIcon from '@material-ui/icons/ViewQuilt';
 import {
 	BUTLER_LABS_PLUGINS,
+	ButlerLabsConfigKey,
 	ButlerLabsPluginMeta,
-	pluginEnabledConfigKey,
+	getButlerLabsPluginRuntimeState,
 } from '../plugins/butlerLabsPluginsMeta';
 import { borderColor } from '../../themes/paletteAccess';
 
@@ -375,12 +376,21 @@ const HOMEPAGE_CARD_COPY: Record<
 export const HomeNavigationCards = () => {
 	const classes = useStyles();
 	const config = useApi(configApiRef);
-	const enabledByKey = Object.fromEntries(
+	// Runtime state per plugin: own flag plus its dependsOn chain. Chambers
+	// shows greyed not only when plugins.workspaces.enabled is false but
+	// also when plugins.butler.enabled is false. That keeps the homepage
+	// surface aligned with the sidebar and with what the user lands on
+	// when they actually click the card (PluginNotEnabledPage with the
+	// dependency-aware variant).
+	const stateByKey = Object.fromEntries(
 		BUTLER_LABS_PLUGINS.map(meta => [
 			meta.configKey,
-			config.getOptionalBoolean(pluginEnabledConfigKey(meta)) ?? false,
+			getButlerLabsPluginRuntimeState(config, meta),
 		]),
-	) as Record<ButlerLabsPluginMeta['configKey'], boolean>;
+	) as Record<
+		ButlerLabsConfigKey,
+		ReturnType<typeof getButlerLabsPluginRuntimeState>
+	>;
 
 	return (
 		<>
@@ -391,7 +401,7 @@ export const HomeNavigationCards = () => {
 				</div>
 				<Grid container spacing={2}>
 					{BUTLER_LABS_PLUGINS.map(meta => {
-						const enabled = enabledByKey[meta.configKey];
+						const enabled = stateByKey[meta.configKey].enabled;
 						const copy = HOMEPAGE_CARD_COPY[meta.configKey];
 						return (
 							<Grid item xs={12} sm={6} lg={3} key={meta.configKey}>
