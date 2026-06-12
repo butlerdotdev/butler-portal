@@ -1,0 +1,150 @@
+with dynamicPlugins disabled (chart default) and butler off (chart default), pod template byte-identical to 0.4.0 snapshot:
+  1: |
+    metadata:
+      labels:
+        app.kubernetes.io/instance: butler-portal
+        app.kubernetes.io/name: butler-portal
+    spec:
+      containers:
+        - env:
+            - name: APP_CONFIG_app_baseUrl
+              value: http://localhost:7007
+            - name: APP_CONFIG_backend_baseUrl
+              value: http://localhost:7007
+            - name: POSTGRES_HOST
+              valueFrom:
+                secretKeyRef:
+                  key: host
+                  name: butler-portal-db-app
+            - name: POSTGRES_PORT
+              valueFrom:
+                secretKeyRef:
+                  key: port
+                  name: butler-portal-db-app
+            - name: POSTGRES_USER
+              valueFrom:
+                secretKeyRef:
+                  key: username
+                  name: butler-portal-db-app
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  key: password
+                  name: butler-portal-db-app
+            - name: REGISTRY_BASE_URL
+              value: ""
+            - name: APP_CONFIG_plugins_butler_enabled
+              value: "false"
+            - name: APP_CONFIG_plugins_workspaces_enabled
+              value: "false"
+            - name: APP_CONFIG_plugins_registry_enabled
+              value: "false"
+            - name: APP_CONFIG_plugins_pipeline_enabled
+              value: "false"
+          image: ghcr.io/butlerdotdev/butler-portal:snapshot-baseline
+          imagePullPolicy: IfNotPresent
+          livenessProbe:
+            httpGet:
+              path: /healthcheck
+              port: http
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          name: backstage
+          ports:
+            - containerPort: 7007
+              name: http
+              protocol: TCP
+          readinessProbe:
+            httpGet:
+              path: /healthcheck
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 5
+          resources:
+            limits:
+              cpu: "2"
+              memory: 1Gi
+            requests:
+              cpu: 250m
+              memory: 512Mi
+      serviceAccountName: butler-portal
+with dynamicPlugins disabled and butler enabled, pod template byte-identical to 0.4.0 snapshot:
+  1: |
+    metadata:
+      labels:
+        app.kubernetes.io/instance: butler-portal
+        app.kubernetes.io/name: butler-portal
+    spec:
+      containers:
+        - env:
+            - name: APP_CONFIG_app_baseUrl
+              value: http://localhost:7007
+            - name: APP_CONFIG_backend_baseUrl
+              value: http://localhost:7007
+            - name: POSTGRES_HOST
+              valueFrom:
+                secretKeyRef:
+                  key: host
+                  name: butler-portal-db-app
+            - name: POSTGRES_PORT
+              valueFrom:
+                secretKeyRef:
+                  key: port
+                  name: butler-portal-db-app
+            - name: POSTGRES_USER
+              valueFrom:
+                secretKeyRef:
+                  key: username
+                  name: butler-portal-db-app
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  key: password
+                  name: butler-portal-db-app
+            - name: REGISTRY_BASE_URL
+              value: ""
+            - name: APP_CONFIG_plugins_butler_enabled
+              value: "true"
+            - name: APP_CONFIG_plugins_workspaces_enabled
+              value: "false"
+            - name: APP_CONFIG_plugins_registry_enabled
+              value: "false"
+            - name: APP_CONFIG_plugins_pipeline_enabled
+              value: "false"
+            - name: BUTLER_SERVICE_ACCOUNT_USER
+              valueFrom:
+                secretKeyRef:
+                  key: username
+                  name: butler-server-auth-test
+            - name: BUTLER_SERVICE_ACCOUNT_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  key: password
+                  name: butler-server-auth-test
+          image: ghcr.io/butlerdotdev/butler-portal:snapshot-baseline
+          imagePullPolicy: IfNotPresent
+          livenessProbe:
+            httpGet:
+              path: /healthcheck
+              port: http
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          name: backstage
+          ports:
+            - containerPort: 7007
+              name: http
+              protocol: TCP
+          readinessProbe:
+            httpGet:
+              path: /healthcheck
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 5
+          resources:
+            limits:
+              cpu: "2"
+              memory: 1Gi
+            requests:
+              cpu: 250m
+              memory: 512Mi
+      serviceAccountName: butler-portal

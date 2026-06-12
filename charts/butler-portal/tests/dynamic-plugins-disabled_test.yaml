@@ -1,0 +1,89 @@
+suite: 0.5.0 dynamicPlugins disabled state -- byte-identical pod template to 0.4.0
+templates:
+  - templates/deployment.yaml
+release:
+  name: butler-portal
+  namespace: butler-portal
+
+# This file is the load-bearing 0.5.0 contract test: with
+# dynamicPlugins.enabled=false (the chart default), the rendered pod
+# template MUST match the 0.4.0 snapshot byte-for-byte. The customer
+# guarantee this proves: a HelmRelease bumping chart.spec.version from
+# 0.4.0 to 0.5.0 with no other change does NOT roll the running pods.
+#
+# Labels on the Deployment / Service / etc. metadata DO shift between
+# versions (helm.sh/chart and app.kubernetes.io/version embed Chart.Version
+# and Chart.AppVersion via _helpers.tpl). Those live OUTSIDE spec.template,
+# so they don't trigger a rolling update. The customer-meaningful axis is
+# the pod template, and that's what this snapshot pins.
+#
+# The image: line inside the pod template references {{ .Chart.AppVersion }}
+# when image.tag is empty -- but production HelmRelease values pin image.tag
+# explicitly (the butler-portal-live HelmRelease does), so the fallback is
+# never exercised in practice. We test against image.tag = "" anyway so the
+# snapshot is reproducible without pinning a sha to a real CI artifact.
+
+tests:
+  - it: with dynamicPlugins disabled (chart default) and butler off (chart default), pod template byte-identical to 0.4.0 snapshot
+    set:
+      # explicit minimal-overrides: nothing other than what the chart
+      # defaults already imply. Captures the external-customer install
+      # path (fail-safe defaults; no butlerAuth secret needed).
+      image:
+        # Pin to a literal so the snapshot is reproducible across chart
+        # version bumps. In production every HelmRelease (Butler Labs'
+        # own + customer deployments) pins image.tag explicitly, so the
+        # appVersion-fallback path never fires anyway.
+        tag: "snapshot-baseline"
+    asserts:
+      - matchSnapshot:
+          path: spec.template
+
+  - it: with dynamicPlugins disabled and butler enabled, pod template byte-identical to 0.4.0 snapshot
+    set:
+      image:
+        # Pin to a literal so the snapshot is reproducible across chart
+        # version bumps. In production every HelmRelease (Butler Labs'
+        # own + customer deployments) pins image.tag explicitly, so the
+        # appVersion-fallback path never fires anyway.
+        tag: "snapshot-baseline"
+      plugins:
+        butler:
+          enabled: true
+      butlerAuth:
+        existingSecret: butler-server-auth-test
+    asserts:
+      - matchSnapshot:
+          path: spec.template
+
+  # Defense-in-depth: even though the pod template snapshots above prove
+  # the customer-impact axis, also assert that NONE of the dynamic-plugin
+  # infra fragments appear in the rendered deployment when disabled.
+  # A regression that adds an empty init container or a stray volume
+  # with the right shape would fail snapshot AND these explicit checks.
+
+  - it: no init container when dynamicPlugins disabled
+    asserts:
+      - isNull:
+          path: spec.template.spec.initContainers
+
+  - it: no dynamic-plugins volume when dynamicPlugins disabled
+    asserts:
+      - notContains:
+          path: spec.template.spec.volumes
+          content:
+            name: dynamic-plugins
+          any: true
+
+  - it: no APP_CONFIG_dynamicPlugins env vars when dynamicPlugins disabled
+    asserts:
+      - notContains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: APP_CONFIG_dynamicPlugins_rootDirectory
+          any: true
+      - notContains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: APP_CONFIG_dynamicPlugins_continueOnError
+          any: true

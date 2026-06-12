@@ -174,3 +174,72 @@ plugins:
     enabled: false
   pipeline:
     enabled: false
+
+# Customer-installed dynamic plugins (chart 0.5.0+). Enable to let the
+# init container pull customer-built frontend+backend plugins at pod
+# start into a shared volume the backend reads at boot. Default OFF:
+# chart 0.5.0 with this block default renders byte-identical to chart
+# 0.4.0's pod template (proven by tests/dynamic-plugins-disabled_test.yaml).
+# Customers bumping from 0.4.0 to 0.5.0 do not roll their pods until
+# they opt in.
+#
+# Open-product model -- the OPERATOR decides what plugins to enable.
+# Nothing in this path is license-checked: a customer can ship any
+# Backstage plugin in their own OCI registry, reference it here, and it
+# loads at the same lifecycle a built-in plugin gets. Butler Labs ships
+# the software fully open; this block lets operators extend their portal
+# without forking the Butler Labs source.
+#
+# Security:
+# - integrity: sha512:<hex> on every plugin entry is MANDATORY. The
+#   installer skips entries without it and skips entries whose pulled
+#   tarball does not match.
+# - allowedSources, when set, is enforced from day one: plugin sources
+#   not matching any prefix in the list are rejected. When unset (the
+#   chart default), the allowlist is PERMISSIVE -- any source the
+#   operator references is accepted. Production operators SHOULD set
+#   dynamicPlugins.allowedSources to constrain which registries plugins
+#   can come from. Documented permissive is fine; silent permissive
+#   would be a footgun.
+# - continueOnError defaults to false: on any pull/integrity failure
+#   the init container exits non-zero and the pod does not start.
+#   Operators see the failure immediately rather than discovering a
+#   plugin silently missing. Flip to true per cluster for partial-load
+#   resilience.
+dynamicPlugins:
+  enabled: false
+  installer:
+    image: ghcr.io/butlerdotdev/butler-portal-plugin-installer
+    tag: "0.1.0"
+    pullPolicy: IfNotPresent
+    # When any plugin fails to pull or fails integrity verification:
+    # false = init container exits non-zero, pod does not start
+    # true  = init container exits 0, the failed plugin is absent at boot
+    continueOnError: false
+  # Allowlist of permitted source prefixes for plugin packages. When unset
+  # or empty, ANY source the operator references in plugins[] is accepted
+  # (permissive). When set, the installer rejects entries whose source
+  # does not match any prefix.
+  #
+  # Examples:
+  #   allowedSources:
+  #     - oci://ghcr.io/myorg/
+  #     - https://plugins.internal.example.com/
+  allowedSources: []
+  # Plugins to install. Each entry is one customer plugin OCI artifact
+  # (frontend MF chunks + backend bundle) plus the pluginConfig that
+  # registers its UI in the portal shell.
+  #
+  # Example:
+  #   plugins:
+  #     - package: oci://ghcr.io/customer/butler-tempo-plugin:1.0.0
+  #       integrity: sha512:abc123...
+  #       pluginConfig:
+  #         dynamicPlugins:
+  #           frontend:
+  #             customer.butler-tempo-plugin:
+  #               dynamicRoutes:
+  #                 - path: /tempo
+  #                   importName: TempoPage
+  #                   menuItem: { text: Tempo }
+  plugins: []

@@ -1,0 +1,230 @@
+suite: 0.5.0 dynamicPlugins enabled state -- init container + volumes + env + ConfigMap
+templates:
+  - templates/deployment.yaml
+  - templates/dynamic-plugins-configmap.yaml
+release:
+  name: butler-portal
+  namespace: butler-portal
+
+# Companion to dynamic-plugins-disabled_test.yaml. The disabled-state
+# test proves byte-identical pod template to 0.4.0; this file proves the
+# enabled-state additions appear correctly and that the ConfigMap renders
+# integrity-mandatory + allowedSources-as-specified.
+#
+# Operator-controlled enabling per the open-product framing: no license
+# check anywhere; flipping enabled=true and listing plugins is purely a
+# values choice the operator makes.
+
+tests:
+
+  # --- enabled-state additions to the Deployment ---
+
+  - it: init container install-dynamic-plugins is present when enabled
+    template: templates/deployment.yaml
+    set:
+      dynamicPlugins:
+        enabled: true
+    asserts:
+      - contains:
+          path: spec.template.spec.initContainers
+          content:
+            name: install-dynamic-plugins
+          any: true
+
+  - it: init container uses the configured installer image + tag + pullPolicy
+    template: templates/deployment.yaml
+    set:
+      dynamicPlugins:
+        enabled: true
+        installer:
+          image: example.com/butler-portal-plugin-installer
+          tag: "9.9.9"
+          pullPolicy: Always
+    asserts:
+      - contains:
+          path: spec.template.spec.initContainers
+          content:
+            name: install-dynamic-plugins
+            image: example.com/butler-portal-plugin-installer:9.9.9
+            imagePullPolicy: Always
+          any: true
+
+  - it: dynamic-plugins emptyDir volume and ConfigMap volume both present when enabled
+    template: templates/deployment.yaml
+    set:
+      dynamicPlugins:
+        enabled: true
+    asserts:
+      - contains:
+          path: spec.template.spec.volumes
+          content:
+            name: dynamic-plugins
+            emptyDir: {}
+          any: true
+      - contains:
+          path: spec.template.spec.volumes
+          content:
+            name: dynamic-plugins-config
+            configMap:
+              # release name "butler-portal" contains chart name "butler-portal" --
+              # the fullname helper short-circuits to .Release.Name. See _helpers.tpl.
+              name: butler-portal-dynamic-plugins
+          any: true
+
+  - it: APP_CONFIG_dynamicPlugins env vars are present when enabled
+    template: templates/deployment.yaml
+    set:
+      dynamicPlugins:
+        enabled: true
+        installer:
+          continueOnError: false
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: APP_CONFIG_dynamicPlugins_rootDirectory
+            value: /opt/butler-portal/dynamic-plugins
+          any: true
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: APP_CONFIG_dynamicPlugins_continueOnError
+            value: "false"
+          any: true
+
+  - it: continueOnError true propagates to both init container env and main container env
+    template: templates/deployment.yaml
+    set:
+      dynamicPlugins:
+        enabled: true
+        installer:
+          continueOnError: true
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: APP_CONFIG_dynamicPlugins_continueOnError
+            value: "true"
+          any: true
+      - contains:
+          path: spec.template.spec.initContainers
+          content:
+            name: install-dynamic-plugins
+          any: true
+
+  - it: backstage container has a dynamic-plugins read-only volumeMount when enabled
+    template: templates/deployment.yaml
+    set:
+      dynamicPlugins:
+        enabled: true
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].volumeMounts
+          content:
+            name: dynamic-plugins
+            mountPath: /opt/butler-portal/dynamic-plugins
+            readOnly: true
+          any: true
+
+  # --- the ConfigMap rendering ---
+
+  - it: ConfigMap is NOT rendered when dynamicPlugins disabled
+    template: templates/dynamic-plugins-configmap.yaml
+    set:
+      dynamicPlugins:
+        enabled: false
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: ConfigMap renders when enabled, with continueOnError default false and empty allowedSources
+    template: templates/dynamic-plugins-configmap.yaml
+    set:
+      dynamicPlugins:
+        enabled: true
+        plugins: []
+    asserts:
+      - hasDocuments:
+          count: 1
+      - equal:
+          path: kind
+          value: ConfigMap
+      - matchRegex:
+          path: data["dynamic-plugins.yaml"]
+          pattern: continueOnError:\s*false
+      - matchRegex:
+          path: data["dynamic-plugins.yaml"]
+          pattern: allowedSources:\s*\[\]
+
+  - it: allowedSources renders the configured prefixes when set
+    template: templates/dynamic-plugins-configmap.yaml
+    set:
+      dynamicPlugins:
+        enabled: true
+        allowedSources:
+          - oci://ghcr.io/myorg/
+          - https://plugins.internal.example.com/
+        plugins: []
+    asserts:
+      - matchRegex:
+          path: data["dynamic-plugins.yaml"]
+          pattern: oci://ghcr.io/myorg/
+      - matchRegex:
+          path: data["dynamic-plugins.yaml"]
+          pattern: plugins.internal.example.com
+
+  # integrity is MANDATORY -- the required-validation must fire when a
+  # plugin entry omits it. This is the load-bearing security check on
+  # the values schema: a plugin without sha512 cannot be deployed.
+  - it: plugin entry without integrity field fails render with a required-guard message
+    template: templates/dynamic-plugins-configmap.yaml
+    set:
+      dynamicPlugins:
+        enabled: true
+        plugins:
+          - package: oci://ghcr.io/customer/butler-tempo-plugin:1.0.0
+            # integrity intentionally omitted
+    asserts:
+      - failedTemplate:
+          errorPattern: "integrity.*is required"
+
+  - it: plugin entry without package field fails render with a required-guard message
+    template: templates/dynamic-plugins-configmap.yaml
+    set:
+      dynamicPlugins:
+        enabled: true
+        plugins:
+          - integrity: sha512:abc123
+            # package intentionally omitted
+    asserts:
+      - failedTemplate:
+          errorPattern: "package is required"
+
+  - it: a well-formed plugin entry renders into the ConfigMap data verbatim
+    template: templates/dynamic-plugins-configmap.yaml
+    set:
+      dynamicPlugins:
+        enabled: true
+        plugins:
+          - package: oci://ghcr.io/customer/butler-tempo-plugin:1.0.0
+            integrity: sha512:abc123def456
+            pluginConfig:
+              dynamicPlugins:
+                frontend:
+                  customer.butler-tempo-plugin:
+                    dynamicRoutes:
+                      - path: /tempo
+                        importName: TempoPage
+    asserts:
+      - matchRegex:
+          path: data["dynamic-plugins.yaml"]
+          pattern: oci://ghcr.io/customer/butler-tempo-plugin:1.0.0
+      - matchRegex:
+          path: data["dynamic-plugins.yaml"]
+          pattern: sha512:abc123def456
+      - matchRegex:
+          path: data["dynamic-plugins.yaml"]
+          pattern: /tempo
+      - matchRegex:
+          path: data["dynamic-plugins.yaml"]
+          pattern: TempoPage
