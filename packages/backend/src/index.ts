@@ -32,7 +32,7 @@ backend.add(import('@backstage/plugin-techdocs-backend'));
 backend.add(import('@backstage/plugin-auth-backend'));
 // See https://backstage.io/docs/backend-system/building-backends/migrating#the-auth-plugin
 backend.add(import('@backstage/plugin-auth-backend-module-guest-provider'));
-// Custom Google auth module — issues tokens from Google profile email
+// Custom Google auth module -- issues tokens from Google profile email
 // without requiring User entities in the catalog.
 backend.add(import('./authModuleGoogleProvider'));
 // See https://backstage.io/docs/auth/guest/provider
@@ -43,7 +43,7 @@ backend.add(
   import('@backstage/plugin-catalog-backend-module-scaffolder-entity-model'),
 );
 
-// GitHub entity discovery — auto-discovers catalog-info.yaml from GitHub orgs
+// GitHub entity discovery -- auto-discovers catalog-info.yaml from GitHub orgs
 backend.add(
   import('@backstage/plugin-catalog-backend-module-github'),
 );

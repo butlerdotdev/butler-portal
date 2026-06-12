@@ -1,0 +1,207 @@
+suite: per-plugin runtime gates render
+templates:
+  - templates/deployment.yaml
+release:
+  name: butler-portal
+  namespace: butler-portal
+tests:
+
+  # Baseline: chart defaults render each flag as "false" (external customer
+  # fail-safe) and the four APP_CONFIG_plugins_*_enabled env vars are present
+  # and properly quoted. Catches accidental drift in the default block.
+  - it: renders all four APP_CONFIG_plugins env vars as "false" with chart defaults
+    set:
+      butlerAuth:
+        existingSecret: butler-auth-defaults
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: APP_CONFIG_plugins_butler_enabled
+            value: "false"
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: APP_CONFIG_plugins_workspaces_enabled
+            value: "false"
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: APP_CONFIG_plugins_registry_enabled
+            value: "false"
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: APP_CONFIG_plugins_pipeline_enabled
+            value: "false"
+
+  # The bug this case pins: an override that sets plugins to an empty object
+  # (or sets some sub-flags but not others) used to crash backend startup
+  # with "Failed to parse JSON-serialized config value" because the env value
+  # rendered as "" instead of "false". With the dig + default false guard
+  # added, the missing key safely falls back to "false".
+  - it: empty plugins override does not crash; all flags render "false"
+    set:
+      plugins: {}
+      butlerAuth:
+        existingSecret: butler-auth-empty
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: APP_CONFIG_plugins_butler_enabled
+            value: "false"
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: APP_CONFIG_plugins_workspaces_enabled
+            value: "false"
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: APP_CONFIG_plugins_registry_enabled
+            value: "false"
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: APP_CONFIG_plugins_pipeline_enabled
+            value: "false"
+
+  # A customer who flips one flag on but leaves the others unset (a real
+  # scenario for staged rollouts: enable Butler first, then Chambers, then
+  # Keeper, then Herald) used to crash on the unset siblings. Now the unset
+  # ones render "false" and only the named one renders "true".
+  - it: partial override (only plugins.butler set) renders butler "true", siblings "false"
+    set:
+      plugins:
+        butler:
+          enabled: true
+      butlerAuth:
+        existingSecret: butler-auth-partial
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: APP_CONFIG_plugins_butler_enabled
+            value: "true"
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: APP_CONFIG_plugins_workspaces_enabled
+            value: "false"
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: APP_CONFIG_plugins_registry_enabled
+            value: "false"
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: APP_CONFIG_plugins_pipeline_enabled
+            value: "false"
+
+  # Butler Labs internal deployment: every flag on. Sanity check that the
+  # all-true case still works after the dig/default rewrite.
+  - it: all four flags true renders each env var "true"
+    set:
+      plugins:
+        butler:
+          enabled: true
+        workspaces:
+          enabled: true
+        registry:
+          enabled: true
+        pipeline:
+          enabled: true
+      butlerAuth:
+        existingSecret: butler-auth-all
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: APP_CONFIG_plugins_butler_enabled
+            value: "true"
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: APP_CONFIG_plugins_workspaces_enabled
+            value: "true"
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: APP_CONFIG_plugins_registry_enabled
+            value: "true"
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: APP_CONFIG_plugins_pipeline_enabled
+            value: "true"
+
+  # butlerAuth is gated on plugins.butler.enabled: an external customer who
+  # leaves Butler off has no reason to provision a Secret for credentials
+  # nothing will use. The BUTLER_SERVICE_ACCOUNT_* env vars (and their
+  # required butlerAuth.existingSecret) only render when butler is on.
+  - it: butlerAuth env vars not rendered when butler is off (no Secret required)
+    set:
+      plugins:
+        butler:
+          enabled: false
+        workspaces:
+          enabled: false
+        registry:
+          enabled: false
+        pipeline:
+          enabled: false
+    asserts:
+      - notContains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: BUTLER_SERVICE_ACCOUNT_USER
+            valueFrom:
+              secretKeyRef:
+                name: ""
+                key: username
+          any: true
+
+  - it: butlerAuth env vars rendered with secretKeyRef when butler is on
+    set:
+      plugins:
+        butler:
+          enabled: true
+      butlerAuth:
+        existingSecret: butler-auth-rendered
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: BUTLER_SERVICE_ACCOUNT_USER
+            valueFrom:
+              secretKeyRef:
+                name: butler-auth-rendered
+                key: username
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: BUTLER_SERVICE_ACCOUNT_PASSWORD
+            valueFrom:
+              secretKeyRef:
+                name: butler-auth-rendered
+                key: password
+
+  # The required-validation message used to fire even when butler was off,
+  # blocking external customer installs. Now it only fires when butler is
+  # explicitly enabled.
+  - it: install with all flags off and no butlerAuth.existingSecret does not fail render
+    set:
+      plugins:
+        butler:
+          enabled: false
+        workspaces:
+          enabled: false
+        registry:
+          enabled: false
+        pipeline:
+          enabled: false
+    asserts:
+      - hasDocuments:
+          count: 1

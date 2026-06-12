@@ -25,6 +25,7 @@ import {
   ButlerLabsPluginMeta,
   pluginEnabledConfigKey,
 } from './butlerLabsPluginsMeta';
+import { borderColor } from '../../themes/paletteAccess';
 
 // PluginNotEnabledPage replaces Backstage's generic NotFound page when a user
 // reaches a Butler Labs plugin's route while the plugin is gated off for this
@@ -45,7 +46,7 @@ const useStyles = makeStyles(theme => ({
     padding: theme.spacing(6, 6),
     borderRadius: 14,
     backgroundColor: theme.palette.background.paper,
-    border: `1px solid ${(theme.palette as any).border || theme.palette.divider}`,
+    border: `1px solid ${borderColor(theme)}`,
     display: 'grid',
     gridTemplateColumns: 'minmax(0, 1fr) minmax(280px, 460px)',
     columnGap: theme.spacing(6),
@@ -117,7 +118,7 @@ const useStyles = makeStyles(theme => ({
   },
   enableCard: {
     backgroundColor: theme.palette.background.default,
-    border: `1px solid ${(theme.palette as any).border || theme.palette.divider}`,
+    border: `1px solid ${borderColor(theme)}`,
     borderRadius: 10,
     padding: theme.spacing(2.25, 2.5),
   },
@@ -169,11 +170,27 @@ const useStyles = makeStyles(theme => ({
 
 export const PluginNotEnabledPage = ({
   meta,
+  dependencyMeta,
 }: {
   meta: ButlerLabsPluginMeta;
+  /**
+   * When set, meta is enabled but it depends on dependencyMeta which is off.
+   * Page reads as "<meta> requires <dependencyMeta>" and the enable card
+   * tells the operator to flip BOTH config keys. Chambers is the current
+   * dependency case: workspaces=true is meaningless without butler=true
+   * because Chambers proxies every backend call through butler-backend.
+   */
+  dependencyMeta?: ButlerLabsPluginMeta;
 }) => {
   const classes = useStyles();
   const configKey = pluginEnabledConfigKey(meta);
+  const dependsOnConfigKey = dependencyMeta
+    ? pluginEnabledConfigKey(dependencyMeta)
+    : undefined;
+
+  const statusText = dependencyMeta
+    ? `Enabled, but requires ${dependencyMeta.brandName} which is off`
+    : 'Available, not enabled for this deployment';
 
   return (
     <Page themeId="home">
@@ -187,8 +204,11 @@ export const PluginNotEnabledPage = ({
           <div className={classes.copy}>
             <div className={classes.statusRow}>
               <span className={classes.statusDot} />
-              <span className={classes.statusText}>
-                Available — not enabled for this deployment
+              <span
+                className={classes.statusText}
+                data-testid="plugin-not-enabled-status"
+              >
+                {statusText}
               </span>
             </div>
             <Typography variant="h1" className={classes.brandName}>
@@ -198,22 +218,49 @@ export const PluginNotEnabledPage = ({
             <Typography className={classes.origin}>{meta.origin}</Typography>
             <Box className={classes.enableCard}>
               <Typography className={classes.enableHeading}>
-                Enable for this deployment
+                {dependencyMeta
+                  ? `Enable ${dependencyMeta.brandName} for this deployment`
+                  : 'Enable for this deployment'}
               </Typography>
               <Typography component="div" className={classes.enableBody}>
-                <span>Ask your administrator to set</span>
-                <Chip
-                  size="small"
-                  label={configKey}
-                  className={classes.codeChip}
-                />
-                <span>to</span>
-                <Chip
-                  size="small"
-                  label="true"
-                  className={classes.codeChip}
-                />
-                <span>in the portal's Helm values.</span>
+                {dependencyMeta && dependsOnConfigKey ? (
+                  <>
+                    <span>
+                      {meta.brandName} proxies its backend through{' '}
+                      {dependencyMeta.brandName}. Ask your administrator to set
+                    </span>
+                    <Chip
+                      size="small"
+                      label={dependsOnConfigKey}
+                      className={classes.codeChip}
+                    />
+                    <span>to</span>
+                    <Chip
+                      size="small"
+                      label="true"
+                      className={classes.codeChip}
+                    />
+                    <span>
+                      in the portal's Helm values. {configKey} is already on.
+                    </span>
+                  </>
+                ) : (
+                  <>
+                    <span>Ask your administrator to set</span>
+                    <Chip
+                      size="small"
+                      label={configKey}
+                      className={classes.codeChip}
+                    />
+                    <span>to</span>
+                    <Chip
+                      size="small"
+                      label="true"
+                      className={classes.codeChip}
+                    />
+                    <span>in the portal's Helm values.</span>
+                  </>
+                )}
               </Typography>
             </Box>
           </div>
@@ -222,6 +269,7 @@ export const PluginNotEnabledPage = ({
               className={classes.mascot}
               src={meta.mascotPath}
               alt={`${meta.brandName} mascot`}
+              loading="lazy"
             />
           </div>
         </Box>

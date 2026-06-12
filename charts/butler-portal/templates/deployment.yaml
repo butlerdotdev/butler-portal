@@ -78,27 +78,40 @@ spec:
             # Per-plugin runtime gates. Backstage parses APP_CONFIG_* values as
             # JSON; the literal strings "true" / "false" map to JSON booleans.
             # Positioned after extraEnv so chart-managed values win over any
-            # user extraEnv override.
+            # user extraEnv override. Each value goes through default false
+            # so a partial values override (plugins: {} or plugins.butler set
+            # but plugins.workspaces left nil) renders "false" instead of "",
+            # which JSON.parse would reject and crash the backend at startup.
+            {{- $plugins := default (dict) .Values.plugins }}
+            {{- $butler := default (dict) $plugins.butler }}
+            {{- $workspaces := default (dict) $plugins.workspaces }}
+            {{- $registry := default (dict) $plugins.registry }}
+            {{- $pipeline := default (dict) $plugins.pipeline }}
             - name: APP_CONFIG_plugins_butler_enabled
-              value: {{ .Values.plugins.butler.enabled | quote }}
+              value: {{ default false $butler.enabled | quote }}
             - name: APP_CONFIG_plugins_workspaces_enabled
-              value: {{ .Values.plugins.workspaces.enabled | quote }}
+              value: {{ default false $workspaces.enabled | quote }}
             - name: APP_CONFIG_plugins_registry_enabled
-              value: {{ .Values.plugins.registry.enabled | quote }}
+              value: {{ default false $registry.enabled | quote }}
             - name: APP_CONFIG_plugins_pipeline_enabled
-              value: {{ .Values.plugins.pipeline.enabled | quote }}
-            # Service-account credentials for butler-server. Positioned last so
-            # the chart-managed secretKeyRef wins over any extraEnv override.
+              value: {{ default false $pipeline.enabled | quote }}
+            {{- if default false $butler.enabled }}
+            # Service-account credentials for butler-server. Only rendered
+            # when plugins.butler.enabled is true: an external customer who
+            # leaves Butler off has no reason to provision a dead Secret.
+            # Positioned last so the chart-managed secretKeyRef wins over
+            # any extraEnv override.
             - name: BUTLER_SERVICE_ACCOUNT_USER
               valueFrom:
                 secretKeyRef:
-                  name: {{ required "butlerAuth.existingSecret is required. Create a Secret in the release namespace with username and password keys for the butler-server service account, then set butlerAuth.existingSecret to its name. See chart README for details." .Values.butlerAuth.existingSecret }}
+                  name: {{ required "butlerAuth.existingSecret is required when plugins.butler.enabled is true. Create a Secret in the release namespace with username and password keys for the butler-server service account, then set butlerAuth.existingSecret to its name. See chart README for details." .Values.butlerAuth.existingSecret }}
                   key: {{ .Values.butlerAuth.usernameKey | default "username" }}
             - name: BUTLER_SERVICE_ACCOUNT_PASSWORD
               valueFrom:
                 secretKeyRef:
                   name: {{ .Values.butlerAuth.existingSecret }}
                   key: {{ .Values.butlerAuth.passwordKey | default "password" }}
+            {{- end }}
             {{- if .Values.butlerSigning.existingSecret }}
             # Stage 2 portal-JWT signer config. When butlerSigning is set,
             # the backend mounts the Ed25519 private key as a file (below)

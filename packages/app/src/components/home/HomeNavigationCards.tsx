@@ -32,6 +32,7 @@ import {
 	ButlerLabsPluginMeta,
 	pluginEnabledConfigKey,
 } from '../plugins/butlerLabsPluginsMeta';
+import { borderColor } from '../../themes/paletteAccess';
 
 // The Butler Labs navigation cards on the homepage. Always render every card;
 // the disabled state (greyed + tooltip + still-clickable to the branded
@@ -71,7 +72,7 @@ const useStyles = makeStyles(theme => ({
 		backgroundColor: theme.palette.background.paper,
 		borderRadius: 12,
 		padding: theme.spacing(2.5),
-		border: `1px solid ${(theme.palette as any).border || '#262626'}`,
+		border: `1px solid ${borderColor(theme, '#262626')}`,
 		cursor: 'pointer',
 		transition: 'all 0.25s ease',
 		height: '100%',
@@ -107,8 +108,12 @@ const useStyles = makeStyles(theme => ({
 		// is intentionally suppressed so the disabled state reads consistently.
 		opacity: 0.6,
 		cursor: 'not-allowed',
+		// Suppress the standard hover lift / brand border / shadow on disabled
+		// cards. Keep the border the same as the non-hover state so the only
+		// hover affordance is the cursor (not-allowed) and the watermark
+		// glow. borderColor takes a color, not a shorthand.
 		'&:hover': {
-			borderColor: `1px solid ${(theme.palette as any).border || '#262626'}`,
+			borderColor: borderColor(theme, '#262626'),
 			transform: 'none',
 			boxShadow: 'none',
 		},
@@ -278,17 +283,21 @@ const NavigationCard = ({
 	themedHint?: string;
 }) => {
 	const classes = useStyles();
-	// Stop the info icon's click from bubbling up to the parent <a> so
-	// curious clickers don't get navigated away while reading the lore.
-	const swallowClick = (e: React.MouseEvent) => {
-		e.preventDefault();
-		e.stopPropagation();
-	};
-	const card = (
+	// The Origin pill is a passive visual badge, NOT a nested interactive
+	// element. Anchors cannot contain another interactive control: an inner
+	// role="button" inside an <a href> is invalid HTML and the WAI-ARIA spec
+	// prohibits interactive descendants of role=link, so screen readers
+	// announce ambiguously and keyboard activation collapses. The MUI Tooltip
+	// wrapper still attaches its hover/focus handlers to the cloned child
+	// span, so mousing over (or tabbing onto the parent link and hovering)
+	// surfaces the themed lore copy. A click anywhere on the card -- pill
+	// included -- routes to the plugin (or to PluginNotEnabledPage when off);
+	// no swallow handler is needed.
+	return (
 		<a
 			href={href}
 			className={`${classes.navCard}${disabled ? ` ${classes.navCardDisabled}` : ''}`}
-			aria-disabled={disabled ? 'true' : undefined}
+			aria-disabled={disabled ? true : undefined}
 			data-testid={testId}
 		>
 			{mascotPath && (
@@ -299,6 +308,7 @@ const NavigationCard = ({
 						src={mascotPath}
 						alt={mascotAlt || ''}
 						aria-hidden="true"
+						loading="lazy"
 					/>
 				</>
 			)}
@@ -313,16 +323,7 @@ const NavigationCard = ({
 					>
 						<span
 							className={classes.navInfoButton}
-							role="button"
-							tabIndex={0}
 							aria-label={`${title} origin`}
-							onClick={swallowClick}
-							onKeyDown={e => {
-								if (e.key === 'Enter' || e.key === ' ') {
-									e.preventDefault();
-									e.stopPropagation();
-								}
-							}}
 						>
 							<BookOutlinedIcon className={classes.navInfoIcon} />
 							<span>Origin</span>
@@ -335,7 +336,6 @@ const NavigationCard = ({
 			<ArrowForwardIcon className={classes.navArrow} />
 		</a>
 	);
-	return card;
 };
 
 // Homepage card copy. Description is the functional what-it-does so a new

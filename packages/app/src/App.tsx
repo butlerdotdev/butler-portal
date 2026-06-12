@@ -35,7 +35,7 @@ import {
 	SignInPage,
 	type SignInProviderConfig,
 } from '@backstage/core-components';
-import { configApiRef, googleAuthApiRef, useApi } from '@backstage/core-plugin-api';
+import { googleAuthApiRef } from '@backstage/core-plugin-api';
 import { createApp } from '@backstage/app-defaults';
 import { AppRouter, FlatRoutes } from '@backstage/core-app-api';
 import { CatalogGraphPage } from '@backstage/plugin-catalog-graph';
@@ -52,8 +52,7 @@ import { WorkspacesPluginPage } from '@internal/plugin-workspaces';
 import { RegistryPage } from '@internal/plugin-registry';
 import { PipelinePage } from '@internal/plugin-pipeline';
 import { AppearanceSettings } from './components/settings/AppearanceSettings';
-import { BUTLER_LABS_PLUGINS } from './components/plugins/butlerLabsPluginsMeta';
-import { PluginNotEnabledPage } from './components/plugins/PluginNotEnabledPage';
+import { ButlerLabsRouteElement } from './components/plugins/ButlerLabsRouteElement';
 
 const app = createApp({
 	apis,
@@ -100,36 +99,6 @@ const app = createApp({
 		},
 	},
 });
-
-// Per-plugin route element switcher. Reads plugins.<configKey>.enabled and
-// renders either the real plugin page (an enabled deployment runs the real
-// plugin code, passed in as children so createApp's plugin discovery sees
-// the routable extension at module-evaluation time) or PluginNotEnabledPage
-// (a disabled deployment shows the branded "available but not enabled"
-// page).
-//
-// The routable extension MUST come in via `children`, not an arbitrary
-// prop. Backstage's discovery walker recurses into props.children and
-// props.element; it does not introspect custom-component props. Passing
-// <WorkspacesPluginPage /> as e.g. `enabledElement={...}` would make the
-// element invisible to discovery, and the moment the flag flipped to true
-// React would try to mount a routable extension whose rootRouteRef was
-// never indexed -- the "was not discovered in the app element tree" crash.
-const ButlerLabsRouteElement = ({
-	configKey,
-	children,
-}: {
-	configKey: 'butler' | 'workspaces' | 'registry' | 'pipeline';
-	children: React.ReactNode;
-}) => {
-	const config = useApi(configApiRef);
-	const enabled =
-		config.getOptionalBoolean(`plugins.${configKey}.enabled`) ?? false;
-	const meta =
-		BUTLER_LABS_PLUGINS.find(p => p.configKey === configKey) ??
-		BUTLER_LABS_PLUGINS[0];
-	return enabled ? <>{children}</> : <PluginNotEnabledPage meta={meta} />;
-};
 
 export default app.createRoot(
 	<>

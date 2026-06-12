@@ -8,6 +8,7 @@ import {
 import { SearchContextProvider } from '@backstage/plugin-search-react';
 import { HomePageSearchBar } from '@backstage/plugin-search';
 import { HomeNavigationCards } from './HomeNavigationCards';
+import { borderColor } from '../../themes/paletteAccess';
 
 const typewriterPrompts = [
 	'Search for Kubernetes clusters...',
@@ -153,7 +154,7 @@ const useStyles = makeStyles(theme => ({
 	widgetCard: {
 		backgroundColor: theme.palette.background.paper,
 		borderRadius: 12,
-		border: `1px solid ${(theme.palette as any).border || '#262626'}`,
+		border: `1px solid ${borderColor(theme, '#262626')}`,
 		overflow: 'hidden',
 		height: '100%',
 	},

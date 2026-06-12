@@ -13,7 +13,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 import { useSidebarOpenState } from '@backstage/core-components';
 import { makeStyles } from '@material-ui/core';
 
@@ -25,26 +24,26 @@ import { makeStyles } from '@material-ui/core';
 // Renders only when the sidebar is open: a 9px label inside a 64px
 // collapsed sidebar would just be noise.
 const useStyles = makeStyles(theme => ({
-  root: {
-    padding: theme.spacing(1.75, 3, 0.5, 3),
-    fontSize: '0.65rem',
-    fontWeight: 700,
-    letterSpacing: '0.14em',
-    textTransform: 'uppercase',
-    color: theme.palette.primary.main,
-    opacity: 0.85,
-    pointerEvents: 'none',
-    userSelect: 'none',
-  },
+	root: {
+		padding: theme.spacing(1.75, 3, 0.5, 3),
+		fontSize: '0.65rem',
+		fontWeight: 700,
+		letterSpacing: '0.14em',
+		textTransform: 'uppercase',
+		color: theme.palette.primary.main,
+		opacity: 0.85,
+		pointerEvents: 'none',
+		userSelect: 'none',
+	},
 }));
 
 export const SidebarSectionLabel = ({ label }: { label: string }) => {
-  const classes = useStyles();
-  const { isOpen } = useSidebarOpenState();
-  if (!isOpen) return null;
-  return (
-    <div className={classes.root} aria-hidden="true">
-      {label}
-    </div>
-  );
+	const classes = useStyles();
+	const { isOpen } = useSidebarOpenState();
+	if (!isOpen) return null;
+	return (
+		<div className={classes.root} aria-hidden="true">
+			{label}
+		</div>
+	);
 };

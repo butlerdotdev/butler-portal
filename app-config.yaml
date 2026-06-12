@@ -18,7 +18,7 @@ backend:
   database:
     client: better-sqlite3
     connection: ':memory:'
-  # Auth policy enforced — management API requires Backstage auth.
+  # Auth policy enforced -- management API requires Backstage auth.
   # Protocol endpoints (Terraform, Helm, OCI, webhooks) remain unauthenticated.
 
 permission:
