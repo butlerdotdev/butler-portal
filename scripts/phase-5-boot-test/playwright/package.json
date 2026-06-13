@@ -1,0 +1,13 @@
+{
+  "name": "butler-portal-phase-5-boot-test",
+  "private": true,
+  "version": "0.0.0",
+  "description": "Playwright tests for the Phase 5 boot-test gate (Task #65 closure).",
+  "license": "Apache-2.0",
+  "scripts": {
+    "test": "playwright test"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.49.0"
+  }
+}
