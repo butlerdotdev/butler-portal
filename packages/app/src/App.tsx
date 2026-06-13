@@ -1,33 +1,12 @@
+import { ReactNode } from 'react';
 import { Route } from 'react-router-dom';
-import { apiDocsPlugin, ApiExplorerPage } from '@backstage/plugin-api-docs';
-import {
-	CatalogEntityPage,
-	CatalogIndexPage,
-	catalogPlugin,
-} from '@backstage/plugin-catalog';
-import {
-	CatalogImportPage,
-	catalogImportPlugin,
-} from '@backstage/plugin-catalog-import';
-import { ScaffolderPage, scaffolderPlugin } from '@backstage/plugin-scaffolder';
+import { apiDocsPlugin } from '@backstage/plugin-api-docs';
+import { catalogPlugin } from '@backstage/plugin-catalog';
+import { catalogImportPlugin } from '@backstage/plugin-catalog-import';
+import { scaffolderPlugin } from '@backstage/plugin-scaffolder';
 import { orgPlugin } from '@backstage/plugin-org';
-import { SearchPage } from '@backstage/plugin-search';
-import {
-	TechDocsIndexPage,
-	techdocsPlugin,
-	TechDocsReaderPage,
-} from '@backstage/plugin-techdocs';
-import { TechDocsAddons } from '@backstage/plugin-techdocs-react';
-import { ReportIssue } from '@backstage/plugin-techdocs-module-addons-contrib';
-import {
-	UserSettingsPage,
-	UserSettingsProfileCard,
-	UserSettingsIdentityCard,
-	SettingsLayout,
-} from '@backstage/plugin-user-settings';
+import { techdocsPlugin } from '@backstage/plugin-techdocs';
 import { apis } from './apis';
-import { entityPage } from './components/catalog/EntityPage';
-import { searchPage } from './components/search/SearchPage';
 import { Root } from './components/Root';
 import {
 	AlertDisplay,
@@ -37,22 +16,11 @@ import {
 } from '@backstage/core-components';
 import { googleAuthApiRef } from '@backstage/core-plugin-api';
 import { createApp } from '@backstage/app-defaults';
-import { AppRouter, FlatRoutes } from '@backstage/core-app-api';
-import { CatalogGraphPage } from '@backstage/plugin-catalog-graph';
-import { RequirePermission } from '@backstage/plugin-permission-react';
-import { catalogEntityCreatePermission } from '@backstage/plugin-catalog-common/alpha';
-import { NotificationsPage } from '@backstage/plugin-notifications';
+import { AppRouter } from '@backstage/core-app-api';
 import { SignalsDisplay } from '@backstage/plugin-signals';
 import { UnifiedThemeProvider } from '@backstage/theme';
-import Grid from '@material-ui/core/Grid';
 import { butlerThemes, type ButlerThemeId } from './themes/butlerPortalTheme';
-import { HomePage } from './components/home';
-import { ButlerPage } from '@internal/plugin-butler';
-import { WorkspacesPluginPage } from '@internal/plugin-workspaces';
-import { RegistryPage } from '@internal/plugin-registry';
-import { PipelinePage } from '@internal/plugin-pipeline';
-import { AppearanceSettings } from './components/settings/AppearanceSettings';
-import { ButlerLabsRouteElement } from './components/plugins/ButlerLabsRouteElement';
+import { BASELINE_ROUTES, DataDrivenFlatRoutes } from './baselineRoutes';
 
 const app = createApp({
 	apis,
@@ -100,6 +68,27 @@ const app = createApp({
 	},
 });
 
+// Walker carrier. Returns null at render time so it produces no visible
+// DOM, but its declared JSX children are walked by Backstage's
+// plugin-discovery pass at createApp time. childDiscoverer in
+// @backstage/core-app-api/dist/extensions/traversal.esm.js returns
+// element.props?.children for any element type including function
+// components, so the Routes carried below are indexed even though
+// DiscoveryAnchor never renders them.
+//
+// Why this is necessary: DataDrivenFlatRoutes is a function component
+// the walker treats as a leaf (its render output is invisible to
+// traverseElementTree). Without this anchor, the walker would never
+// reach the Butler Labs and stock routable extensions through the
+// AppRouter path, useRouteRef would return undefined for every plugin
+// route, and the portal would crash on first navigation.
+//
+// AppNormalization.test.tsx empirically pins the anchor contract; the
+// render-path gating tests in BaselineRoutes.test.tsx pin that the
+// rendered FlatRoutes ALSO carries the gate (mutation in the render path
+// goes red).
+const DiscoveryAnchor = (_props: { children?: ReactNode }) => null;
+
 export default app.createRoot(
 	<>
 		<AlertDisplay />
@@ -107,90 +96,15 @@ export default app.createRoot(
 		<SignalsDisplay />
 		<AppRouter>
 			<Root>
-				<FlatRoutes>
-					<Route path="/" element={<HomePage />} />
-					<Route path="/catalog" element={<CatalogIndexPage />} />
-					<Route
-						path="/catalog/:namespace/:kind/:name"
-						element={<CatalogEntityPage />}
-					>
-						{entityPage}
-					</Route>
-					<Route path="/docs" element={<TechDocsIndexPage />} />
-					<Route
-						path="/docs/:namespace/:kind/:name/*"
-						element={<TechDocsReaderPage />}
-					>
-						<TechDocsAddons>
-							<ReportIssue />
-						</TechDocsAddons>
-					</Route>
-					<Route path="/create" element={<ScaffolderPage />} />
-					<Route path="/api-docs" element={<ApiExplorerPage />} />
-					<Route
-						path="/catalog-import"
-						element={
-							<RequirePermission permission={catalogEntityCreatePermission}>
-								<CatalogImportPage />
-							</RequirePermission>
-						}
-					/>
-					<Route path="/search" element={<SearchPage />}>
-						{searchPage}
-					</Route>
-					<Route path="/settings" element={<UserSettingsPage />}>
-						<SettingsLayout>
-							<SettingsLayout.Route path="general" title="General">
-								<Grid container direction="row" spacing={3}>
-									<Grid item xs={12} md={6}>
-										<UserSettingsProfileCard />
-									</Grid>
-									<Grid item xs={12} md={6}>
-										<AppearanceSettings />
-									</Grid>
-									<Grid item xs={12} md={6}>
-										<UserSettingsIdentityCard />
-									</Grid>
-								</Grid>
-							</SettingsLayout.Route>
-						</SettingsLayout>
-					</Route>
-					<Route path="/catalog-graph" element={<CatalogGraphPage />} />
-					<Route path="/notifications" element={<NotificationsPage />} />
-					<Route
-						path="/butler/*"
-						element={
-							<ButlerLabsRouteElement configKey="butler">
-								<ButlerPage />
-							</ButlerLabsRouteElement>
-						}
-					/>
-					<Route
-						path="/workspaces/*"
-						element={
-							<ButlerLabsRouteElement configKey="workspaces">
-								<WorkspacesPluginPage />
-							</ButlerLabsRouteElement>
-						}
-					/>
-					<Route
-						path="/registry/*"
-						element={
-							<ButlerLabsRouteElement configKey="registry">
-								<RegistryPage />
-							</ButlerLabsRouteElement>
-						}
-					/>
-					<Route
-						path="/pipeline/*"
-						element={
-							<ButlerLabsRouteElement configKey="pipeline">
-								<PipelinePage />
-							</ButlerLabsRouteElement>
-						}
-					/>
-				</FlatRoutes>
+				<DataDrivenFlatRoutes />
 			</Root>
 		</AppRouter>
+		<DiscoveryAnchor>
+			{BASELINE_ROUTES.map(r => (
+				<Route key={r.path} path={r.path} element={r.element}>
+					{r.children}
+				</Route>
+			))}
+		</DiscoveryAnchor>
 	</>,
 );
