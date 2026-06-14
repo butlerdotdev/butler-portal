@@ -117,6 +117,13 @@ jobs:
         with:
           node-version: 22
 
+      - name: Enable Corepack (for yarn)
+        # setup-node@v4 does not install yarn by default; corepack
+        # enable activates the yarn shim bundled with Node 22.
+        run: |
+          corepack enable
+          yarn --version
+
       - name: Build backend example out-of-tree
         # Backend dynamic plugin export uses rhdh-cli's backend-plugin
         # code path, which reads yarn.lock to compute the production
