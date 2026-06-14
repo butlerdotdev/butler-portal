@@ -1,0 +1,53 @@
+{{- /*
+ConfigMap consumed by the install-dynamic-plugins init container. Only
+rendered when dynamicPlugins.enabled is true. The installer reads the
+file at /etc/butler-portal/dynamic-plugins.yaml, iterates plugins[],
+validates each entry against allowedSources (when set), pulls the
+package (oci:// or https://), verifies sha512 integrity, and extracts
+to /opt/butler-portal/dynamic-plugins/<package>/.
+
+This file is the wire contract between the operator's HelmRelease values
+and the init container's behavior. Schema changes are a versioned
+compatibility surface: bumping the chart minor requires the installer to
+accept the prior schema too, or vice versa.
+*/}}
+{{- if .Values.dynamicPlugins.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "butler-portal.fullname" . }}-dynamic-plugins
+  labels:
+    {{- include "butler-portal.labels" . | nindent 4 }}
+data:
+  dynamic-plugins.yaml: |
+    # Installer behavior knobs (mirrored from HelmRelease values so the
+    # init container does not need to read the parent chart's values).
+    continueOnError: {{ .Values.dynamicPlugins.installer.continueOnError }}
+    {{- if .Values.dynamicPlugins.allowedSources }}
+    allowedSources:
+      {{- range .Values.dynamicPlugins.allowedSources }}
+      - {{ . | quote }}
+      {{- end }}
+    {{- else }}
+    # allowedSources unset -> PERMISSIVE: any source the operator
+    # references is accepted. Production operators SHOULD set
+    # dynamicPlugins.allowedSources to constrain which registries
+    # plugins can come from.
+    allowedSources: []
+    {{- end }}
+    # Customer-installed plugins. Each entry is one OCI artifact (or
+    # https:// tarball) containing both frontend MF chunks and backend
+    # bundle, plus the pluginConfig that registers its UI in the portal.
+    plugins:
+{{- range .Values.dynamicPlugins.plugins }}
+      - package: {{ required "dynamicPlugins.plugins[].package is required" .package | quote }}
+        integrity: {{ required "dynamicPlugins.plugins[].integrity (sha512:<hex>) is required for every plugin entry. Compute via: sha512sum on the pulled tarball." .integrity | quote }}
+        {{- if hasKey . "disabled" }}
+        disabled: {{ .disabled }}
+        {{- end }}
+        {{- if .pluginConfig }}
+        pluginConfig:
+{{ toYaml .pluginConfig | indent 10 }}
+        {{- end }}
+{{- end }}
+{{- end }}

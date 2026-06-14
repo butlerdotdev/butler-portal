@@ -18,6 +18,7 @@ import {
 } from '../plugins/butlerLabsPluginsMeta';
 import { ButlerLabsSubmenuItem } from './ButlerLabsSubmenuItem';
 import { SidebarSectionLabel } from './SidebarSectionLabel';
+import { DynamicMenuSlot } from '../DynamicRoot';
 import {
 	Sidebar,
 	sidebarConfig,
@@ -131,6 +132,16 @@ export const Root = ({ children }: PropsWithChildren<{}>) => {
 					<SidebarItem icon={ExtensionIcon} to="api-docs" text="APIs" />
 					<SidebarItem icon={LibraryBooks} to="docs" text="Docs" />
 					<SidebarItem icon={CreateComponentIcon} to="create" text="Create..." />
+
+					{/* Customer dynamic-plugin sidebar entries layer in here. Empty
+					    when no dynamic plugins are loaded (chart 0.5.0 default),
+					    so the rendered sidebar is identical to 0.4.0 in that
+					    state. Sidebar uses standard React rendering for children,
+					    so the DynamicMenuSlot function component executes and its
+					    returned Fragment of SidebarItem nodes appears between
+					    the Platform items above and the Butler Labs branded
+					    section below. */}
+					<DynamicMenuSlot />
 
 					<SidebarSectionLabel label="Butler Labs" />
 					<SidebarItem icon={ButlerLabsIcon} to={butlerLabsTarget} text="Butler Labs">

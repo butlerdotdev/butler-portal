@@ -28,6 +28,28 @@ spec:
         # without exposing the private key to other UIDs on the node.
         fsGroup: 1000
       {{- end }}
+      {{- if .Values.dynamicPlugins.enabled }}
+      initContainers:
+        # install-dynamic-plugins (chart 0.5.0+). Pulls customer-installed
+        # plugins listed in dynamicPlugins.plugins[] into the shared volume
+        # the backend reads at boot. Integrity-verified (sha512, mandatory,
+        # fail-closed). Allowlist-enforced when dynamicPlugins.allowedSources
+        # is set; permissive when unset. continueOnError gates whether a pull
+        # failure crashes the pod (false, default) or boots without the
+        # failed plugin (true).
+        - name: install-dynamic-plugins
+          image: "{{ .Values.dynamicPlugins.installer.image }}:{{ .Values.dynamicPlugins.installer.tag }}"
+          imagePullPolicy: {{ .Values.dynamicPlugins.installer.pullPolicy }}
+          env:
+            - name: CONTINUE_ON_ERROR
+              value: {{ .Values.dynamicPlugins.installer.continueOnError | quote }}
+          volumeMounts:
+            - name: dynamic-plugins-config
+              mountPath: /etc/butler-portal
+              readOnly: true
+            - name: dynamic-plugins
+              mountPath: /opt/butler-portal/dynamic-plugins
+      {{- end }}
       containers:
         - name: backstage
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
@@ -132,11 +154,28 @@ spec:
             - name: BUTLER_SIGNING_KID
               value: {{ required "butlerSigning.kid is required when butlerSigning.existingSecret is set; see chart README for details." .Values.butlerSigning.kid | quote }}
             {{- end }}
-          {{- if .Values.butlerSigning.existingSecret }}
+            {{- if .Values.dynamicPlugins.enabled }}
+            # Customer-installed dynamic plugins (chart 0.5.0+). The backend's
+            # dynamicPluginsFeatureLoader reads from this directory at boot
+            # and registers backend features it finds. The init container
+            # above populates the directory before the backend starts.
+            - name: APP_CONFIG_dynamicPlugins_rootDirectory
+              value: /opt/butler-portal/dynamic-plugins
+            - name: APP_CONFIG_dynamicPlugins_continueOnError
+              value: {{ .Values.dynamicPlugins.installer.continueOnError | quote }}
+            {{- end }}
+          {{- if or .Values.butlerSigning.existingSecret .Values.dynamicPlugins.enabled }}
           volumeMounts:
+            {{- if .Values.butlerSigning.existingSecret }}
             - name: butler-signing-key
               mountPath: /etc/butler-portal/signing-key
               readOnly: true
+            {{- end }}
+            {{- if .Values.dynamicPlugins.enabled }}
+            - name: dynamic-plugins
+              mountPath: /opt/butler-portal/dynamic-plugins
+              readOnly: true
+            {{- end }}
           {{- end }}
           livenessProbe:
             httpGet:
@@ -152,8 +191,9 @@ spec:
             periodSeconds: 5
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
-      {{- if .Values.butlerSigning.existingSecret }}
+      {{- if or .Values.butlerSigning.existingSecret .Values.dynamicPlugins.enabled }}
       volumes:
+        {{- if .Values.butlerSigning.existingSecret }}
         - name: butler-signing-key
           secret:
             secretName: {{ .Values.butlerSigning.existingSecret }}
@@ -165,6 +205,14 @@ spec:
             items:
               - key: {{ .Values.butlerSigning.keyKey | default "key" }}
                 path: key
+        {{- end }}
+        {{- if .Values.dynamicPlugins.enabled }}
+        - name: dynamic-plugins
+          emptyDir: {}
+        - name: dynamic-plugins-config
+          configMap:
+            name: {{ include "butler-portal.fullname" . }}-dynamic-plugins
+        {{- end }}
       {{- end }}
       {{- with .Values.nodeSelector }}
       nodeSelector:
