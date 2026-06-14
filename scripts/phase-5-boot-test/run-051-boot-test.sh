@@ -205,8 +205,15 @@ POP_REMOTES_HTTP=$(curl -s -o "$WORK/remotes.json" -w "%{http_code}" http://loca
 log "  GET /.backstage/dynamic-features/remotes -> HTTP $POP_REMOTES_HTTP"
 log "  body: $(cat "$WORK/remotes.json" | head -c 500)"
 
-[ "$POP_REMOTES_HTTP" = "200" ] || { echo "FAIL POPULATED: /remotes endpoint returned $POP_REMOTES_HTTP, expected 200" >&2; docker logs portal-051 2>&1 | tail -30; exit 1; }
-grep -q "butler-hello-dynamic-plugin" "$WORK/remotes.json" || { echo "FAIL POPULATED: test plugin not in /remotes response" >&2; cat "$WORK/remotes.json" >&2; exit 1; }
+[ "$POP_REMOTES_HTTP" = "200" ] || { echo "FAIL POPULATED: /remotes endpoint returned $POP_REMOTES_HTTP, expected 200" >&2; docker logs portal-051 2>&1 | tail -60; exit 1; }
+if ! grep -q "butler-hello-dynamic-plugin" "$WORK/remotes.json"; then
+  echo "FAIL POPULATED: test plugin not in /remotes response" >&2
+  echo "--- portal-051 logs (tail 80) ---" >&2
+  docker logs portal-051 2>&1 | tail -80 >&2
+  echo "--- dynamic-plugins volume contents ---" >&2
+  docker run --rm -v "dynamic-plugins-vol:/v" alpine ls -la /v/ /v/butler-hello-dynamic-plugin-dynamic/ 2>&1 | head -30 >&2
+  exit 1
+fi
 
 log "  POPULATED endpoint confirmed: /remotes serves the test plugin's Remote entry"
 log "  Playwright marker assertion (run separately): visit /hello-dynamic-plugin, assert 'Hello from the Butler Portal dynamic-plugins runtime' visible"
