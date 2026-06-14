@@ -163,6 +163,17 @@ spec:
               value: /opt/butler-portal/dynamic-plugins
             - name: APP_CONFIG_dynamicPlugins_continueOnError
               value: {{ .Values.dynamicPlugins.installer.continueOnError | quote }}
+            # @backstage/backend-dynamic-feature-service's plugin scanner
+            # resolves a dynamic plugin's backstage module imports against
+            # NODE_PATH. Without this the backend crashes at boot with
+            # "Dynamic plugins under '/opt/butler-portal/dynamic-plugins'
+            # cannot access backstage modules in '/app/node_modules'.
+            # Please add '/app/node_modules' to the 'NODE_PATH' when running
+            # the backstage backend." (chart 0.5.1; gated on dynamicPlugins
+            # so the disabled-state pod env is byte-identical to chart
+            # 0.4.0.)
+            - name: NODE_PATH
+              value: /app/node_modules
             {{- end }}
           {{- if or .Values.butlerSigning.existingSecret .Values.dynamicPlugins.enabled }}
           volumeMounts:
