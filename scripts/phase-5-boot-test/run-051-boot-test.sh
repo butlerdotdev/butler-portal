@@ -201,7 +201,23 @@ start_portal \
   -e APP_CONFIG_dynamicPlugins_rootDirectory=/dynamic-plugins-root \
   -v "dynamic-plugins-vol:/dynamic-plugins-root:ro"
 
-POP_REMOTES_HTTP=$(curl -s -o "$WORK/remotes.json" -w "%{http_code}" http://localhost:7007/.backstage/dynamic-features/remotes)
+# The dynamic-plugins scanner runs AFTER rootHttpRouter binds + the SPA
+# fallback wires up. On fast hosts (butler-runners) the SPA shell can
+# serve in 6s while the scanner is still walking the rootDirectory.
+# Polling /remotes until either a JSON body materializes (scanner ran
+# AND found plugins) or until a generous timeout fires lets the test
+# survive the speed difference between dev laptops and CI runners.
+log "  waiting for dynamic-features scanner to register the plugin"
+POP_REMOTES_HTTP=""
+for i in $(seq 1 180); do
+  POP_REMOTES_HTTP=$(curl -s -o "$WORK/remotes.json" -w "%{http_code}" http://localhost:7007/.backstage/dynamic-features/remotes)
+  body=$(cat "$WORK/remotes.json" 2>/dev/null)
+  if [ "$POP_REMOTES_HTTP" = "200" ] && printf '%s' "$body" | grep -q "butler-hello-dynamic-plugin"; then
+    log "    /remotes returned the Remote[] entry after ${i}s"
+    break
+  fi
+  sleep 1
+done
 log "  GET /.backstage/dynamic-features/remotes -> HTTP $POP_REMOTES_HTTP"
 log "  body: $(cat "$WORK/remotes.json" | head -c 500)"
 
