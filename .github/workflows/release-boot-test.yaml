@@ -163,6 +163,16 @@ jobs:
         run: |
           bash scripts/phase-5-boot-test/run-051-marker-test.sh
 
+      - name: Backend dynamic plugin marker assertion against released image
+        # Symmetric proof for the backend side: install the backend test
+        # fixture, boot the portal, curl /api/hello-dynamic-backend/ping,
+        # and assert the marker is in the response. Closes the same gap
+        # the frontend marker assertion closes -- proving the runtime
+        # loaded a real backend dynamic plugin, not that the loader's
+        # presence was inferred from a no-plugin boot.
+        run: |
+          bash scripts/phase-5-boot-test/run-051-backend-test.sh
+
       - name: Save Playwright artifacts on failure
         if: failure()
         uses: actions/upload-artifact@v4

@@ -33,8 +33,11 @@ if [ ! -d "$DIST_DYNAMIC" ]; then
   echo "ERROR: $DIST_DYNAMIC does not exist. Run 'yarn rhdh-cli plugin export --clean --no-install' in $PLUGIN_SRC_DIR first." >&2
   exit 1
 fi
-if [ ! -f "$DIST_DYNAMIC/dist/mf-manifest.json" ]; then
-  echo "ERROR: $DIST_DYNAMIC/dist/mf-manifest.json missing. The MF export did not complete." >&2
+# Frontend dynamic plugins ship a Module Federation manifest; backend
+# dynamic plugins ship a CommonJS entry. Either is a valid export shape
+# the portal's loaders recognize; require at least one.
+if [ ! -f "$DIST_DYNAMIC/dist/mf-manifest.json" ] && [ ! -f "$DIST_DYNAMIC/dist/index.cjs.js" ]; then
+  echo "ERROR: neither $DIST_DYNAMIC/dist/mf-manifest.json (frontend) nor $DIST_DYNAMIC/dist/index.cjs.js (backend) found. The plugin export did not complete." >&2
   exit 1
 fi
 
