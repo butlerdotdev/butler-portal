@@ -1,0 +1,30 @@
+{
+  "name": "@butlerlabs/portal-plugin-cli",
+  "version": "0.1.0",
+  "description": "Butler Portal plugin CLI. A thin, honest wrapper over @red-hat-developer-hub/cli for authoring dynamic frontend plugins that load into Butler Portal at runtime.",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/butlerdotdev/butler-portal.git",
+    "directory": "cli/portal-plugin-cli"
+  },
+  "homepage": "https://github.com/butlerdotdev/butler-portal/tree/main/cli/portal-plugin-cli",
+  "bin": {
+    "butler-portal-plugin": "bin/butler-portal-plugin.cjs"
+  },
+  "files": [
+    "bin",
+    "src",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "@red-hat-developer-hub/cli": "1.11.1"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}

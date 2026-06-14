@@ -16,54 +16,51 @@
 
 import { ReactNode } from 'react';
 
-// Shape of a runtime-loaded dynamic plugin route. Mirrors the RHDH
-// dynamic-plugins.yaml `dynamicRoutes[]` schema (path + importName +
-// optional menuItem) but normalized to the React-element form the host's
-// FlatRoutes consumes.
-//
-// The `element` is the React node rendered when the URL matches `path`.
-// extractDynamicConfig builds this by resolving the Scalprum-loaded
-// federated module's named export and wrapping it for the host.
+// Shape of a runtime-loaded dynamic plugin route, populated from
+// `core.dynamic-route` extensions registered by loaded federated
+// remotes. extractDynamicConfig turns each LoadedExtension into one of
+// these by resolving the extension's importName against the host's
+// useModule call.
 export type DynamicRoute = {
-  /** URL path under the host (e.g. "/tempo"). No leading wildcard. */
-  path: string;
-  /** The React node the host renders when this route is matched. */
-  element: ReactNode;
-  /**
-   * Stable key for React reconciliation. Defaults to path. Customer
-   * plugins can override if two routes happen to share a path prefix.
-   */
-  key?: string;
+	/** URL path under the host (e.g. "/tempo"). No leading wildcard. */
+	path: string;
+	/** The React node the host renders when this route is matched. */
+	element: ReactNode;
+	/**
+	 * Stable key for React reconciliation. Defaults to path. Customer
+	 * plugins can override if two routes happen to share a path prefix.
+	 */
+	key?: string;
 };
 
-// Shape of a runtime-loaded dynamic plugin menu item (sidebar entry).
-// Mirrors RHDH's `menuItem:` block on a dynamic route.
+// Shape of a runtime-loaded dynamic plugin menu item (sidebar entry),
+// populated from `core.dynamic-menu-item` extensions registered by
+// loaded federated remotes.
 export type DynamicMenuItem = {
-  /** Stable key for React reconciliation. */
-  key: string;
-  /** Visible text in the sidebar. */
-  text: string;
-  /**
-   * Icon node. Customer plugins ship icons via the `appIcons:` block in
-   * their dynamic-plugins.yaml; extractDynamicConfig resolves the
-   * `importName` into a React node here.
-   */
-  icon?: ReactNode;
-  /** URL the sidebar item links to. */
-  to: string;
-  /**
-   * Render order. Lower = earlier in the list. RHDH convention is 0 for
-   * top-level items, 100s for less-prominent items. When unset, items
-   * render in load order (which is itself the order they appear in
-   * dynamic-plugins.yaml).
-   */
-  priority?: number;
+	/** Stable key for React reconciliation. */
+	key: string;
+	/** Visible text in the sidebar. */
+	text: string;
+	/**
+	 * Icon node. Customer plugins ship icons via their `appIcons`
+	 * extensions; extractDynamicConfig resolves the importName into a
+	 * React node here.
+	 */
+	icon?: ReactNode;
+	/** URL the sidebar item links to. */
+	to: string;
+	/**
+	 * Render order. Lower = earlier in the list. RHDH convention is 0 for
+	 * top-level items, 100s for less-prominent items. When unset, items
+	 * render in load order.
+	 */
+	priority?: number;
 };
 
 // Context value the host's FlatRoutes and Sidebar consume to render
 // dynamic plugin additions alongside the static hardcoded JSX. When no
-// dynamic plugins are loaded -- the chart 0.5.0 default and the state
-// every existing Butler Labs deployment is in -- both arrays are empty,
+// dynamic plugins are loaded (the chart 0.5.0 default and the state
+// every existing Butler Labs deployment is in) both arrays are empty,
 // the Slot components produce no JSX, and the host renders identically
 // to chart 0.4.0.
 //
@@ -72,27 +69,49 @@ export type DynamicMenuItem = {
 // changes the rendered tree. When you see drift in a snapshot, the
 // regression is in the loader chain, not the Slot components.
 export interface DynamicRootContextValue {
-  dynamicRoutes: DynamicRoute[];
-  dynamicMenuItems: DynamicMenuItem[];
+	dynamicRoutes: DynamicRoute[];
+	dynamicMenuItems: DynamicMenuItem[];
 }
 
 // The empty default. Reading the context with no Provider above gives
 // you this. It's the "no dynamic plugins" baseline.
 export const EMPTY_DYNAMIC_ROOT_CONTEXT: DynamicRootContextValue = {
-  dynamicRoutes: [],
-  dynamicMenuItems: [],
+	dynamicRoutes: [],
+	dynamicMenuItems: [],
 };
 
-// Shape of the plugin manifest the ScalprumRoot fetches at boot. Maps
-// plugin scalprum.name -> the runtime location of its federated remote
-// (manifestLocation as per RHDH). Empty manifest = no plugins to load.
-export type PluginManifest = {
-  plugins: Record<
-    string,
-    {
-      manifestLocation: string;
-    }
-  >;
+// The real shape served by Backstage's @backstage/backend-dynamic-feature-service
+// at GET /.backstage/dynamic-features/remotes. One entry per loaded
+// frontend plugin's Module Federation remote. Verified against the
+// package's OpenAPI spec at
+// node_modules/@backstage/backend-dynamic-feature-service/dist/schema/openapi/generated/router.cjs.js
+// (the `Remote` schema definition).
+//
+// The previous 0.5.0 PluginManifest type (a wrapper object with a
+// plugins keyed map) was wrong -- it did not match anything the
+// backend served. 0.5.0 shipped with the wrong type, the wrong URL,
+// and a stub render path. See
+// notes/butler-portal-dynamic-plugins-verification-gap-empty-vs-broken.md
+// for the lesson.
+export type Remote = {
+	/** npm package name of the plugin (e.g. "butler.test-dynamic") */
+	packageName: string;
+	remoteInfo: {
+		/** Module Federation remote name (from the plugin's mf-manifest.json) */
+		name: string;
+		/**
+		 * Full URL to the Module Federation manifest or entry script,
+		 * served by the backend's static file handler at
+		 * /.backstage/dynamic-features/remotes/<packageName>/*.
+		 */
+		entry: string;
+	};
+	/** Module names the federation remote exposes (e.g. "./PluginRoot") */
+	exposedModules: string[];
 };
 
-export const EMPTY_PLUGIN_MANIFEST: PluginManifest = { plugins: {} };
+/** The /remotes endpoint response shape. */
+export type RemotesResponse = Remote[];
+
+/** Empty default for the remotes list. */
+export const EMPTY_REMOTES: RemotesResponse = [];

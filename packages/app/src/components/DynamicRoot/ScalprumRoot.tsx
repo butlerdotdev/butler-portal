@@ -15,80 +15,102 @@
  */
 
 import { ReactNode, useEffect, useState } from 'react';
-import { PluginManifest, EMPTY_PLUGIN_MANIFEST } from './types';
+import { RemotesResponse, EMPTY_REMOTES } from './types';
+import { DynamicPluginsLoader } from './DynamicPluginsLoader';
+import { initializeMfRuntime } from './mfRuntime';
 
-// URL the host fetches at boot to discover which dynamic plugins are
-// installed in the pod's shared volume. The backend's dynamic-plugins
-// feature service serves this from the same /opt/butler-portal/dynamic-
-// plugins directory the init container populated. When dynamicPlugins
-// is disabled (chart default) the backend does not mount this route and
-// the fetch resolves to a 404 -> we treat as the empty manifest, drop
-// straight through to the static App, no Scalprum wrapping.
-const PLUGIN_MANIFEST_URL = '/api/dynamic-plugins/manifest';
+// The real endpoint the backend's frontendRemotesServerService mounts.
+// Verified against
+// node_modules/@backstage/backend-dynamic-feature-service/dist/server/router.cjs.js
+// (the `/remotes` route + `info.title: ".backstage/dynamic-features"`
+// mount prefix). The 0.5.0 release shipped a wrong URL pointing at
+// /api/dynamic-plugins/manifest -- the endpoint never existed and the
+// fetch always 404'd. See
+// notes/butler-portal-dynamic-plugins-verification-gap-empty-vs-broken.md
+// for the verification-gap lesson that surfaced this.
+const REMOTES_URL = '/.backstage/dynamic-features/remotes';
 
 // ScalprumRoot wraps the React tree and bootstraps the dynamic plugin
-// runtime. The shape is deliberately a transparent pass-through when no
-// plugins are configured:
+// runtime. There are three paths:
 //
-//   - chart 0.5.0 default: dynamicPlugins.enabled=false. The backend
-//     doesn't serve /api/dynamic-plugins/manifest. The fetch 404s. We
-//     render children verbatim. No ScalprumProvider wrapping, no
-//     federation runtime active, no DynamicRoot context populated.
-//     The downstream tree (App.tsx + Root.tsx) renders identically to
-//     chart 0.4.0.
+//   1. Remotes fetch in flight (manifest === null) -> render nothing.
+//      jsdom tests resolve promises in the same tick so this never
+//      flashes; real browsers see a brief blank before the first
+//      network round trip settles. Acceptable; the fetch is one
+//      same-origin request to the backend the SPA is hosted from.
 //
-//   - chart 0.5.0 + dynamicPlugins.enabled=true + empty plugins[]: the
-//     fetch resolves to { plugins: {} }. Same pass-through behavior --
-//     no plugins to load.
+//   2. Empty remotes (chart default state, or the operator chose not
+//      to configure plugins, or the backend has not yet registered
+//      the frontendRemotesServerService -- which happens when
+//      dynamicPlugins.rootDirectory is unset in config) -> render
+//      children verbatim. No ScalprumProvider wrapping, no
+//      federation runtime active, no DynamicRoot context populated.
+//      This is the Phase 3 #6 disabled-state parity guarantee:
+//      with no dynamic plugins the rendered tree is identical to
+//      chart 0.4.0.
 //
-//   - chart 0.5.0 + plugins listed: the fetch returns the manifest, we
-//     wrap children in ScalprumProvider for plugin loading. DynamicRoot
-//     populates context with what loaded; Slot components in App.tsx
-//     and Root.tsx render the dynamic additions.
+//   3. Non-empty remotes -> wrap in ScalprumProvider with the
+//      Module Federation config translated from the Remote[] list,
+//      then wrap inside DynamicPluginsLoader which subscribes to
+//      the PluginStore, loads each plugin's federated entry,
+//      filters its registered extensions for the core.dynamic-route
+//      and core.dynamic-menu-item types, and populates
+//      DynamicRootContext for the App.tsx render path. App.tsx's
+//      DataDrivenFlatRoutes (from Phase 3) maps that context into
+//      FlatRoutes alongside BASELINE_ROUTES; the routes the dynamic
+//      plugin registers mount at their declared paths.
 //
-// Loading state: while the fetch is in flight we render a Loader rather
-// than the children. This is a deliberate boot-sequence change vs the
-// 0.4.0 entry which rendered <App/> immediately. The window is short
-// (one HTTP request to the same origin) and predictable. The fetch
-// failure mode is broad-catch -> empty manifest -> pass-through, so a
-// backend outage on the dynamic-plugins endpoint doesn't block the
-// portal from rendering.
+// 0.5.0 -> 0.5.1 changes:
 //
-// What this does NOT do:
+//   - URL: /api/dynamic-plugins/manifest -> /.backstage/dynamic-features/remotes
+//   - Response shape: { plugins: Record<...> } -> Remote[]
+//   - Non-empty path: stub return <>{children}</> -> real
+//     @module-federation/runtime init + DynamicPluginsLoader wiring.
+//     The 0.5.0 release shipped this branch as a deferred stub.
+//     The 0.5.1 first attempt tried to wrap in @scalprum/react-core's
+//     ScalprumProvider; Scalprum requires the host bundle to ship
+//     webpack's Module Federation runtime (it reads
+//     __webpack_share_scopes__), which the Backstage CLI's webpack
+//     config does not include. Switching to @module-federation/
+//     runtime sidesteps this -- the runtime maintains its own share
+//     scope map and works in a host that was NOT built with
+//     ModuleFederationPlugin. See mfRuntime.ts for the contract.
 //
-//   - Touch the config-schema load (the createConfigSecretEnumerator
-//     path that caused the PR #20/21 crash). That load happens on the
-//     BACKEND at boot, before any browser involvement. ScalprumRoot
-//     runs in the browser AFTER the backend has rendered the HTML and
-//     embedded the backstage.io/config script tag. The backend's
-//     config-schema load completes before the HTML response ships, so
-//     ScalprumRoot cannot affect it.
+// What this does NOT touch:
 //
-//   - Hold up React's createApp boot. Backstage's app.createRoot runs
-//     synchronously when index.tsx executes; ScalprumRoot wraps the
-//     RESULT of createRoot. The discovery walker that indexes routable
-//     extensions has already run by the time ScalprumRoot's first
-//     render happens.
+//   - The createConfigSecretEnumerator path that crashed at PR #21.
+//     That runs on the BACKEND at boot, completes before HTML ships.
+//   - The createApp discovery walker that indexes static routable
+//     extensions. ScalprumRoot wraps the result of createRoot; the
+//     walker has already run by the time ScalprumRoot's first render
+//     fires.
+//
+// Name kept as ScalprumRoot to preserve the index.tsx wrap point and
+// because the dynamic-plugin schema we expose (dynamicPluginsExports,
+// dynamicRoutes[]) matches the Scalprum/RHDH convention even though
+// the loader underneath no longer depends on Scalprum. Adopter
+// plugins authored for RHDH work on Butler Portal because the
+// PluginRoot contract is the same shape.
 export const ScalprumRoot = ({ children }: { children: ReactNode }) => {
-	const [manifest, setManifest] = useState<PluginManifest | null>(null);
+	const [remotes, setRemotes] = useState<RemotesResponse | null>(null);
 
 	useEffect(() => {
 		let cancelled = false;
-		fetch(PLUGIN_MANIFEST_URL, { credentials: 'include' })
+		fetch(REMOTES_URL, { credentials: 'include' })
 			.then(async response => {
 				if (!response.ok) {
-					// 404 (dynamicPlugins disabled) and 5xx (backend issue)
-					// both fall through to the empty manifest -- transparent
-					// pass-through. A broken dynamic-plugins endpoint must
-					// not block the portal from booting.
-					return EMPTY_PLUGIN_MANIFEST;
+					// 404 (rootDirectory unset / feature loader gate closed)
+					// and 5xx (backend issue) both fall through to the empty
+					// list -- transparent pass-through. A broken endpoint
+					// must not block the portal from booting.
+					return EMPTY_REMOTES;
 				}
-				return (await response.json()) as PluginManifest;
+				return (await response.json()) as RemotesResponse;
 			})
-			.catch(() => EMPTY_PLUGIN_MANIFEST)
+			.catch(() => EMPTY_REMOTES)
 			.then(result => {
 				if (!cancelled) {
-					setManifest(result);
+					setRemotes(result);
 				}
 			});
 		return () => {
@@ -96,36 +118,28 @@ export const ScalprumRoot = ({ children }: { children: ReactNode }) => {
 		};
 	}, []);
 
-	if (manifest === null) {
-		// Manifest still loading. Render nothing rather than a flicker.
-		// jsdom in tests resolves promises in the same tick; production
-		// browsers see a brief blank before the fetch settles. A custom
-		// loader UI lives in Phase 5 with the test plugin.
+	if (remotes === null) {
+		// In flight. Render nothing rather than a flicker.
 		return null;
 	}
 
-	// Manifest landed. The empty case is the transparent pass-through:
-	// render children, no Scalprum wrapping, no DynamicRoot. The host
-	// sees an empty DynamicRootContext via the createContext default,
-	// the Slot components render nothing, and the page is identical to
-	// chart 0.4.0.
-	//
-	// The non-empty case wraps in ScalprumProvider + DynamicRoot, which
-	// populates the context with what loaded. That code path ships in
-	// Phase 5 when the test plugin actually exercises the loader chain.
-	// For chart 0.5.0 we ship the empty case correctly; the populated
-	// case has the manifest fetched but does nothing with it -- a
-	// no-op landing zone for the loader implementation.
-	if (Object.keys(manifest.plugins).length === 0) {
+	if (remotes.length === 0) {
+		// Empty (the chart 0.5.0 default state). Transparent pass-through:
+		// the host sees an empty DynamicRootContext via the createContext
+		// default, the Slot components render nothing, and the page is
+		// identical to chart 0.4.0. This is the load-bearing
+		// disabled-state parity branch.
 		return <>{children}</>;
 	}
 
-	// Non-empty manifest: the actual ScalprumProvider wrapping lands in
-	// Phase 5 when the test plugin verifies the path end to end. For
-	// now we still pass through children -- the customer with dynamic
-	// plugins configured but no Phase 5 loader sees their backend
-	// plugins load (Phase 1 wiring) but their frontend pages absent
-	// until the host-side loader ships. This is documented as a
-	// known phase boundary in the 0.5.0 release notes.
-	return <>{children}</>;
+	// Non-empty: initialize the federation runtime with the remotes
+	// from /remotes, then hand them to DynamicPluginsLoader which calls
+	// loadRemote() for each plugin's PluginRoot and importNames.
+	initializeMfRuntime(remotes);
+
+	return (
+		<DynamicPluginsLoader remotes={remotes}>
+			{children}
+		</DynamicPluginsLoader>
+	);
 };

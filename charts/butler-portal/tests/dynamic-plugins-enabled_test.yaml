@@ -91,6 +91,15 @@ tests:
             name: APP_CONFIG_dynamicPlugins_continueOnError
             value: "false"
           any: true
+      # chart 0.5.1: the plugin scanner needs NODE_PATH set so a dynamic
+      # plugin's transitive backstage imports resolve against the backend's
+      # bundled node_modules. Without this the backend crashes at boot.
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: NODE_PATH
+            value: /app/node_modules
+          any: true
 
   - it: continueOnError true propagates to both init container env and main container env
     template: templates/deployment.yaml
