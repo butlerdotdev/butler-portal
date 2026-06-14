@@ -341,6 +341,23 @@ A failed probe means the butler plugin is degraded; the rest of the portal may s
 | Malformed JWT response from butler-server (F4) | yes | Covered by the same throw path as F1/F2 at init time, or surfaces via lastError on a refresh attempt. |
 | Asymmetric session expiry (server invalidates before `exp`) (F5) | not covered | Surfaces as 401s mid-request through the proxy; separate concern. |
 
+## Local development
+
+Pin `helm-unittest` to the version in `.github/workflows/helm.yaml`
+when running tests locally. The 1.x release is more permissive about
+absent paths than 0.5.2 (the CI pin): a `notContains` assertion against
+a path that does not exist in the rendered template passes silently on
+1.x and errors with `unknown path` on 0.5.2. Tests that pass locally on
+1.x can fail in CI on 0.5.2; the v0.5.0 review caught one example of
+this pattern (`spec.template.spec.volumes` in the disabled-state
+defense-in-depth suite). Run tests against the CI-pinned version to
+keep local and CI in agreement:
+
+```
+helm plugin install https://github.com/helm-unittest/helm-unittest --version 0.5.2
+helm unittest ./charts/butler-portal
+```
+
 ## See also
 
 - [`values.yaml`](./values.yaml) for the full set of supported values
