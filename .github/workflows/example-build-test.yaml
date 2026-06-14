@@ -1,0 +1,103 @@
+# Copyright 2026 The Butler Authors.
+# SPDX-License-Identifier: Apache-2.0
+#
+# Build-test for examples/dynamic-plugin-hello -- the canonical
+# starter the adopter docs (docs/dynamic-plugins/quickstart.md) tell
+# adopters to copy on their first plugin. The rotation risk this test
+# closes: an unrelated change to the portal source, the Backstage
+# dep set, or the rhdh-cli version pin breaks the example, and the
+# break is only noticed when an adopter tries to copy it. This job
+# runs the same build sequence the quickstart documents, against the
+# current main, so the docs and the starter cannot drift.
+#
+# Triggers:
+#   - Pull requests that change the example's source or any portal-side
+#     surface the example depends on (Backstage deps, the dynamic-
+#     plugin runtime, the chart values schema).
+#   - Push to main, to surface any drift introduced by a merged PR
+#     that did not happen to trigger this workflow itself.
+#   - workflow_dispatch for on-demand reruns.
+
+name: Example build-test
+
+on:
+  pull_request:
+    paths:
+      - 'examples/dynamic-plugin-hello/**'
+      - 'packages/app/src/components/DynamicRoot/**'
+      - 'packages/app/package.json'
+      - '.github/workflows/example-build-test.yaml'
+  push:
+    branches:
+      - main
+    paths:
+      - 'examples/dynamic-plugin-hello/**'
+      - 'packages/app/src/components/DynamicRoot/**'
+      - 'packages/app/package.json'
+      - '.github/workflows/example-build-test.yaml'
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: butler-runners
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Build example out-of-tree
+        # The rhdh-cli export walks up the directory tree looking for a
+        # Yarn workspace root and fails ("Package not found") when it
+        # finds one above the plugin. The portal's repo IS a Yarn
+        # workspace, so the example must build from a directory
+        # outside the workspace. Copy to RUNNER_TEMP and build there --
+        # the same monorepo-isolation pattern the adopter quickstart
+        # tells adopters to use.
+        run: |
+          BUILD_DIR="$RUNNER_TEMP/dynamic-plugin-hello"
+          rm -rf "$BUILD_DIR"
+          mkdir -p "$BUILD_DIR"
+          cp -R examples/dynamic-plugin-hello/. "$BUILD_DIR/"
+          cd "$BUILD_DIR"
+          rm -rf node_modules .yarn yarn.lock package-lock.json dist dist-dynamic 2>/dev/null
+          npm install --legacy-peer-deps --no-audit --no-fund
+          npm run export-dynamic
+          echo "BUILD_DIR=$BUILD_DIR" >> "$GITHUB_ENV"
+
+      - name: Assert mf-manifest.json exists and exposes "." with the runtime contract
+        # The contract the portal runtime reads at boot:
+        # * mf-manifest.json present under dist-dynamic/dist/
+        # * exposes block contains the root "." expose (rhdh-cli's
+        #   single-entry-bundle shape)
+        # * the package root re-exports dynamicPluginsExports and
+        #   HelloPage (the named exports the host loader resolves)
+        run: |
+          MANIFEST="$BUILD_DIR/dist-dynamic/dist/mf-manifest.json"
+          test -f "$MANIFEST" || { echo "FAIL: $MANIFEST missing" >&2; exit 1; }
+          python3 - <<'PY'
+          import json, os, sys
+          with open(os.path.join(os.environ['BUILD_DIR'], 'dist-dynamic/dist/mf-manifest.json')) as f:
+              m = json.load(f)
+          exposes = m.get('exposes', [])
+          paths = sorted({e.get('path') for e in exposes})
+          assert '.' in paths, f"expected root expose '.', got {paths}"
+          shared = {s.get('name') for s in m.get('shared', [])}
+          for need in ('react', 'react-dom', '@material-ui/core/styles', '@material-ui/styles'):
+              assert need in shared, f"shared missing {need}; rhdh-cli export drifted"
+          print("manifest OK: exposes paths={}, shared has react/react-dom/MUI v4 split".format(paths))
+          PY
+
+      - name: Assert package root carries the runtime-contract named exports
+        # Greps the bundled package root for the literal export names
+        # the host loader looks for. If the example's src/index.ts is
+        # ever trimmed to only re-export the Backstage plugin object,
+        # this fails -- which is the regression we want to catch.
+        run: |
+          ROOT_CHUNK=$(grep -l 'dynamicPluginsExports' "$BUILD_DIR"/dist-dynamic/dist/static/*.chunk.js | head -1)
+          test -n "$ROOT_CHUNK" || { echo "FAIL: no chunk exports dynamicPluginsExports" >&2; exit 1; }
+          grep -q 'HelloPage' "$ROOT_CHUNK" || { echo "FAIL: chunk $ROOT_CHUNK does not export HelloPage" >&2; exit 1; }
+          echo "named exports OK in $ROOT_CHUNK"
