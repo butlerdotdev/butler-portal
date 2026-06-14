@@ -54,7 +54,8 @@ mkdir -p "$AUTH_DIR"
 # to use gh's resolved login + token.
 gh_user="${GH_USER:-$(gh api user --jq .login)}"
 gh_token="${GH_TOKEN:-$(gh auth token)}"
-gh_auth_b64=$(printf '%s:%s' "$gh_user" "$gh_token" | base64)
+# Linux `base64` wraps at 76 chars; multi-line strings break the auth.
+gh_auth_b64=$(printf '%s:%s' "$gh_user" "$gh_token" | base64 -w0 2>/dev/null || printf '%s:%s' "$gh_user" "$gh_token" | base64)
 cat >"$AUTH_DIR/config.json" <<JSON
 {
   "auths": {
@@ -64,6 +65,10 @@ cat >"$AUTH_DIR/config.json" <<JSON
   }
 }
 JSON
+# Installer runs as distroless nonroot (65532:65532); ensure auth is
+# readable across the mount.
+chmod 755 "$AUTH_DIR"
+chmod 644 "$AUTH_DIR/config.json"
 
 log "postgres sidecar"
 docker run -d --network "$NET" --name postgres-marker-051 \

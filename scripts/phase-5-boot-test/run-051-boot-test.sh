@@ -62,7 +62,11 @@ mkdir -p "$AUTH_DIR"
 # to use gh's resolved login + token.
 gh_user="${GH_USER:-$(gh api user --jq .login)}"
 gh_token="${GH_TOKEN:-$(gh auth token)}"
-gh_auth_b64=$(printf '%s:%s' "$gh_user" "$gh_token" | base64)
+# Linux `base64` defaults to wrapping at 76 chars; multi-line strings in
+# the JSON value break the auth string the installer reads. -w0 disables
+# wrapping; macOS `base64` (used during local runs) ignores -w and does
+# not wrap by default, so passing the flag is portable.
+gh_auth_b64=$(printf '%s:%s' "$gh_user" "$gh_token" | base64 -w0 2>/dev/null || printf '%s:%s' "$gh_user" "$gh_token" | base64)
 cat >"$AUTH_DIR/config.json" <<JSON
 {
   "auths": {
@@ -72,6 +76,12 @@ cat >"$AUTH_DIR/config.json" <<JSON
   }
 }
 JSON
+# Installer runs as distroless nonroot (65532:65532). On the runner the
+# umask can produce a 600 file the installer cannot read across the
+# mount; an explicit chmod 644 keeps the auth file world-readable
+# inside the container. Same defense applies to the directory itself.
+chmod 755 "$AUTH_DIR"
+chmod 644 "$AUTH_DIR/config.json"
 DOCKER_AUTH_MOUNT=(-e DOCKER_CONFIG=/auth -v "$AUTH_DIR":/auth:ro)
 log "postgres sidecar"
 docker run -d --network "$NET" --name postgres-051 \
