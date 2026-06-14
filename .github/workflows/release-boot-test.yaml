@@ -33,7 +33,7 @@ on:
       test_plugin_integrity:
         description: 'sha512 SRI integrity of the test plugin tarball'
         required: true
-        default: 'sha512-Tjx+pSxnZIDL3kIL7DtPSvggpnJTsuDIoYM0B5PWasM63RFL/LAekZrvn5Cvv24EghckhsqbF2OKD3odgFo3qQ=='
+        default: 'sha512-bdd/gEtWJpDnCbf86jAZoYYuKnj87CAychME0aBNjISRiPN4Vg31AoyERe7b7QvDiTiwm94U1TTYhD5iu/KTZA=='
 
 jobs:
   boot-test:
@@ -177,7 +177,7 @@ jobs:
         # fixture instead.
         env:
           TEST_PLUGIN_URI: 'oci://ghcr.io/butlerdotdev/butler-portal-test-fixture:hello-dynamic-backend-0.5.1'
-          TEST_PLUGIN_INTEGRITY: 'sha512-RG3OkIOZUG/sR3VgDODQYV29Bh3A1gg+BuzJ7WDDBXhEjae4R1NPIWMcxMsPpSBU88jfcrbQa4Bs9SoaokYAKw=='
+          TEST_PLUGIN_INTEGRITY: 'sha512-+jHUltsqu4RVZzK1S934ozBvQhlTQjqdVUUfaaKWGF28WeL/A1k61Zn74pDHqlczV9WgPBolk9SoIl5hBUEnjA=='
         run: |
           bash scripts/phase-5-boot-test/run-051-backend-test.sh
 

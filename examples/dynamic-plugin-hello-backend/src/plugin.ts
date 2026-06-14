@@ -5,13 +5,21 @@
 
 import { createBackendPlugin, coreServices } from '@backstage/backend-plugin-api';
 import { Router } from 'express';
+import * as os from 'os';
 
-// Minimal Backstage backend plugin that the portal's
-// dynamicPluginsFeatureLoader loads at boot when this package is
-// dropped into dynamicPlugins.rootDirectory. The boot test that
-// gates 0.5.1+ asserts the /ping route below responds with the
-// marker, proving the backend dynamic-plugin runtime is wired
-// end-to-end through the released portal image.
+// Backend dynamic plugin paired with examples/dynamic-plugin-hello. The
+// portal's dynamicPluginsFeatureLoader loads this package at boot when
+// it lands in dynamicPlugins.rootDirectory and registers the /ping
+// route below at /api/hello-dynamic-backend/ping. The 0.5.1 release-
+// boot-test asserts that the route returns the marker substring on the
+// released amd64 image; the showcase frontend at
+// examples/dynamic-plugin-hello/src/components/HelloPage.tsx renders
+// the full JSON payload for visitors.
+
+const PLUGIN_NAME = 'butler-hello-dynamic-backend';
+const PLUGIN_VERSION = '0.1.0';
+const BACKEND_STARTED_AT = new Date().toISOString();
+
 export const helloDynamicBackendPlugin = createBackendPlugin({
   pluginId: 'hello-dynamic-backend',
   register(env) {
@@ -27,12 +35,21 @@ export const helloDynamicBackendPlugin = createBackendPlugin({
             ok: true,
             marker:
               'Hello from the Butler Portal dynamic-plugins runtime (backend)',
+            pluginName: PLUGIN_NAME,
+            pluginVersion: PLUGIN_VERSION,
+            backendStartedAt: BACKEND_STARTED_AT,
+            receivedAt: new Date().toISOString(),
+            podHostname: os.hostname(),
+            nodeVersion: process.version,
+            note:
+              'This payload is rendered by the bundled showcase frontend (examples/dynamic-plugin-hello). The portal loaded both plugins at boot from dynamicPlugins.plugins[].',
           });
         });
 
         httpRouter.use(router);
         // The /ping route is the marker-assertion target for the boot
-        // test and is intentionally unauthenticated. Production plugins
+        // test and the showcase round-trip target for the frontend.
+        // It is intentionally unauthenticated. Production plugins
         // should not copy this pattern; Butler Portal's default-deny
         // auth policy is the right default for any plugin that touches
         // real data.
@@ -42,7 +59,7 @@ export const helloDynamicBackendPlugin = createBackendPlugin({
         });
 
         logger.info(
-          '[hello-dynamic-backend] registered /api/hello-dynamic-backend/ping',
+          `[${PLUGIN_NAME}] registered /api/hello-dynamic-backend/ping`,
         );
       },
     });

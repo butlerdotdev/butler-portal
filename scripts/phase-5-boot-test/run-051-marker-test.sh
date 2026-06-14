@@ -21,7 +21,7 @@ set -euo pipefail
 PORTAL_IMAGE="${PORTAL_IMAGE:-butler-portal:0.5.1-local}"
 INSTALLER_IMAGE="${INSTALLER_IMAGE:-ghcr.io/butlerdotdev/butler-portal-plugin-installer:0.1.0}"
 TEST_PLUGIN_URI="${TEST_PLUGIN_URI:-oci://ghcr.io/butlerdotdev/butler-portal-test-fixture:hello-dynamic-0.5.1}"
-TEST_PLUGIN_INTEGRITY="${TEST_PLUGIN_INTEGRITY:-sha512-Tjx+pSxnZIDL3kIL7DtPSvggpnJTsuDIoYM0B5PWasM63RFL/LAekZrvn5Cvv24EghckhsqbF2OKD3odgFo3qQ==}"
+TEST_PLUGIN_INTEGRITY="${TEST_PLUGIN_INTEGRITY:-sha512-bdd/gEtWJpDnCbf86jAZoYYuKnj87CAychME0aBNjISRiPN4Vg31AoyERe7b7QvDiTiwm94U1TTYhD5iu/KTZA==}"
 NET=butler-marker-051
 # RUNNER_TEMP (GitHub Actions) and GITHUB_WORKSPACE are both inside the
 # runner's working-set that is reliably bind-mountable into Docker on

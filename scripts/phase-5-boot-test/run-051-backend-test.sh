@@ -19,7 +19,7 @@ set -euo pipefail
 PORTAL_IMAGE="${PORTAL_IMAGE:-butler-portal:0.5.1-local}"
 INSTALLER_IMAGE="${INSTALLER_IMAGE:-ghcr.io/butlerdotdev/butler-portal-plugin-installer:0.1.0}"
 TEST_PLUGIN_URI="${TEST_PLUGIN_URI:-oci://ghcr.io/butlerdotdev/butler-portal-test-fixture:hello-dynamic-backend-0.5.1}"
-TEST_PLUGIN_INTEGRITY="${TEST_PLUGIN_INTEGRITY:-sha512-RG3OkIOZUG/sR3VgDODQYV29Bh3A1gg+BuzJ7WDDBXhEjae4R1NPIWMcxMsPpSBU88jfcrbQa4Bs9SoaokYAKw==}"
+TEST_PLUGIN_INTEGRITY="${TEST_PLUGIN_INTEGRITY:-sha512-+jHUltsqu4RVZzK1S934ozBvQhlTQjqdVUUfaaKWGF28WeL/A1k61Zn74pDHqlczV9WgPBolk9SoIl5hBUEnjA==}"
 NET=butler-backend-051
 WORK=$(mktemp -d -p "${RUNNER_TEMP:-${GITHUB_WORKSPACE:-/tmp}}")
 EXPECTED_MARKER='Hello from the Butler Portal dynamic-plugins runtime (backend)'
