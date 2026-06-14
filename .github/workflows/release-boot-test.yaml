@@ -110,7 +110,7 @@ jobs:
           npm ci
           npx playwright install --with-deps chromium
 
-      - name: Smoke-test fixture access: runner native + DOCKER_CONFIG mount via container
+      - name: "Smoke-test fixture access (runner native + DOCKER_CONFIG mount via container)"
         # Two-stage isolation:
         # 1. oras login + manifest fetch from the runner directly.
         # 2. oras pull from inside an alpine container with DOCKER_CONFIG=
