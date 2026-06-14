@@ -50,8 +50,11 @@ docker network create "$NET" >/dev/null
 # dynamicPlugins.installer.imagePullSecrets; locally we mount a file.
 AUTH_DIR="$WORK/docker-auth"
 mkdir -p "$AUTH_DIR"
-gh_user=$(gh api user --jq .login)
-gh_token=$(gh auth token)
+# In CI the workflow's GITHUB_TOKEN cannot hit /user (403), so fall back
+# to env-provided GH_USER / GH_TOKEN when present. Local runs continue
+# to use gh's resolved login + token.
+gh_user="${GH_USER:-$(gh api user --jq .login)}"
+gh_token="${GH_TOKEN:-$(gh auth token)}"
 gh_auth_b64=$(printf '%s:%s' "$gh_user" "$gh_token" | base64)
 cat >"$AUTH_DIR/config.json" <<JSON
 {

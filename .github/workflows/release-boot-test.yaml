@@ -43,6 +43,13 @@ jobs:
       contents: read
       packages: read
     env:
+      # GH_USER + GH_TOKEN feed the boot-test scripts' Docker auth stage
+      # so the installer container can pull the test fixture from ghcr.
+      # The workflow's GITHUB_TOKEN does not have access to the
+      # /user endpoint, so the script's `gh api user` fallback would
+      # 403; we provide github.actor explicitly. The same combo is
+      # what docker/login-action used above.
+      GH_USER: ${{ github.actor }}
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       PORTAL_IMAGE: ghcr.io/butlerdotdev/butler-portal:${{ inputs.portal_image_tag }}
       INSTALLER_IMAGE: ${{ inputs.installer_image }}
