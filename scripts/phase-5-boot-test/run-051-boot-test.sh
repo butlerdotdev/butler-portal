@@ -173,7 +173,11 @@ EOF
 docker run --rm "${DOCKER_AUTH_MOUNT[@]}" \
   -v "$WORK/installer-config.yaml":/etc/butler-portal/dynamic-plugins.yaml:ro \
   -v "dynamic-plugins-vol:/dynamic-plugins-root" \
-  "$INSTALLER_IMAGE" 2>&1 | tee "$WORK/installer-pop.log" | grep -E "event=plugin_installed|event=plugin_rejected|digest_verified" | head -5 || true
+  "$INSTALLER_IMAGE" > "$WORK/installer-pop.log" 2>&1 || true
+echo "--- installer output (populated case) ---"
+cat "$WORK/installer-pop.log"
+echo "--- volume contents post-install ---"
+docker run --rm -v "dynamic-plugins-vol:/v" alpine ls -la /v
 
 log "  boot portal with rootDirectory pointing at the populated volume"
 start_portal \
@@ -212,7 +216,9 @@ EOF
 docker run --rm "${DOCKER_AUTH_MOUNT[@]}" \
   -v "$WORK/installer-bad.yaml":/etc/butler-portal/dynamic-plugins.yaml:ro \
   -v "dynamic-plugins-vol:/dynamic-plugins-root" \
-  "$INSTALLER_IMAGE" 2>&1 | grep -E "event=plugin_rejected|reason=integrity_mismatch" | head -3 || true
+  "$INSTALLER_IMAGE" > "$WORK/installer-neg.log" 2>&1 || true
+echo "--- installer output (negative case) ---"
+cat "$WORK/installer-neg.log"
 
 start_portal \
   -e APP_CONFIG_dynamicPlugins_rootDirectory=/dynamic-plugins-root \
