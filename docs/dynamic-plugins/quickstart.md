@@ -253,6 +253,68 @@ re-confirm the integrity matches. If the pod is in
 the init container logs (`kubectl logs <pod> -c install-dynamic-plugins`)
 for the rejection reason.
 
+## Talking to a backend
+
+Most real plugins need to call a backend for something. The dynamic-
+plugin runtime supports three patterns; pick whichever fits the
+service you are calling.
+
+**1. The Backstage proxy** -- the lowest-friction pattern. The portal's
+operator pre-configures a proxy target in app-config:
+
+```yaml
+proxy:
+  endpoints:
+    /my-service:
+      target: https://my-service.internal.example.com
+      allowedHeaders: [Authorization]
+```
+
+Your plugin's frontend calls it through Backstage's `fetchApi` or
+`discoveryApi`:
+
+```ts
+const baseUrl = await discoveryApi.getBaseUrl('proxy');
+const response = await fetchApi.fetch(`${baseUrl}/my-service/things`);
+```
+
+The proxy target lives in the operator's app-config, not in your
+plugin. Communicate the target to whoever runs the portal.
+
+**2. A bundled backend dynamic plugin** -- when your plugin needs its
+own backend (routes, scheduled tasks, database access, secrets the
+portal already has). Ship a sibling package with `backstage.role:
+backend-plugin` and reference it in `dynamicPlugins.plugins[]` next
+to your frontend plugin. The portal's
+[`@backstage/backend-dynamic-feature-service`](https://www.npmjs.com/package/@backstage/backend-dynamic-feature-service)
+loader scans the same root directory and registers the backend's
+routes against the portal's `httpRouter` service.
+[`examples/dynamic-plugin-hello-backend`](https://github.com/butlerdotdev/butler-portal/tree/main/examples/dynamic-plugin-hello-backend)
+is the CI-tested starter for this pattern. The release-boot-test
+workflow exercises a backend plugin's `/ping` route against the
+released portal image on every release, so the loader path is verified
+end-to-end.
+
+The frontend reaches the bundled backend through `discoveryApi`:
+
+```ts
+const baseUrl = await discoveryApi.getBaseUrl('my-plugin');
+// -> http://<portal>/api/my-plugin -- the same URL the portal serves
+//    for any built-in backend plugin, just registered at boot instead
+//    of compile time
+```
+
+**3. Direct calls to external services** -- when the plugin reaches a
+URL the portal pod can already resolve (your API gateway, a SaaS, an
+internal service). The plugin's frontend `fetch`es directly. CSP and
+CORS apply the same way they would for any browser-side fetch from
+the portal origin; if the target needs CORS adjustments, that lives
+in the target's response headers, not in the portal config.
+
+Each pattern has a deeper page covering auth, error handling,
+versioning, and the operator-side configuration: see
+[Talking to a backend](./backend-wiring.md).
+
 ## What to expect when you replace HelloPage
 
 The example is intentionally minimal. As you grow it into a real

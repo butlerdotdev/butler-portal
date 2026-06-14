@@ -24,21 +24,25 @@ on:
   pull_request:
     paths:
       - 'examples/dynamic-plugin-hello/**'
+      - 'examples/dynamic-plugin-hello-backend/**'
       - 'packages/app/src/components/DynamicRoot/**'
       - 'packages/app/package.json'
+      - 'packages/backend/src/index.ts'
       - '.github/workflows/example-build-test.yaml'
   push:
     branches:
       - main
     paths:
       - 'examples/dynamic-plugin-hello/**'
+      - 'examples/dynamic-plugin-hello-backend/**'
       - 'packages/app/src/components/DynamicRoot/**'
       - 'packages/app/package.json'
+      - 'packages/backend/src/index.ts'
       - '.github/workflows/example-build-test.yaml'
   workflow_dispatch:
 
 jobs:
-  build:
+  build-frontend-example:
     runs-on: butler-runners
     timeout-minutes: 15
     steps:
@@ -101,3 +105,58 @@ jobs:
           test -n "$ROOT_CHUNK" || { echo "FAIL: no chunk exports dynamicPluginsExports" >&2; exit 1; }
           grep -q 'HelloPage' "$ROOT_CHUNK" || { echo "FAIL: chunk $ROOT_CHUNK does not export HelloPage" >&2; exit 1; }
           echo "named exports OK in $ROOT_CHUNK"
+
+  build-backend-example:
+    runs-on: butler-runners
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Build backend example out-of-tree
+        # Backend dynamic plugin export uses rhdh-cli's backend-plugin
+        # code path, which reads yarn.lock to compute the production
+        # dependency closure for the bundled plugin. The same
+        # monorepo-isolation pattern applies as for the frontend
+        # example. yarn (rather than npm) is required for backend
+        # builds because rhdh-cli relies on yarn.lock specifically.
+        run: |
+          BUILD_DIR="$RUNNER_TEMP/dynamic-plugin-hello-backend"
+          rm -rf "$BUILD_DIR"
+          mkdir -p "$BUILD_DIR"
+          cp -R examples/dynamic-plugin-hello-backend/. "$BUILD_DIR/"
+          cd "$BUILD_DIR"
+          rm -rf node_modules .yarn yarn.lock package-lock.json dist dist-dynamic 2>/dev/null
+          yarn install
+          npx tsc
+          yarn export-dynamic
+          echo "BUILD_DIR=$BUILD_DIR" >> "$GITHUB_ENV"
+
+      - name: Assert backend dynamic plugin shape matches the runtime contract
+        # The contract @backstage/backend-dynamic-feature-service reads:
+        # * package.json carries backstage.role: backend-plugin
+        # * main resolves to a present CJS bundle (dist/index.cjs.js)
+        # * @backstage/* deps are in peerDependencies (the host
+        #   provides them; the bundle must not duplicate them)
+        # * the bundle re-exports a default that is the plugin object
+        run: |
+          test -f "$BUILD_DIR/dist-dynamic/package.json" || { echo "FAIL: dist-dynamic/package.json missing" >&2; exit 1; }
+          test -f "$BUILD_DIR/dist-dynamic/dist/index.cjs.js" || { echo "FAIL: dist-dynamic/dist/index.cjs.js missing" >&2; exit 1; }
+          python3 - <<'PY'
+          import json, os, sys
+          with open(os.path.join(os.environ['BUILD_DIR'], 'dist-dynamic/package.json')) as f:
+              p = json.load(f)
+          assert p.get('backstage', {}).get('role') == 'backend-plugin', f"role drifted: {p.get('backstage')}"
+          assert p.get('main', '').endswith('index.cjs.js'), f"main drifted: {p.get('main')}"
+          peers = p.get('peerDependencies', {})
+          for need in ('@backstage/backend-plugin-api',):
+              assert need in peers, f"peerDependencies missing {need}; rhdh-cli would have bundled it"
+          print("backend dist OK: role=backend-plugin, main=index.cjs.js, peers include backend-plugin-api")
+          PY
+          grep -q 'helloDynamicBackendPlugin' "$BUILD_DIR/dist-dynamic/dist/index.cjs.js" \
+            || { echo "FAIL: bundle does not export helloDynamicBackendPlugin" >&2; exit 1; }
+          echo "named exports OK in dist/index.cjs.js"
