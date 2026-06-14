@@ -1,0 +1,9 @@
+node_modules/
+.yarn/
+yarn.lock
+dist/
+dist-dynamic/
+dist-scalprum/
+dist-types/
+.DS_Store
+*.log
