@@ -15,10 +15,9 @@
  */
 
 import { ReactNode, useEffect, useState } from 'react';
-import { ScalprumProvider } from '@scalprum/react-core';
-import type { AppsConfig } from '@scalprum/core';
-import { Remote, RemotesResponse, EMPTY_REMOTES } from './types';
+import { RemotesResponse, EMPTY_REMOTES } from './types';
 import { DynamicPluginsLoader } from './DynamicPluginsLoader';
+import { initializeMfRuntime } from './mfRuntime';
 
 // The real endpoint the backend's frontendRemotesServerService mounts.
 // Verified against
@@ -65,10 +64,17 @@ const REMOTES_URL = '/.backstage/dynamic-features/remotes';
 //
 //   - URL: /api/dynamic-plugins/manifest -> /.backstage/dynamic-features/remotes
 //   - Response shape: { plugins: Record<...> } -> Remote[]
-//   - Non-empty path: stub return <>{children}</> -> real ScalprumProvider
-//     + DynamicPluginsLoader wiring. The 0.5.0 release shipped this
-//     branch as a deferred stub (with a comment about Phase 5 picking
-//     it up; Phase 5 did not). 0.5.1 implements it for real.
+//   - Non-empty path: stub return <>{children}</> -> real
+//     @module-federation/runtime init + DynamicPluginsLoader wiring.
+//     The 0.5.0 release shipped this branch as a deferred stub.
+//     The 0.5.1 first attempt tried to wrap in @scalprum/react-core's
+//     ScalprumProvider; Scalprum requires the host bundle to ship
+//     webpack's Module Federation runtime (it reads
+//     __webpack_share_scopes__), which the Backstage CLI's webpack
+//     config does not include. Switching to @module-federation/
+//     runtime sidesteps this -- the runtime maintains its own share
+//     scope map and works in a host that was NOT built with
+//     ModuleFederationPlugin. See mfRuntime.ts for the contract.
 //
 // What this does NOT touch:
 //
@@ -78,6 +84,13 @@ const REMOTES_URL = '/.backstage/dynamic-features/remotes';
 //     extensions. ScalprumRoot wraps the result of createRoot; the
 //     walker has already run by the time ScalprumRoot's first render
 //     fires.
+//
+// Name kept as ScalprumRoot to preserve the index.tsx wrap point and
+// because the dynamic-plugin schema we expose (dynamicPluginsExports,
+// dynamicRoutes[]) matches the Scalprum/RHDH convention even though
+// the loader underneath no longer depends on Scalprum. Adopter
+// plugins authored for RHDH work on Butler Portal because the
+// PluginRoot contract is the same shape.
 export const ScalprumRoot = ({ children }: { children: ReactNode }) => {
 	const [remotes, setRemotes] = useState<RemotesResponse | null>(null);
 
@@ -119,25 +132,14 @@ export const ScalprumRoot = ({ children }: { children: ReactNode }) => {
 		return <>{children}</>;
 	}
 
-	// Non-empty: build the Scalprum AppsConfig from the Remote[] list and
-	// hand it to ScalprumProvider. Each Remote becomes one app in
-	// Scalprum's keyed-by-name config; manifestLocation is the full URL
-	// the backend served for the plugin's mf-manifest.json.
-	const config: AppsConfig = Object.fromEntries(
-		remotes.map((r: Remote) => [
-			r.packageName,
-			{
-				name: r.remoteInfo.name,
-				manifestLocation: r.remoteInfo.entry,
-			},
-		]),
-	);
+	// Non-empty: initialize the federation runtime with the remotes
+	// from /remotes, then hand them to DynamicPluginsLoader which calls
+	// loadRemote() for each plugin's PluginRoot and importNames.
+	initializeMfRuntime(remotes);
 
 	return (
-		<ScalprumProvider config={config}>
-			<DynamicPluginsLoader remotes={remotes}>
-				{children}
-			</DynamicPluginsLoader>
-		</ScalprumProvider>
+		<DynamicPluginsLoader remotes={remotes}>
+			{children}
+		</DynamicPluginsLoader>
 	);
 };

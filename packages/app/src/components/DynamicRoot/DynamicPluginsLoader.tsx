@@ -21,7 +21,7 @@ import {
 	useEffect,
 	useState,
 } from 'react';
-import { getModule } from '@scalprum/core';
+import { loadRemoteModule } from './mfRuntime';
 import { DynamicRootContext } from './DynamicRootContext';
 import {
 	DynamicRoute,
@@ -123,102 +123,101 @@ export const DynamicPluginsLoader = ({
 			await Promise.all(
 				remotes.map(async remote => {
 					try {
-						// Each plugin's exposed PluginRoot declares the
-						// extensions the plugin contributes. The Module
-						// Federation manifest's exposed module list (verified
-						// at backend manifest validation) must include
-						// "./PluginRoot" for a frontend plugin; getModule
-						// loads it through the federation runtime that
-						// ScalprumProvider initialized above.
-						const pluginRoot = await getModule<{
-							default?: DynamicPluginsExports;
+						// rhdh-cli's dynamic export bundles the whole plugin
+						// as a single Module Federation remote with `.` as
+						// the only exposed module. Load it once and read
+						// dynamicPluginsExports + each named import off the
+						// resulting module object.
+						// eslint-disable-next-line no-console
+						console.info(
+							`[ButlerPortal] loading "${remote.packageName}" remote=${remote.remoteInfo.name} entry=${remote.remoteInfo.entry}`,
+						);
+						const pluginModule = await loadRemoteModule<{
+							default?: { dynamicPluginsExports?: DynamicPluginsExports };
 							dynamicPluginsExports?: DynamicPluginsExports;
-						}>(remote.packageName, './PluginRoot');
+							PluginRoot?: { dynamicPluginsExports?: DynamicPluginsExports };
+							[k: string]: unknown;
+						}>(remote.packageName, '.');
+
+						if (!pluginModule) {
+							console.warn(
+								`[ButlerPortal] dynamic plugin "${remote.packageName}" failed to load; skipping`,
+							);
+							return;
+						}
+						// eslint-disable-next-line no-console
+						console.info(
+							`[ButlerPortal] "${remote.packageName}" module keys: ${Object.keys(pluginModule).join(', ')}`,
+						);
 
 						const exportsBlock: DynamicPluginsExports | undefined =
-							pluginRoot.dynamicPluginsExports ??
-							pluginRoot.default;
+							pluginModule.dynamicPluginsExports ??
+							pluginModule.PluginRoot?.dynamicPluginsExports ??
+							pluginModule.default?.dynamicPluginsExports;
 						if (!exportsBlock) {
 							console.warn(
-								`[ButlerPortal] dynamic plugin "${remote.packageName}" PluginRoot is missing dynamicPluginsExports; skipping`,
+								`[ButlerPortal] dynamic plugin "${remote.packageName}" is missing dynamicPluginsExports; skipping`,
 							);
 							return;
 						}
 
-						for (const entry of exportsBlock.dynamicRoutes ?? []) {
-							try {
-								const pageModule = await getModule<{
-									default?: ComponentType;
-									[k: string]: ComponentType | undefined;
-								}>(remote.packageName, `./${entry.importName}`);
-								const PageComponent: ComponentType | undefined =
-									pageModule.default ??
-									pageModule[entry.importName];
-								if (!PageComponent) {
-									console.warn(
-										`[ButlerPortal] dynamic plugin "${remote.packageName}" route ${entry.path} importName=${entry.importName} did not export a component; skipping`,
-									);
-									continue;
-								}
-								allRoutes.push({
-									path: entry.path,
-									element: createElement(PageComponent),
-									key: `${remote.packageName}:${entry.path}`,
-								});
+						const lookupComponent = (
+							importName: string,
+						): ComponentType | undefined => {
+							const direct = pluginModule[importName] as
+								| ComponentType
+								| { default?: ComponentType }
+								| undefined;
+							if (typeof direct === 'function') return direct;
+							if (
+								direct &&
+								typeof (direct as { default?: ComponentType }).default ===
+									'function'
+							) {
+								return (direct as { default: ComponentType }).default;
+							}
+							return undefined;
+						};
 
-								if (entry.menuItem) {
-									let icon: ReactNode | undefined;
-									if (entry.menuItem.iconImportName) {
-										try {
-											const iconModule = await getModule<{
-												default?: ComponentType;
-												[k: string]: ComponentType | undefined;
-											}>(
-												remote.packageName,
-												`./${entry.menuItem.iconImportName}`,
-											);
-											const IconComponent: ComponentType | undefined =
-												iconModule.default ??
-												iconModule[entry.menuItem.iconImportName];
-											if (IconComponent) {
-												icon = createElement(IconComponent);
-											}
-										} catch (iconError) {
-											console.warn(
-												`[ButlerPortal] icon load failed for ${remote.packageName} ${entry.menuItem.iconImportName}: ${iconError}`,
-											);
-										}
-									}
-									allMenuItems.push({
-										key: `${remote.packageName}:${entry.path}`,
-										text: entry.menuItem.text,
-										to: entry.path,
-										icon,
-									});
-								}
-							} catch (routeError) {
+						for (const entry of exportsBlock.dynamicRoutes ?? []) {
+							const PageComponent = lookupComponent(entry.importName);
+							if (!PageComponent) {
 								console.warn(
-									`[ButlerPortal] dynamic plugin "${remote.packageName}" route ${entry.path} importName=${entry.importName} failed to load: ${routeError}`,
+									`[ButlerPortal] dynamic plugin "${remote.packageName}" route ${entry.path} importName=${entry.importName} did not export a component; skipping`,
 								);
+								continue;
+							}
+							allRoutes.push({
+								path: entry.path,
+								element: createElement(PageComponent),
+								key: `${remote.packageName}:${entry.path}`,
+							});
+
+							if (entry.menuItem) {
+								let icon: ReactNode | undefined;
+								if (entry.menuItem.iconImportName) {
+									const IconComponent = lookupComponent(
+										entry.menuItem.iconImportName,
+									);
+									if (IconComponent) {
+										icon = createElement(IconComponent);
+									}
+								}
+								allMenuItems.push({
+									key: `${remote.packageName}:${entry.path}`,
+									text: entry.menuItem.text,
+									to: entry.path,
+									icon,
+								});
 							}
 						}
 
 						for (const item of exportsBlock.menuItems ?? []) {
 							let icon: ReactNode | undefined;
 							if (item.iconImportName) {
-								try {
-									const iconModule = await getModule<{
-										default?: ComponentType;
-										[k: string]: ComponentType | undefined;
-									}>(remote.packageName, `./${item.iconImportName}`);
-									const IconComponent: ComponentType | undefined =
-										iconModule.default ??
-										iconModule[item.iconImportName];
-									if (IconComponent) {
-										icon = createElement(IconComponent);
-									}
-								} catch {
-									// fall through, no icon
+								const IconComponent = lookupComponent(item.iconImportName);
+								if (IconComponent) {
+									icon = createElement(IconComponent);
 								}
 							}
 							allMenuItems.push({
