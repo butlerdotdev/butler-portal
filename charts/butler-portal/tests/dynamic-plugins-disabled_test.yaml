@@ -69,11 +69,19 @@ tests:
 
   - it: no dynamic-plugins volume when dynamicPlugins disabled
     asserts:
-      - notContains:
+      # In the chart-default disabled state (no butlerSigning secret,
+      # no dynamicPlugins), spec.template.spec.volumes is absent
+      # entirely (the templates/deployment.yaml gates the whole volumes
+      # block behind the same `or` that gates volumeMounts -- if
+      # neither butlerSigning nor dynamicPlugins is on, no volumes
+      # block renders). The intent of this test is "no volume named
+      # dynamic-plugins appears in the rendered pod template," and an
+      # absent volumes section satisfies that as strongly as an empty
+      # one. isNull is also compatible across helm-unittest versions
+      # (0.5.2 CI pin + 1.x local), while notContains against an
+      # absent path errors on 0.5.2 with "unknown path."
+      - isNull:
           path: spec.template.spec.volumes
-          content:
-            name: dynamic-plugins
-          any: true
 
   - it: no APP_CONFIG_dynamicPlugins env vars when dynamicPlugins disabled
     asserts:
