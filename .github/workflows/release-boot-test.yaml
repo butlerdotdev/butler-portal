@@ -110,25 +110,44 @@ jobs:
           npm ci
           npx playwright install --with-deps chromium
 
-      - name: Smoke-test test fixture access from the runner
-        # Isolate the failure mode: if oras manifest fetch works here
-        # then the GITHUB_TOKEN has fixture-package read access and any
-        # subsequent installer failure is on the installer's auth path,
-        # not the org-level package grant.
+      - name: Smoke-test fixture access: runner native + DOCKER_CONFIG mount via container
+        # Two-stage isolation:
+        # 1. oras login + manifest fetch from the runner directly.
+        # 2. oras pull from inside an alpine container with DOCKER_CONFIG=
+        #    /auth and the same auth dir layout the installer uses.
+        # Step 2 mimics what the installer container does. If step 1
+        # passes and step 2 fails, the failure is in how the runner's
+        # Docker daemon exposes mounts to launched containers, not in
+        # the grant or the installer binary.
         run: |
-          # Install oras CLI for the smoke test.
           ORAS_VERSION=1.2.0
           mkdir -p /tmp/oras-install
           cd /tmp/oras-install
           curl -fsSL "https://github.com/oras-project/oras/releases/download/v${ORAS_VERSION}/oras_${ORAS_VERSION}_linux_amd64.tar.gz" -o oras.tar.gz
           tar -xzf oras.tar.gz
           sudo install -m 755 oras /usr/local/bin/oras
-          oras version
-          # Try the fixture manifest fetch with the workflow's token.
-          echo "--- manifest fetch via GITHUB_TOKEN ---"
+          cd "$RUNNER_TEMP"
+
+          echo "--- STEP 1: native oras manifest fetch ---"
           echo "$GH_TOKEN" | oras login ghcr.io -u "$GH_USER" --password-stdin
-          oras manifest fetch ghcr.io/butlerdotdev/butler-portal-test-fixture:hello-dynamic-0.5.1 | head -c 500
-          echo ""
+          oras manifest fetch ghcr.io/butlerdotdev/butler-portal-test-fixture:hello-dynamic-0.5.1 >/dev/null
+          echo "STEP 1 PASS"
+
+          echo "--- STEP 2: containerized pull with the installer auth-mount pattern ---"
+          AUTH_DIR="$RUNNER_TEMP/smoke-auth"
+          mkdir -p "$AUTH_DIR"
+          gh_auth_b64=$(printf '%s:%s' "$GH_USER" "$GH_TOKEN" | base64 -w0)
+          cat >"$AUTH_DIR/config.json" <<JSON
+          { "auths": { "ghcr.io": { "auth": "$gh_auth_b64" } } }
+          JSON
+          chmod 644 "$AUTH_DIR/config.json"
+          ls -la "$AUTH_DIR"
+          docker run --rm \
+            -e DOCKER_CONFIG=/auth \
+            -v "$AUTH_DIR":/auth:ro \
+            ghcr.io/oras-project/oras:v1.2.0 \
+            manifest fetch ghcr.io/butlerdotdev/butler-portal-test-fixture:hello-dynamic-0.5.1
+          echo "STEP 2 PASS"
 
       - name: Runtime 3-case boot-test against released image
         # run-051-boot-test.sh asserts EMPTY / POPULATED / NEGATIVE are
