@@ -21,11 +21,12 @@ export {
 } from './DynamicRootContext';
 export { DynamicRouteSlot } from './DynamicRouteSlot';
 export { DynamicMenuSlot } from './DynamicMenuSlot';
-export { extractDynamicConfig } from './extractDynamicConfig';
+export { DynamicPluginsLoader } from './DynamicPluginsLoader';
 export type {
 	DynamicRoute,
 	DynamicMenuItem,
 	DynamicRootContextValue,
-	PluginManifest,
+	Remote,
+	RemotesResponse,
 } from './types';
-export { EMPTY_DYNAMIC_ROOT_CONTEXT, EMPTY_PLUGIN_MANIFEST } from './types';
+export { EMPTY_DYNAMIC_ROOT_CONTEXT, EMPTY_REMOTES } from './types';
