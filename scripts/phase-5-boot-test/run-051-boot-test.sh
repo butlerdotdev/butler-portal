@@ -264,7 +264,22 @@ start_portal \
   -e APP_CONFIG_dynamicPlugins_rootDirectory=/dynamic-plugins-root \
   -v "dynamic-plugins-vol:/dynamic-plugins-root:ro"
 
-NEG_REMOTES_HTTP=$(curl -s -o "$WORK/neg-remotes.json" -w "%{http_code}" http://localhost:7007/.backstage/dynamic-features/remotes)
+# Same race as the populated case: the scanner runs after the listener
+# binds and the SPA fallback starts serving. The scanner needs to walk
+# the rootDirectory (here empty after the installer rejected) and
+# register the feature service so /remotes returns the JSON shape
+# instead of the catchall SPA HTML. Poll until that happens.
+log "  waiting for scanner to register the empty Remote[]"
+NEG_REMOTES_HTTP=""
+for i in $(seq 1 180); do
+  NEG_REMOTES_HTTP=$(curl -s -o "$WORK/neg-remotes.json" -w "%{http_code}" http://localhost:7007/.backstage/dynamic-features/remotes)
+  neg_body=$(cat "$WORK/neg-remotes.json" 2>/dev/null)
+  if [ "$NEG_REMOTES_HTTP" = "200" ] && [ "$neg_body" = "[]" ]; then
+    log "    /remotes returned [] after ${i}s"
+    break
+  fi
+  sleep 1
+done
 log "  GET /remotes -> HTTP $NEG_REMOTES_HTTP, body: $(cat "$WORK/neg-remotes.json" | head -c 200)"
 NEG_BUTLER=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:7007/butler)
 log "  GET /butler -> HTTP $NEG_BUTLER (static plugin still works despite broken dynamic remote)"
