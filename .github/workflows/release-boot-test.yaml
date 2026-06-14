@@ -170,6 +170,14 @@ jobs:
         # the frontend marker assertion closes -- proving the runtime
         # loaded a real backend dynamic plugin, not that the loader's
         # presence was inferred from a no-plugin boot.
+        #
+        # The job-level env exports TEST_PLUGIN_URI/INTEGRITY pointed at
+        # the FRONTEND fixture for the frontend tests above; explicitly
+        # override here so the backend script installs the backend
+        # fixture instead.
+        env:
+          TEST_PLUGIN_URI: 'oci://ghcr.io/butlerdotdev/butler-portal-test-fixture:hello-dynamic-backend-0.5.1'
+          TEST_PLUGIN_INTEGRITY: 'sha512-RG3OkIOZUG/sR3VgDODQYV29Bh3A1gg+BuzJ7WDDBXhEjae4R1NPIWMcxMsPpSBU88jfcrbQa4Bs9SoaokYAKw=='
         run: |
           bash scripts/phase-5-boot-test/run-051-backend-test.sh
 
