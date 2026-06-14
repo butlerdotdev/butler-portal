@@ -23,7 +23,14 @@ INSTALLER_IMAGE="${INSTALLER_IMAGE:-ghcr.io/butlerdotdev/butler-portal-plugin-in
 TEST_PLUGIN_URI="${TEST_PLUGIN_URI:-oci://ghcr.io/butlerdotdev/butler-portal-test-fixture:hello-dynamic-0.5.1}"
 TEST_PLUGIN_INTEGRITY="${TEST_PLUGIN_INTEGRITY:-sha512-Tjx+pSxnZIDL3kIL7DtPSvggpnJTsuDIoYM0B5PWasM63RFL/LAekZrvn5Cvv24EghckhsqbF2OKD3odgFo3qQ==}"
 NET=butler-marker-051
-WORK=$(mktemp -d)
+# RUNNER_TEMP (GitHub Actions) and GITHUB_WORKSPACE are both inside the
+# runner's working-set that is reliably bind-mountable into Docker on
+# self-hosted Docker setups. Falling back to mktemp -d (/tmp/...) makes
+# the script work locally but breaks under runner-managed Docker where
+# /tmp on the host is NOT inside the daemon's view of the filesystem
+# (the symptom is bind-mounted single-file paths resolving as empty
+# directories inside the container).
+WORK=$(mktemp -d -p "${RUNNER_TEMP:-${GITHUB_WORKSPACE:-/tmp}}")
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 log() { printf '[%s] %s\n' "$(date -u +%H:%M:%S)" "$*"; }
