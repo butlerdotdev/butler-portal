@@ -1,0 +1,127 @@
+# Copyright 2026 The Butler Authors.
+# SPDX-License-Identifier: Apache-2.0
+#
+# Boot-test the PUBLISHED amd64 portal image on butler-runners (the same
+# amd64 hosts that built the image). The discipline is:
+# "no live cutover before the released artifact is observed booting on
+# real amd64, off-prod." The Rosetta path on the maintainer's arm64
+# laptop crashes the installer Go binary at amd64 emulation; this
+# workflow closes that gap by running the same boot-test harness on the
+# build host.
+#
+# Manual trigger only. workflow_dispatch input chooses which image tag
+# to boot-test; the runtime 3-case test and the Playwright marker
+# assertion both run against the chosen tag.
+
+name: Release boot-test
+
+on:
+  workflow_dispatch:
+    inputs:
+      portal_image_tag:
+        description: 'butler-portal image tag on ghcr.io/butlerdotdev to boot-test (e.g. 0.5.1)'
+        required: true
+        default: '0.5.1'
+      installer_image:
+        description: 'Plugin installer image (with tag) -- pinned by chart values'
+        required: true
+        default: 'ghcr.io/butlerdotdev/butler-portal-plugin-installer:0.1.0'
+      test_plugin_uri:
+        description: 'Test plugin OCI URI (the marker fixture)'
+        required: true
+        default: 'oci://ghcr.io/butlerdotdev/butler-portal-test-fixture:hello-dynamic-0.5.1'
+      test_plugin_integrity:
+        description: 'sha512 SRI integrity of the test plugin tarball'
+        required: true
+        default: 'sha512-Tjx+pSxnZIDL3kIL7DtPSvggpnJTsuDIoYM0B5PWasM63RFL/LAekZrvn5Cvv24EghckhsqbF2OKD3odgFo3qQ=='
+
+jobs:
+  boot-test:
+    runs-on: butler-runners
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: read
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      PORTAL_IMAGE: ghcr.io/butlerdotdev/butler-portal:${{ inputs.portal_image_tag }}
+      INSTALLER_IMAGE: ${{ inputs.installer_image }}
+      TEST_PLUGIN_URI: ${{ inputs.test_plugin_uri }}
+      TEST_PLUGIN_INTEGRITY: ${{ inputs.test_plugin_integrity }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Confirm runner is amd64
+        run: |
+          uname -m
+          uname -a
+          test "$(uname -m)" = "x86_64" || { echo "FAIL: this workflow MUST run on amd64; got $(uname -m)" >&2; exit 1; }
+
+      - name: Ensure gh CLI is available
+        # The boot-test harness uses `gh auth token` and `gh api user`
+        # to stage a Docker auth config the installer container mounts
+        # so oras can pull the test fixture from ghcr. With GH_TOKEN in
+        # env, gh CLI does not need an interactive auth login.
+        run: |
+          if ! command -v gh >/dev/null 2>&1; then
+            curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
+              | sudo dd of=/etc/apt/keyrings/githubcli-archive-keyring.gpg
+            sudo chmod go+r /etc/apt/keyrings/githubcli-archive-keyring.gpg
+            echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" \
+              | sudo tee /etc/apt/sources.list.d/github-cli.list >/dev/null
+            sudo apt-get update
+            sudo apt-get install -y gh
+          fi
+          gh --version
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Pull released portal image
+        run: |
+          docker pull "$PORTAL_IMAGE"
+          docker pull "$INSTALLER_IMAGE"
+
+      - name: Confirm the pulled portal image is amd64
+        run: |
+          ARCH=$(docker image inspect "$PORTAL_IMAGE" --format '{{.Architecture}}')
+          echo "portal image arch: $ARCH"
+          test "$ARCH" = "amd64" || { echo "FAIL: expected amd64; got $ARCH" >&2; exit 1; }
+
+      - name: Set up Node.js (for Playwright)
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install Playwright deps + chromium
+        working-directory: scripts/phase-5-boot-test/playwright
+        run: |
+          npm ci
+          npx playwright install --with-deps chromium
+
+      - name: Runtime 3-case boot-test against released image
+        # run-051-boot-test.sh asserts EMPTY / POPULATED / NEGATIVE are
+        # distinguishable on the chosen PORTAL_IMAGE. Fails the job on any
+        # case regression.
+        run: |
+          bash scripts/phase-5-boot-test/run-051-boot-test.sh
+
+      - name: Playwright marker assertion against released image
+        # run-051-marker-test.sh boots the populated portal again and
+        # asserts the literal marker is visible at /hello-dynamic-plugin.
+        # Real frontend bridge render through the real manifest path.
+        run: |
+          bash scripts/phase-5-boot-test/run-051-marker-test.sh
+
+      - name: Save Playwright artifacts on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-failure-artifacts
+          path: scripts/phase-5-boot-test/playwright/test-results/
+          if-no-files-found: ignore
+          retention-days: 7
