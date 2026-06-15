@@ -43,7 +43,8 @@ Dynamic plugins are not the right answer when:
   the registry credentials for. Plugin distribution still requires
   somewhere the portal's installer can pull from.
 
-Both frontend and backend dynamic plugins are supported on 0.5.1+.
+Both frontend and backend dynamic plugins are supported on chart 0.5.2+
+(portal image at appVersion 0.5.1).
 Backend plugins follow the
 [`@backstage/backend-dynamic-feature-service`](https://www.npmjs.com/package/@backstage/backend-dynamic-feature-service)
 shape and load via the same `dynamicPlugins.plugins[]` block. The
@@ -53,7 +54,7 @@ depth.
 
 ## What ships
 
-The portal image at 0.5.1+ contains:
+The portal image (appVersion 0.5.1, packaged in chart 0.5.2+) contains:
 
 * The `@module-federation/runtime` host that loads frontend plugin
   remotes.

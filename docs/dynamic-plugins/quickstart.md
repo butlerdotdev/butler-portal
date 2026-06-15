@@ -16,6 +16,17 @@ hygiene (the portal ships with nothing customer-specific enabled).
 Adding a plugin is a chart-values change against a portal you do not
 own the source of.
 
+See it running: butler-portal-live (the Butler Labs production portal)
+ships the canonical example pair as an installed dynamic plugin. Sign
+in at [portal.butlerlabs.dev](https://portal.butlerlabs.dev) and
+navigate to `/hello-dynamic-plugin`. The page that renders -- a card
+with the plugin's metadata, the runtime marker, and a "Ping the
+bundled backend" button that round-trips through a sibling backend
+dynamic plugin at `/api/hello-dynamic-backend/ping` -- is built from
+[`examples/dynamic-plugin-hello`](https://github.com/butlerdotdev/butler-portal/tree/main/examples/dynamic-plugin-hello)
+and [`examples/dynamic-plugin-hello-backend`](https://github.com/butlerdotdev/butler-portal/tree/main/examples/dynamic-plugin-hello-backend),
+the same examples this quickstart walks you through copying.
+
 The mechanism: each plugin is a
 [Module Federation v2](https://module-federation.io/) remote. The
 portal's runtime, `@module-federation/runtime`, loads the remote's
@@ -34,10 +45,10 @@ Developer Hub builds for Butler Portal.
 | Node.js | 20 or 22 | The portal currently runs Node 22; the plugin export ships under either. |
 | `oras` | 1.2+ | Pushes the built plugin as an OCI artifact. `brew install oras` or [download from the release page](https://github.com/oras-project/oras/releases). |
 | Container registry credentials | -- | A registry your portal's installer can pull from. GitHub Container Registry (`ghcr.io`), AWS ECR, Quay, and Harbor all work. |
-| A Butler Portal you can update | 0.5.1+ | Earlier portal versions do not run the dynamic-plugin runtime. |
+| A Butler Portal you can update | chart 0.5.2+ | Earlier chart versions do not wire the dynamic-plugin volume path correctly (the chart 0.5.0-0.5.1 init container mounts a path the installer cannot write to). The portal image at appVersion 0.5.1 is the runtime; chart 0.5.2 corrects the wiring. |
 
 The portal itself is whatever your operator runs; for this quickstart
-your laptop is fine for build + publish, and any 0.5.1+ portal can
+your laptop is fine for build + publish, and any portal on chart 0.5.2+ can
 install what you publish.
 
 ## Step 0: build OUTSIDE any monorepo
@@ -191,7 +202,7 @@ plugin.
 
 ## Step 5: install on a portal
 
-The portal's Helm chart (`butler-portal` 0.5.1+) takes a list of plugin
+The portal's Helm chart (`butler-portal` 0.5.2+) takes a list of plugin
 references in `dynamicPlugins.plugins[]`. Each entry has a package URI
 and an integrity string. Update your portal's values:
 
@@ -216,7 +227,7 @@ first, then starts the runtime with the populated volume mounted:
 
 ```bash
 helm upgrade butler-portal oci://ghcr.io/butlerdotdev/charts/butler-portal \
-  --version 0.5.1 \
+  --version 0.5.2 \
   -f your-values.yaml \
   -n butler-portal
 ```
