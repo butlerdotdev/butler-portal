@@ -48,7 +48,15 @@ spec:
               mountPath: /etc/butler-portal
               readOnly: true
             - name: dynamic-plugins
-              mountPath: /opt/butler-portal/dynamic-plugins
+              # Chart 0.5.2 path correction: the installer hardcodes
+              # /dynamic-plugins-root as the destination it mkdirs and
+              # writes into. Chart 0.5.0-0.5.1 mounted the volume at
+              # /opt/butler-portal/dynamic-plugins (the install-time
+              # mkdir failed because nothing was writable at the
+              # default path). Matching the chart to the installer's
+              # default path avoids requiring an installer release just
+              # to thread the path through.
+              mountPath: /dynamic-plugins-root
       {{- end }}
       containers:
         - name: backstage
@@ -160,16 +168,20 @@ spec:
             # and registers backend features it finds. The init container
             # above populates the directory before the backend starts.
             - name: APP_CONFIG_dynamicPlugins_rootDirectory
-              value: /opt/butler-portal/dynamic-plugins
+              # Chart 0.5.2: matched to the installer's hardcoded write
+              # destination so the backend's plugin scanner reads from
+              # the same volume the installer populated. See the
+              # init-container volumeMount comment above.
+              value: /dynamic-plugins-root
             - name: APP_CONFIG_dynamicPlugins_continueOnError
               value: {{ .Values.dynamicPlugins.installer.continueOnError | quote }}
             # @backstage/backend-dynamic-feature-service's plugin scanner
             # resolves a dynamic plugin's backstage module imports against
             # NODE_PATH. Without this the backend crashes at boot with
-            # "Dynamic plugins under '/opt/butler-portal/dynamic-plugins'
-            # cannot access backstage modules in '/app/node_modules'.
-            # Please add '/app/node_modules' to the 'NODE_PATH' when running
-            # the backstage backend." (chart 0.5.1; gated on dynamicPlugins
+            # "Dynamic plugins under '/dynamic-plugins-root' cannot access
+            # backstage modules in '/app/node_modules'. Please add
+            # '/app/node_modules' to the 'NODE_PATH' when running the
+            # backstage backend." (chart 0.5.1; gated on dynamicPlugins
             # so the disabled-state pod env is byte-identical to chart
             # 0.4.0.)
             - name: NODE_PATH
@@ -184,7 +196,10 @@ spec:
             {{- end }}
             {{- if .Values.dynamicPlugins.enabled }}
             - name: dynamic-plugins
-              mountPath: /opt/butler-portal/dynamic-plugins
+              # Chart 0.5.2: same volume, matched to the installer's
+              # hardcoded write path. The backend container mounts it
+              # read-only.
+              mountPath: /dynamic-plugins-root
               readOnly: true
             {{- end }}
           {{- end }}

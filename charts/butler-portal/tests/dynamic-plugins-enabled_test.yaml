@@ -31,6 +31,26 @@ tests:
             name: install-dynamic-plugins
           any: true
 
+  - it: init container mounts the dynamic-plugins volume at the installer's hardcoded write path
+    template: templates/deployment.yaml
+    set:
+      dynamicPlugins:
+        enabled: true
+    # The installer mkdirs /dynamic-plugins-root on startup and writes
+    # extracted plugins there. If the volume is mounted at a different
+    # path, the mkdir hits the read-only root filesystem and the init
+    # container CrashLoopBackOffs ('mkdir: cannot create directory
+    # /dynamic-plugins-root: Permission denied'). This assertion pins
+    # the chart-side mount path to the installer's hardcoded default
+    # so a path drift fails CI rather than a live cutover.
+    asserts:
+      - contains:
+          path: spec.template.spec.initContainers[0].volumeMounts
+          content:
+            name: dynamic-plugins
+            mountPath: /dynamic-plugins-root
+          any: true
+
   - it: init container uses the configured installer image + tag + pullPolicy
     template: templates/deployment.yaml
     set:
@@ -79,11 +99,17 @@ tests:
         installer:
           continueOnError: false
     asserts:
+      # chart 0.5.2: APP_CONFIG_dynamicPlugins_rootDirectory MUST match
+      # the installer's hardcoded write path. The installer in 0.1.x
+      # mkdirs /dynamic-plugins-root on startup; any chart-side drift
+      # produces the live-cutover failure (Init:CrashLoopBackOff with
+      # 'mkdir: cannot create directory /dynamic-plugins-root:
+      # Permission denied') that the prior 0.5.1 chart shipped.
       - contains:
           path: spec.template.spec.containers[0].env
           content:
             name: APP_CONFIG_dynamicPlugins_rootDirectory
-            value: /opt/butler-portal/dynamic-plugins
+            value: /dynamic-plugins-root
           any: true
       - contains:
           path: spec.template.spec.containers[0].env
@@ -131,7 +157,9 @@ tests:
           path: spec.template.spec.containers[0].volumeMounts
           content:
             name: dynamic-plugins
-            mountPath: /opt/butler-portal/dynamic-plugins
+            # chart 0.5.2: matched to the installer's hardcoded write path
+            # so init and main share the same view of the populated volume.
+            mountPath: /dynamic-plugins-root
             readOnly: true
           any: true
 
