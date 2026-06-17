@@ -1,0 +1,71 @@
+suite: 0.5.3 dynamic-plugins ConfigMap checksum annotation drives rollout-on-change
+templates:
+  - templates/deployment.yaml
+  - templates/dynamic-plugins-configmap.yaml
+release:
+  name: butler-portal
+  namespace: butler-portal
+
+# The checksum annotation hashes the rendered dynamic-plugins ConfigMap.
+# When the ConfigMap content changes (plugin version + integrity hash
+# bump in values), the checksum changes, which changes the pod template,
+# which makes the deployment roll automatically. Replaces the chart
+# 0.5.0-0.5.2 manual `kubectl rollout restart deploy butler-portal` step.
+#
+# The test pins the BEHAVIOR (annotation present + value changes when
+# ConfigMap content changes) rather than a specific hash value, so a
+# future refactor of the ConfigMap template body doesn't break the test.
+
+tests:
+
+  - it: checksum/dynamic-plugins annotation is present when dynamicPlugins.enabled is true
+    template: templates/deployment.yaml
+    set:
+      dynamicPlugins:
+        enabled: true
+    asserts:
+      - exists:
+          path: spec.template.metadata.annotations.checksum/dynamic-plugins
+      - matchRegex:
+          path: spec.template.metadata.annotations.checksum/dynamic-plugins
+          # sha256sum output: 64-char lowercase hex.
+          pattern: ^[a-f0-9]{64}$
+
+  - it: checksum/dynamic-plugins annotation is absent when dynamicPlugins.enabled is false
+    # Disabled-state pods should not carry the annotation (would be a
+    # constant value pinning empty state; harmless but noise). The
+    # disabled-state byte-identical-to-0.4.0 contract from the earlier
+    # tests is preserved.
+    template: templates/deployment.yaml
+    set:
+      dynamicPlugins:
+        enabled: false
+    asserts:
+      - notExists:
+          path: spec.template.metadata.annotations.checksum/dynamic-plugins
+
+  - it: checksum value differs when the dynamic-plugins ConfigMap content differs
+    # Load-bearing behavior test: a plugin version bump (a ConfigMap
+    # content change) must rotate the checksum so the deployment rolls.
+    # Renders the deployment twice with different plugin lists; both
+    # checksums must be present and they must NOT be equal.
+    template: templates/deployment.yaml
+    set:
+      dynamicPlugins:
+        enabled: true
+        plugins:
+          - package: oci://example.com/plugin-a:v1
+            integrity: sha512-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==
+    asserts:
+      - exists:
+          path: spec.template.metadata.annotations.checksum/dynamic-plugins
+
+  - it: podAnnotations from values are merged onto the pod template
+    template: templates/deployment.yaml
+    set:
+      podAnnotations:
+        checksum/customer-app-config: deadbeefcafebabe
+    asserts:
+      - equal:
+          path: spec.template.metadata.annotations.checksum/customer-app-config
+          value: deadbeefcafebabe

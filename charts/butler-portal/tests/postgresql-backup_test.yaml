@@ -1,0 +1,104 @@
+suite: 0.5.3 postgresql.backup config flows through to CNPG Cluster.spec.backup
+templates:
+  - templates/cnpg-cluster.yaml
+release:
+  name: butler-portal
+  namespace: butler-portal
+
+# The backup block is passed through to CNPG Cluster.spec.backup as-is so
+# the full CNPG surface (endpointURL, encryption, per-compression jobs,
+# server-side encryption, scheduled vs continuous) is available without
+# each new CNPG field requiring a chart bump.
+
+tests:
+
+  - it: no backup block rendered when postgresql.backup.enabled is false (default)
+    template: templates/cnpg-cluster.yaml
+    asserts:
+      - notExists:
+          path: spec.backup
+
+  - it: no backup block rendered when postgresql.backup is omitted entirely
+    # Defends against the case where a values override drops the backup
+    # block from postgresql while leaving postgresql.enabled true.
+    template: templates/cnpg-cluster.yaml
+    set:
+      postgresql:
+        enabled: true
+        instances: 1
+        storage:
+          size: 10Gi
+        walStorage:
+          enabled: false
+          size: 2Gi
+        database: butler_portal
+        owner: butler_portal
+    asserts:
+      - notExists:
+          path: spec.backup
+
+  - it: backup block renders retentionPolicy + target + barmanObjectStore verbatim when enabled
+    template: templates/cnpg-cluster.yaml
+    set:
+      postgresql:
+        backup:
+          enabled: true
+          retentionPolicy: "30d"
+          target: prefer-standby
+          barmanObjectStore:
+            destinationPath: s3://butler-portal-backups/prd
+            endpointURL: https://s3.example.com
+            s3Credentials:
+              accessKeyId:
+                name: butler-portal-backup-s3
+                key: ACCESS_KEY_ID
+              secretAccessKey:
+                name: butler-portal-backup-s3
+                key: SECRET_ACCESS_KEY
+            wal:
+              compression: gzip
+            data:
+              compression: gzip
+              jobs: 2
+    asserts:
+      - equal:
+          path: spec.backup.retentionPolicy
+          value: "30d"
+      - equal:
+          path: spec.backup.target
+          value: prefer-standby
+      - equal:
+          path: spec.backup.barmanObjectStore.destinationPath
+          value: s3://butler-portal-backups/prd
+      - equal:
+          path: spec.backup.barmanObjectStore.endpointURL
+          value: https://s3.example.com
+      - equal:
+          path: spec.backup.barmanObjectStore.s3Credentials.accessKeyId.name
+          value: butler-portal-backup-s3
+      - equal:
+          path: spec.backup.barmanObjectStore.wal.compression
+          value: gzip
+      - equal:
+          path: spec.backup.barmanObjectStore.data.jobs
+          value: 2
+
+  - it: backup block omits retentionPolicy when not supplied
+    # Partial config: only barmanObjectStore + enabled. Operators can
+    # rely on CNPG's defaults (no retention) without the chart forcing
+    # an empty string into the spec.
+    template: templates/cnpg-cluster.yaml
+    set:
+      postgresql:
+        backup:
+          enabled: true
+          barmanObjectStore:
+            destinationPath: s3://x/y
+    asserts:
+      - notExists:
+          path: spec.backup.retentionPolicy
+      - notExists:
+          path: spec.backup.target
+      - equal:
+          path: spec.backup.barmanObjectStore.destinationPath
+          value: s3://x/y
