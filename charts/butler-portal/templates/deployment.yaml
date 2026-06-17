@@ -13,6 +13,34 @@ spec:
     metadata:
       labels:
         {{- include "butler-portal.selectorLabels" . | nindent 8 }}
+      {{- /*
+        Pod-template annotations. The whole `annotations:` block is gated
+        on having content so the disabled-state contract (pod template
+        byte-identical to chart 0.4.0) is preserved when both
+        dynamicPlugins and podAnnotations are off.
+
+        - checksum/dynamic-plugins: hash of the rendered dynamic-plugins
+          ConfigMap. A plugin version or integrity hash change rotates
+          this value, the pod template changes, the rollout fires.
+          Replaces the chart 0.5.0-0.5.2 manual `kubectl rollout restart
+          deploy butler-portal` step that operators had to remember
+          after every plugin bump.
+        - podAnnotations: operator-supplied passthrough for any other
+          checksums or annotations the chart doesn't own (e.g. a hash
+          of a postRenderer-mounted app-config ConfigMap).
+      */}}
+      {{- $podAnnotations := dict }}
+      {{- if .Values.dynamicPlugins.enabled }}
+        {{- $cm := include (print $.Template.BasePath "/dynamic-plugins-configmap.yaml") . | sha256sum }}
+        {{- $podAnnotations = merge $podAnnotations (dict "checksum/dynamic-plugins" $cm) }}
+      {{- end }}
+      {{- with .Values.podAnnotations }}
+        {{- $podAnnotations = merge $podAnnotations . }}
+      {{- end }}
+      {{- if $podAnnotations }}
+      annotations:
+        {{- toYaml $podAnnotations | nindent 8 }}
+      {{- end }}
     spec:
       {{- with .Values.imagePullSecrets }}
       imagePullSecrets:

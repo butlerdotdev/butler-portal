@@ -34,6 +34,25 @@ spec:
     {{- toYaml . | nindent 4 }}
   {{- end }}
 
+  {{- if and .Values.postgresql.backup .Values.postgresql.backup.enabled }}
+  # CNPG Cluster.spec.backup. Operator owns the Barman destination,
+  # credentials Secret, and retention policy. The chart passes the
+  # block through as-is so the full CNPG backup surface (endpoint URL,
+  # encryption, per-compression jobs, server-side encryption) is
+  # available without each new field requiring a chart bump.
+  backup:
+    {{- with .Values.postgresql.backup.retentionPolicy }}
+    retentionPolicy: {{ . | quote }}
+    {{- end }}
+    {{- with .Values.postgresql.backup.target }}
+    target: {{ . | quote }}
+    {{- end }}
+    {{- with .Values.postgresql.backup.barmanObjectStore }}
+    barmanObjectStore:
+      {{- toYaml . | nindent 6 }}
+    {{- end }}
+  {{- end }}
+
   {{- if gt (int .Values.postgresql.instances) 1 }}
   affinity:
     enablePodAntiAffinity: true
