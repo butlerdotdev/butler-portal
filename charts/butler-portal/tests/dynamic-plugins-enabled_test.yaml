@@ -174,7 +174,7 @@ tests:
       - hasDocuments:
           count: 0
 
-  - it: ConfigMap renders when enabled, with continueOnError default false and empty allowedSources
+  - it: ConfigMap renders when enabled, with continueOnError default false and curated default allowedSources
     template: templates/dynamic-plugins-configmap.yaml
     set:
       dynamicPlugins:
@@ -189,6 +189,21 @@ tests:
       - matchRegex:
           path: data["dynamic-plugins.yaml"]
           pattern: continueOnError:\s*false
+      - matchRegex:
+          path: data["dynamic-plugins.yaml"]
+          pattern: "oci://ghcr\\.io/redhat-developer/rhdh-plugin-export-overlays"
+      - matchRegex:
+          path: data["dynamic-plugins.yaml"]
+          pattern: "oci://ghcr\\.io/butlerdotdev"
+
+  - it: allowedSources can be reset to empty (opt-back-in to pre-0.5.4 permissive behavior)
+    template: templates/dynamic-plugins-configmap.yaml
+    set:
+      dynamicPlugins:
+        enabled: true
+        allowedSources: []
+        plugins: []
+    asserts:
       - matchRegex:
           path: data["dynamic-plugins.yaml"]
           pattern: allowedSources:\s*\[\]
