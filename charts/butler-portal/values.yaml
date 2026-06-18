@@ -248,7 +248,7 @@ dynamicPlugins:
   enabled: false
   installer:
     image: ghcr.io/butlerdotdev/butler-portal-plugin-installer
-    tag: "0.1.1"
+    tag: "0.1.2"
     pullPolicy: IfNotPresent
     # When any plugin fails to pull or fails integrity verification:
     # false = init container exits non-zero, pod does not start
