@@ -233,13 +233,12 @@ plugins:
 # - integrity: sha512:<hex> on every plugin entry is MANDATORY. The
 #   installer skips entries without it and skips entries whose pulled
 #   tarball does not match.
-# - allowedSources, when set, is enforced from day one: plugin sources
-#   not matching any prefix in the list are rejected. When unset (the
-#   chart default), the allowlist is PERMISSIVE -- any source the
-#   operator references is accepted. Production operators SHOULD set
-#   dynamicPlugins.allowedSources to constrain which registries plugins
-#   can come from. Documented permissive is fine; silent permissive
-#   would be a footgun.
+# - allowedSources is enforced from day one: plugin sources not matching
+#   any prefix in the list are rejected. Chart 0.5.4+ default is the
+#   curated marketplace set (RHDH community export + butlerdotdev first-
+#   party). Operators extend the list with their own private registries.
+#   Setting allowedSources: [] explicitly restores pre-0.5.4 permissive
+#   behavior -- documented opt-out, not recommended for production.
 # - continueOnError defaults to false: on any pull/integrity failure
 #   the init container exits non-zero and the pod does not start.
 #   Operators see the failure immediately rather than discovering a
@@ -255,16 +254,26 @@ dynamicPlugins:
     # false = init container exits non-zero, pod does not start
     # true  = init container exits 0, the failed plugin is absent at boot
     continueOnError: false
-  # Allowlist of permitted source prefixes for plugin packages. When unset
-  # or empty, ANY source the operator references in plugins[] is accepted
-  # (permissive). When set, the installer rejects entries whose source
-  # does not match any prefix.
+  # Allowlist of permitted source prefixes for plugin packages. Chart 0.5.4+
+  # default is the curated marketplace set: the upstream RHDH community plugin
+  # export (third-party Backstage plugins repackaged as dynamic artifacts --
+  # GitLab/GitHub catalog discovery, scaffolder modules, frontend cards) and
+  # the butlerdotdev namespace (Butler Labs first-party plugins). Operators
+  # extend the list to add their own internal registries.
   #
-  # Examples:
+  # Override examples (operator-side):
   #   allowedSources:
-  #     - oci://ghcr.io/myorg/
-  #     - https://plugins.internal.example.com/
-  allowedSources: []
+  #     - oci://ghcr.io/redhat-developer/rhdh-plugin-export-overlays  # keep RHDH marketplace
+  #     - oci://ghcr.io/butlerdotdev                                    # keep first-party
+  #     - oci://my-corp-registry.example.com/butler-portal              # add internal
+  #     - https://plugins.internal.example.com/                         # add tgz host
+  #
+  # Set to [] explicitly to opt back into the pre-0.5.4 permissive default
+  # (any source the operator references is accepted) -- not recommended for
+  # production.
+  allowedSources:
+    - oci://ghcr.io/redhat-developer/rhdh-plugin-export-overlays
+    - oci://ghcr.io/butlerdotdev
   # Plugins to install. Each entry is one customer plugin OCI artifact
   # (frontend MF chunks + backend bundle) plus the pluginConfig that
   # registers its UI in the portal shell.
