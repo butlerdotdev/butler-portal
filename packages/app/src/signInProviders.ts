@@ -37,7 +37,7 @@ export function buildSignInProviders(
   const googleProvider: SignInProviderConfig = {
     id: 'google-auth-provider',
     title: 'Google',
-    message: 'Sign in with your Butler Labs Google account',
+    message: 'Sign in with your Google account',
     apiRef: googleAuthApiRef,
   };
   const microsoftProvider: SignInProviderConfig = {
