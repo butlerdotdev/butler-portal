@@ -14,7 +14,12 @@ import {
 	SignInPage,
 	type SignInProviderConfig,
 } from '@backstage/core-components';
-import { googleAuthApiRef } from '@backstage/core-plugin-api';
+import {
+	googleAuthApiRef,
+	microsoftAuthApiRef,
+	configApiRef,
+	useApi,
+} from '@backstage/core-plugin-api';
 import { createApp } from '@backstage/app-defaults';
 import { AppRouter } from '@backstage/core-app-api';
 import { SignalsDisplay } from '@backstage/plugin-signals';
@@ -51,19 +56,31 @@ const app = createApp({
 	},
 	components: {
 		SignInPage: props => {
+			const config = useApi(configApiRef);
 			const googleProvider: SignInProviderConfig = {
 				id: 'google-auth-provider',
 				title: 'Google',
 				message: 'Sign in with your Butler Labs Google account',
 				apiRef: googleAuthApiRef,
 			};
-			return (
-				<SignInPage
-					{...props}
-					auto
-					providers={['guest', googleProvider]}
-				/>
+			const microsoftProvider: SignInProviderConfig = {
+				id: 'microsoft-auth-provider',
+				title: 'Microsoft',
+				message: 'Sign in with your Microsoft Entra account',
+				apiRef: microsoftAuthApiRef,
+			};
+			// Render the Microsoft card only when the adopter wired the
+			// microsoft auth provider in app-config. Same shape any
+			// optional provider would follow; keeps the default sign-in
+			// page from showing a card whose backend route 404s.
+			const microsoftConfigured = !!config.getOptionalConfig(
+				'auth.providers.microsoft',
 			);
+			const providers: ('guest' | SignInProviderConfig)[] = ['guest', googleProvider];
+			if (microsoftConfigured) {
+				providers.push(microsoftProvider);
+			}
+			return <SignInPage {...props} auto providers={providers} />;
 		},
 	},
 });
