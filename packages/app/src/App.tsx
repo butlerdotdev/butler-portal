@@ -12,9 +12,9 @@ import {
 	AlertDisplay,
 	OAuthRequestDialog,
 	SignInPage,
-	type SignInProviderConfig,
 } from '@backstage/core-components';
-import { googleAuthApiRef } from '@backstage/core-plugin-api';
+import { configApiRef, useApi } from '@backstage/core-plugin-api';
+import { buildSignInProviders } from './signInProviders';
 import { createApp } from '@backstage/app-defaults';
 import { AppRouter } from '@backstage/core-app-api';
 import { SignalsDisplay } from '@backstage/plugin-signals';
@@ -51,17 +51,12 @@ const app = createApp({
 	},
 	components: {
 		SignInPage: props => {
-			const googleProvider: SignInProviderConfig = {
-				id: 'google-auth-provider',
-				title: 'Google',
-				message: 'Sign in with your Butler Labs Google account',
-				apiRef: googleAuthApiRef,
-			};
+			const config = useApi(configApiRef);
 			return (
 				<SignInPage
 					{...props}
 					auto
-					providers={['guest', googleProvider]}
+					providers={buildSignInProviders(config)}
 				/>
 			);
 		},
