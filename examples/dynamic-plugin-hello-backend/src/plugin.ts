@@ -3,7 +3,11 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { createBackendPlugin, coreServices } from '@backstage/backend-plugin-api';
+import {
+  BackendFeature,
+  createBackendPlugin,
+  coreServices,
+} from '@backstage/backend-plugin-api';
 import { Router } from 'express';
 import * as os from 'os';
 
@@ -20,7 +24,12 @@ const PLUGIN_NAME = 'butler-hello-dynamic-backend';
 const PLUGIN_VERSION = '0.1.0';
 const BACKEND_STARTED_AT = new Date().toISOString();
 
-export const helloDynamicBackendPlugin = createBackendPlugin({
+// Explicit BackendFeature annotation. Without it, the inferred type
+// of createBackendPlugin's return references an internal Backstage
+// declaration file whose portable path cannot be resolved during
+// out-of-tree tsc, causing TS2742. The annotation pins the public
+// return type so the example builds cleanly out of the workspace.
+export const helloDynamicBackendPlugin: BackendFeature = createBackendPlugin({
   pluginId: 'hello-dynamic-backend',
   register(env) {
     env.registerInit({
