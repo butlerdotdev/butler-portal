@@ -287,9 +287,11 @@ const { allowed } = usePermission({ permission: myPluginRead });
 if (!allowed) return <div>Not authorized.</div>;
 ```
 
-The portal's PermissionPolicy decides who gets what. As a plugin
-author you declare the permission; as the operator you configure the
-policy.
+A plugin can also ship its own adjudicator so its authorization
+decisions live inside the plugin package instead of the portal's
+central policy. See
+[plugin-authoring/authorization](../plugin-authoring/authorization.md)
+for the namespace-delegated seam and a minimal example.
 
 ## Testing locally
 

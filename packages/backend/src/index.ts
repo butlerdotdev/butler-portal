@@ -52,12 +52,13 @@ backend.add(
 // See https://backstage.io/docs/features/software-catalog/configuration#subscribing-to-catalog-errors
 backend.add(import('@backstage/plugin-catalog-backend-module-logs'));
 
-// permission plugin
+// permission plugin. Wired via a delegating policy that routes each
+// authorize() call to a plugin-provided adjudicator by permission-name
+// prefix (see authAdjudicator.ts). Unclaimed namespaces fall through to
+// ALLOW, preserving Backstage core plugin behavior.
 backend.add(import('@backstage/plugin-permission-backend'));
-// Test policy: denies registry.environment.delete, allows everything else.
-// Replace with allow-all-policy for unrestricted access:
-//   import('@backstage/plugin-permission-backend-module-allow-all-policy')
 backend.add(import('./permissionPolicy'));
+backend.add(import('./registryAdjudicator'));
 
 // search plugin
 backend.add(import('@backstage/plugin-search-backend'));
