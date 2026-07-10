@@ -1,5 +1,18 @@
-// Copyright 2026 The Butler Authors.
-// SPDX-License-Identifier: Apache-2.0
+/*
+ * Copyright 2026 The Butler Authors.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 
 import { createBackendModule } from '@backstage/backend-plugin-api';
 import {
@@ -13,71 +26,79 @@ import {
 } from '@backstage/plugin-permission-node';
 import { policyExtensionPoint } from '@backstage/plugin-permission-node/alpha';
 import {
-  resolveHighestRole,
-  ADMIN_PERMISSIONS,
-  OPERATOR_PERMISSIONS,
-} from '@internal/plugin-registry-common';
+  AuthAdjudicator,
+  AuthAdjudicatorExtensionPoint,
+  authAdjudicatorExtensionPoint,
+} from './authAdjudicator';
 
 /**
- * Role-based permission policy for the registry plugin.
+ * The single instance-wide policy Backstage's framework requires. It owns
+ * routing only; the decision logic lives in plugin-registered adjudicators
+ * (see AuthAdjudicatorExtensionPoint). This is butler-portal's delegation
+ * seam and the reason plugins can gate their own authz without editing
+ * core.
  *
- * Uses the user's Backstage group memberships to determine their highest
- * role, then maps permissions to minimum required roles:
- *
- *   platform-admin / admin → all actions
- *   operator → create, update, plan, apply (no delete, force-unlock, tokens)
- *   viewer → read-only (all mutations denied)
- *
- * Note: this uses the user's highest role across all teams as a coarse gate.
- * Per-team enforcement (admin on team A but viewer on team B) is handled by
- * the registry backend's team middleware.
+ * Behavior on each authorize() call:
+ *   1. Walk registered (namespace, adjudicator) pairs.
+ *   2. First adjudicator whose namespace is a prefix of the permission's
+ *      name is invoked; its PolicyDecision is returned.
+ *   3. No match: return ALLOW. This preserves upstream Backstage plugin
+ *      behavior (catalog / scaffolder / techdocs / search / kubernetes /
+ *      etc.) that predates any butler-portal adjudicator being registered.
  */
-class RegistryPermissionPolicy implements PermissionPolicy {
+export class ButlerPortalDelegatingPolicy implements PermissionPolicy {
+  constructor(
+    private readonly adjudicators: ReadonlyArray<{
+      readonly namespace: string;
+      readonly adjudicator: AuthAdjudicator;
+    }>,
+  ) {}
+
   async handle(
     request: PolicyQuery,
     user?: PolicyQueryUser,
   ): Promise<PolicyDecision> {
-    const refs = user?.info.ownershipEntityRefs ?? [];
-
-    // Non-registry permissions: allow (other plugins handle their own)
-    if (!request.permission.name.startsWith('registry.')) {
-      return { result: AuthorizeResult.ALLOW };
+    const name = request.permission.name;
+    for (const entry of this.adjudicators) {
+      if (name.startsWith(entry.namespace)) {
+        return entry.adjudicator(request, user);
+      }
     }
-
-    const role = resolveHighestRole(refs);
-
-    // Platform admin and admin: full access
-    if (role === 'platform-admin' || role === 'admin') {
-      return { result: AuthorizeResult.ALLOW };
-    }
-
-    // Admin-only actions
-    if (ADMIN_PERMISSIONS.has(request.permission.name)) {
-      return { result: AuthorizeResult.DENY };
-    }
-
-    // Operator actions
-    if (OPERATOR_PERMISSIONS.has(request.permission.name)) {
-      return {
-        result: role === 'operator'
-          ? AuthorizeResult.ALLOW
-          : AuthorizeResult.DENY,
-      };
-    }
-
-    // Read operations: allow for everyone
     return { result: AuthorizeResult.ALLOW };
+  }
+}
+
+class AuthAdjudicatorExtensionPointImpl
+  implements AuthAdjudicatorExtensionPoint
+{
+  readonly entries: Array<{
+    readonly namespace: string;
+    readonly adjudicator: AuthAdjudicator;
+  }> = [];
+
+  register(namespace: string, adjudicator: AuthAdjudicator): void {
+    if (this.entries.some(e => e.namespace === namespace)) {
+      throw new Error(
+        `Adjudicator already registered for namespace "${namespace}". Two ` +
+          `plugins may not claim the same permission-name prefix.`,
+      );
+    }
+    this.entries.push({ namespace, adjudicator });
   }
 }
 
 export default createBackendModule({
   pluginId: 'permission',
-  moduleId: 'registry-rbac-policy',
+  moduleId: 'butler-portal-delegating-policy',
   register(reg) {
+    const adjudicators = new AuthAdjudicatorExtensionPointImpl();
+    reg.registerExtensionPoint(authAdjudicatorExtensionPoint, adjudicators);
     reg.registerInit({
       deps: { policy: policyExtensionPoint },
       async init({ policy }) {
-        policy.setPolicy(new RegistryPermissionPolicy());
+        policy.setPolicy(
+          new ButlerPortalDelegatingPolicy(adjudicators.entries),
+        );
       },
     });
   },
