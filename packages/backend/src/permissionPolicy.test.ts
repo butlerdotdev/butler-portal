@@ -24,7 +24,10 @@ import {
   OPERATOR_PERMISSIONS,
   resolveHighestRole,
 } from '@internal/plugin-registry-common';
-import { ButlerPortalDelegatingPolicy } from './permissionPolicy';
+import {
+  AuthAdjudicatorExtensionPointImpl,
+  ButlerPortalDelegatingPolicy,
+} from './permissionPolicy';
 import { registryAdjudicator } from './registryAdjudicator';
 
 // The reference implementation is the exact pre-delegation-seam inline
@@ -262,5 +265,68 @@ describe('ButlerPortalDelegatingPolicy - routing rules', () => {
       );
       expect(result).toEqual({ result: AuthorizeResult.ALLOW });
     }
+  });
+});
+
+// Boot-time registration guards on the extension-point impl. Every
+// class of ambiguous namespace registration must throw before boot
+// completes so operators see it immediately, not silently at runtime.
+describe('AuthAdjudicatorExtensionPointImpl - registration guards', () => {
+  const noop = () => ({ result: AuthorizeResult.ALLOW } as const);
+
+  it('accepts a first registration', () => {
+    const impl = new AuthAdjudicatorExtensionPointImpl();
+    expect(() => impl.register('registry.', noop)).not.toThrow();
+    expect(impl.entries).toHaveLength(1);
+  });
+
+  it('accepts multiple non-overlapping namespaces', () => {
+    const impl = new AuthAdjudicatorExtensionPointImpl();
+    impl.register('registry.', noop);
+    impl.register('pe.', noop);
+    impl.register('myplugin.', noop);
+    expect(impl.entries.map(e => e.namespace)).toEqual([
+      'registry.',
+      'pe.',
+      'myplugin.',
+    ]);
+  });
+
+  it('rejects an empty namespace (would swallow every permission)', () => {
+    const impl = new AuthAdjudicatorExtensionPointImpl();
+    expect(() => impl.register('', noop)).toThrow(/non-empty string/);
+  });
+
+  it('rejects duplicate namespace strings', () => {
+    const impl = new AuthAdjudicatorExtensionPointImpl();
+    impl.register('registry.', noop);
+    expect(() => impl.register('registry.', noop)).toThrow(
+      /already registered/,
+    );
+  });
+
+  it('rejects a new namespace that is a prefix of an existing one', () => {
+    const impl = new AuthAdjudicatorExtensionPointImpl();
+    impl.register('registry.', noop);
+    // "reg" is a prefix of "registry." - registering it later would
+    // swallow all registry.* traffic on lookup order.
+    expect(() => impl.register('reg', noop)).toThrow(/conflicts with/);
+  });
+
+  it('rejects a new namespace that has an existing namespace as its prefix', () => {
+    const impl = new AuthAdjudicatorExtensionPointImpl();
+    impl.register('pe.', noop);
+    // "pe.tag." starts with "pe." - would never be reached in dispatch
+    // because "pe." matches first.
+    expect(() => impl.register('pe.tag.', noop)).toThrow(/conflicts with/);
+  });
+
+  it('allows namespaces that share an early prefix but do not conflict', () => {
+    const impl = new AuthAdjudicatorExtensionPointImpl();
+    // "pe." and "pe-other." share the two-character prefix "pe" but
+    // neither is a prefix of the other. Both should be accepted.
+    impl.register('pe.', noop);
+    expect(() => impl.register('pe-other.', noop)).not.toThrow();
+    expect(impl.entries).toHaveLength(2);
   });
 });

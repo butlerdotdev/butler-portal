@@ -74,7 +74,7 @@ export class ButlerPortalDelegatingPolicy implements PermissionPolicy {
   }
 }
 
-class AuthAdjudicatorExtensionPointImpl
+export class AuthAdjudicatorExtensionPointImpl
   implements AuthAdjudicatorExtensionPoint
 {
   readonly entries: Array<{
@@ -83,11 +83,35 @@ class AuthAdjudicatorExtensionPointImpl
   }> = [];
 
   register(namespace: string, adjudicator: AuthAdjudicator): void {
-    if (this.entries.some(e => e.namespace === namespace)) {
+    if (!namespace) {
       throw new Error(
-        `Adjudicator already registered for namespace "${namespace}". Two ` +
-          `plugins may not claim the same permission-name prefix.`,
+        'Adjudicator namespace must be a non-empty string. An empty ' +
+          'namespace would swallow every permission the dispatcher sees.',
       );
+    }
+    for (const existing of this.entries) {
+      if (existing.namespace === namespace) {
+        throw new Error(
+          `Adjudicator already registered for namespace "${namespace}". ` +
+            `Two plugins may not claim the same permission-name prefix.`,
+        );
+      }
+      // Reject any pair of namespaces where one is a prefix of the
+      // other. Otherwise the shorter namespace would silently swallow
+      // permissions intended for the longer one (order of registration
+      // decides who wins, which is fragile). Boot-time throw is the
+      // right layer for a permission-policy guard.
+      if (
+        namespace.startsWith(existing.namespace) ||
+        existing.namespace.startsWith(namespace)
+      ) {
+        throw new Error(
+          `Adjudicator namespace "${namespace}" conflicts with already-` +
+            `registered "${existing.namespace}": one is a prefix of the ` +
+            `other, so dispatch order would decide who adjudicates each ` +
+            `permission. Choose non-overlapping namespaces.`,
+        );
+      }
     }
     this.entries.push({ namespace, adjudicator });
   }
