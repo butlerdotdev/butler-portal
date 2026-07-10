@@ -220,6 +220,34 @@ describe('ButlerPortalDelegatingPolicy - routing rules', () => {
     expect(peCalls).toHaveBeenCalledTimes(1);
   });
 
+  it('adjudicator that throws -> DENY (fail closed, not accidental ALLOW)', async () => {
+    const throwingSync = jest.fn(() => {
+      throw new Error('adjudicator blew up');
+    });
+    const delegatingSync = new ButlerPortalDelegatingPolicy([
+      { namespace: 'boom.', adjudicator: throwingSync },
+    ]);
+    const syncResult = await delegatingSync.handle(
+      buildRequest('boom.action'),
+      buildUser([]),
+    );
+    expect(syncResult).toEqual({ result: AuthorizeResult.DENY });
+    expect(throwingSync).toHaveBeenCalledTimes(1);
+
+    const throwingAsync = jest.fn(async () => {
+      throw new Error('adjudicator rejected');
+    });
+    const delegatingAsync = new ButlerPortalDelegatingPolicy([
+      { namespace: 'boom.', adjudicator: throwingAsync },
+    ]);
+    const asyncResult = await delegatingAsync.handle(
+      buildRequest('boom.action'),
+      buildUser([]),
+    );
+    expect(asyncResult).toEqual({ result: AuthorizeResult.DENY });
+    expect(throwingAsync).toHaveBeenCalledTimes(1);
+  });
+
   it('empty adjudicator list -> all permissions ALLOW', async () => {
     const delegating = new ButlerPortalDelegatingPolicy([]);
     for (const name of [

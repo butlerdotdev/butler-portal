@@ -72,6 +72,11 @@ export const myPluginThingWritePermission = createPermission({
 ```ts
 import { createBackendModule } from '@backstage/backend-plugin-api';
 import { AuthorizeResult } from '@backstage/plugin-permission-common';
+// See "Consuming the extension point" below for the current import
+// story. Today the extension-point definition lives inside butler-
+// portal source and is only reachable by in-tree plugins. Publishing
+// it as a small helper package for external dynamic plugins is
+// tracked as a follow-up.
 import { authAdjudicatorExtensionPoint } from 'butler-portal/authAdjudicator';
 
 const ADMIN_GROUP = 'group:default/butler-platform-admins';
@@ -179,6 +184,37 @@ Recommendations:
   registering.
 - Registering the same prefix twice throws at boot with an explicit
   error naming the collision.
+
+## Consuming the extension point
+
+The `authAdjudicatorExtensionPoint` marker is defined in
+`packages/backend/src/authAdjudicator.ts`. Today it is only reachable
+from code that lives inside butler-portal's own workspace, which is
+sufficient for first-party in-tree plugins and for the registry
+adjudicator itself.
+
+For external dynamic plugins (plugins loaded from an OCI artifact at
+runtime, like the corteva-internal PE plugin) the extension point
+marker needs to move into a small consumable helper package that
+both butler-portal and the external plugin can depend on. That
+packaging change is tracked as a follow-up to this PR; until it
+lands, external dynamic plugins cannot register their own adjudicator
+without vendoring the extension-point marker.
+
+If you are writing an in-tree plugin today, use the import path
+above and you are done. If you are writing an external dynamic
+plugin, wait for the helper package or file an issue if you are
+blocked and need it accelerated.
+
+## Failure handling
+
+If your adjudicator throws or returns a rejected promise, the
+dispatcher fails closed and returns `DENY`. A broken adjudicator
+does not silently become an accidental `ALLOW`. Keep this in mind
+when writing tests: your adjudicator should throw only in cases
+where DENY is the intended outcome anyway. Prefer explicit
+`{ result: AuthorizeResult.DENY }` returns over throws for
+readability.
 
 ## When to graduate
 

@@ -61,7 +61,13 @@ export class ButlerPortalDelegatingPolicy implements PermissionPolicy {
     const name = request.permission.name;
     for (const entry of this.adjudicators) {
       if (name.startsWith(entry.namespace)) {
-        return entry.adjudicator(request, user);
+        // Fail closed on a broken adjudicator. A thrown exception must
+        // NOT bubble out and become an accidental ALLOW downstream.
+        try {
+          return await entry.adjudicator(request, user);
+        } catch {
+          return { result: AuthorizeResult.DENY };
+        }
       }
     }
     return { result: AuthorizeResult.ALLOW };
