@@ -119,9 +119,9 @@ const permissions: string[] = [
   'kubernetes.proxy',
 ];
 
-// Behavioral equivalence: same (permission, identity) → same PolicyDecision
+// Behavioral equivalence: same (permission, identity) -> same PolicyDecision
 // under the new delegating shape as under the pre-delegation reference body.
-describe('ButlerPortalDelegatingPolicy — behavioral equivalence with the pre-delegation inline body', () => {
+describe('ButlerPortalDelegatingPolicy - behavioral equivalence with the pre-delegation inline body', () => {
   const delegating = new ButlerPortalDelegatingPolicy([
     { namespace: 'registry.', adjudicator: registryAdjudicator },
   ]);
@@ -143,7 +143,7 @@ describe('ButlerPortalDelegatingPolicy — behavioral equivalence with the pre-d
 // scaffolder / techdocs / search / kubernetes permissions still return
 // ALLOW because no adjudicator claims their namespace prefix. This is
 // the "no per-plugin edit needed for core Backstage plugins" property.
-describe('ButlerPortalDelegatingPolicy — unclaimed namespaces pass through ALLOW', () => {
+describe('ButlerPortalDelegatingPolicy - unclaimed namespaces pass through ALLOW', () => {
   const delegating = new ButlerPortalDelegatingPolicy([
     { namespace: 'registry.', adjudicator: registryAdjudicator },
   ]);
@@ -164,7 +164,7 @@ describe('ButlerPortalDelegatingPolicy — unclaimed namespaces pass through ALL
   ];
 
   for (const permission of unclaimed) {
-    it(`${permission} → ALLOW even with no adjudicator claiming it`, async () => {
+    it(`${permission} -> ALLOW even with no adjudicator claiming it`, async () => {
       const result = await delegating.handle(
         buildRequest(permission),
         buildUser([]),
@@ -178,7 +178,7 @@ describe('ButlerPortalDelegatingPolicy — unclaimed namespaces pass through ALL
 // scoping is inclusive of the trailing separator so "pe" cannot
 // accidentally match "pe-other" traffic (the adjudicator's registered
 // prefix is "pe." not "pe").
-describe('ButlerPortalDelegatingPolicy — routing rules', () => {
+describe('ButlerPortalDelegatingPolicy - routing rules', () => {
   it('first prefix match wins', async () => {
     const orderA = jest.fn(() => ({ result: AuthorizeResult.ALLOW } as const));
     const orderB = jest.fn(() => ({ result: AuthorizeResult.DENY } as const));
@@ -205,13 +205,13 @@ describe('ButlerPortalDelegatingPolicy — routing rules', () => {
     const delegating = new ButlerPortalDelegatingPolicy([
       { namespace: 'pe.', adjudicator: peCalls },
     ]);
-    // "pe.metastore.read" starts with "pe." → the pe adjudicator runs
+    // "pe.metastore.read" starts with "pe." -> the pe adjudicator runs
     const inside = await delegating.handle(
       buildRequest('pe.metastore.read'),
       buildUser([]),
     );
     expect(inside).toEqual({ result: AuthorizeResult.DENY });
-    // "pe-other.thing" does not start with "pe." → falls through to ALLOW
+    // "pe-other.thing" does not start with "pe." -> falls through to ALLOW
     const outside = await delegating.handle(
       buildRequest('pe-other.thing'),
       buildUser([]),
@@ -220,7 +220,7 @@ describe('ButlerPortalDelegatingPolicy — routing rules', () => {
     expect(peCalls).toHaveBeenCalledTimes(1);
   });
 
-  it('empty adjudicator list → all permissions ALLOW', async () => {
+  it('empty adjudicator list -> all permissions ALLOW', async () => {
     const delegating = new ButlerPortalDelegatingPolicy([]);
     for (const name of [
       'registry.environment.delete',

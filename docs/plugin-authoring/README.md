@@ -13,6 +13,6 @@ components, backend routes, dynamic-plugin packaging), start with
 
 ## Contents
 
-- [Authorization](./authorization.md) — how a plugin gates its own
+- [Authorization](./authorization.md) - how a plugin gates its own
   authorization without editing butler-portal core, via the
   namespace-delegated adjudicator seam.

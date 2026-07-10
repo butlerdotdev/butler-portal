@@ -149,7 +149,7 @@ Two tests worth writing:
 ## Frontend gating (UX only)
 
 The backend `authorize()` call is the security boundary. Frontend
-gating is UX — it hides buttons and pages the user cannot act on to
+gating is UX - it hides buttons and pages the user cannot act on to
 avoid confusing 403 loops. Use `usePermission()` from
 `@backstage/plugin-permission-react`:
 

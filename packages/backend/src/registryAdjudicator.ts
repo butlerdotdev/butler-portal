@@ -37,9 +37,9 @@ import { authAdjudicatorExtensionPoint } from './authAdjudicator';
  * permissionPolicy.test.ts for the equivalence proof.
  *
  * Role rules:
- *   platform-admin / admin → all registry actions ALLOW
- *   operator → ADMIN_PERMISSIONS DENY, OPERATOR_PERMISSIONS ALLOW, reads ALLOW
- *   viewer  → ADMIN_PERMISSIONS DENY, OPERATOR_PERMISSIONS DENY, reads ALLOW
+ *   platform-admin / admin -> all registry actions ALLOW
+ *   operator -> ADMIN_PERMISSIONS DENY, OPERATOR_PERMISSIONS ALLOW, reads ALLOW
+ *   viewer  -> ADMIN_PERMISSIONS DENY, OPERATOR_PERMISSIONS DENY, reads ALLOW
  *
  * The user's highest role across all ownership refs is used as a coarse
  * gate. Per-team enforcement (admin on team A but viewer on team B) is
