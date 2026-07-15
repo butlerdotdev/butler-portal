@@ -18,7 +18,7 @@ import {
   coreServices,
   createBackendPlugin,
 } from '@backstage/backend-plugin-api';
-import { resolvePackagePath } from '@backstage/backend-common';
+import { resolvePackagePath } from '@backstage/backend-plugin-api';
 import { PipelineDatabase } from './database/PipelineDatabase';
 import { VrlExecutor } from './vrl/vrlExecutor';
 import { createRouter } from './router';

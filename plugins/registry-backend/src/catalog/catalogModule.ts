@@ -15,19 +15,14 @@
  */
 
 import {
+  BackendFeature,
   coreServices,
   createBackendModule,
 } from '@backstage/backend-plugin-api';
-import { catalogProcessingExtensionPoint } from '@backstage/plugin-catalog-node/alpha';
+import { catalogProcessingExtensionPoint } from '@backstage/plugin-catalog-node';
 import { RegistryEntityProvider } from './RegistryEntityProvider';
 
-/**
- * Catalog module that syncs Butler Registry artifacts into the Backstage catalog
- * as Component entities. Polls the registry HTTP API every 5 minutes.
- *
- * Register in backend: backend.add(import('@internal/plugin-registry-backend/catalog'));
- */
-export const registryCatalogModule = createBackendModule({
+export const registryCatalogModule: BackendFeature = createBackendModule({
   pluginId: 'catalog',
   moduleId: 'butler-registry-entity-provider',
   register(reg) {

@@ -15,10 +15,10 @@
     "clean": "backstage-cli package clean"
   },
   "dependencies": {
-    "@backstage/plugin-permission-common": "^0.9.3"
+    "@backstage/plugin-permission-common": "^0.9.9"
   },
   "devDependencies": {
-    "@backstage/cli": "^0.29.5"
+    "@backstage/cli": "^0.36.4"
   },
   "files": [
     "dist"
