@@ -17,13 +17,17 @@ FROM node:20-bookworm-slim
 # Set Python interpreter for `node-gyp` to use
 ENV PYTHON=/usr/bin/python3
 
-# Install native-build dependencies. python3 + g++ + build-essential cover
-# isolated-vm (used by @backstage/plugin-scaffolder-backend). cmake is required
-# for cpu-features, a transitive dep of ssh2 that landed via Backstage 1.53.
+# Install native-build dependencies. build-essential covers gcc/g++/make.
+# python3 + python3-dev supply the Python interpreter and Python.h that
+# node-gyp bindings need. cmake is required by cpu-features (transitive via
+# ssh2, arrived with Backstage 1.53). pkg-config covers native modules that
+# probe system libs at configure time. This is intentionally over-provisioned
+# so a new native transitive dep doesn't rediscover a missing tool.
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt,sharing=locked \
     apt-get update && \
-    apt-get install -y --no-install-recommends python3 g++ build-essential cmake && \
+    apt-get install -y --no-install-recommends \
+        python3 python3-dev g++ build-essential cmake pkg-config && \
     rm -rf /var/lib/apt/lists/*
 
 # Install sqlite3 dependencies. You can skip this if you don't use sqlite3 in the image,
@@ -68,8 +72,14 @@ ENV NODE_OPTIONS="--no-node-snapshot"
 COPY --chown=node:node yarn.lock package.json packages/backend/dist/skeleton.tar.gz ./
 RUN tar xzf skeleton.tar.gz && rm skeleton.tar.gz
 
+# YARN_ENABLE_INLINE_BUILDS surfaces native-module STDERR (node-gyp compiler
+# errors) in the build log. Without it, yarn 4 stores build errors in an
+# ephemeral /tmp/xfs-*/build.log inside the image, making CI failures
+# undiagnosable after the fact. Cost is a slightly noisier log; benefit is
+# actionable errors on future native-dep regressions.
 RUN --mount=type=cache,target=/home/node/.cache/yarn,sharing=locked,uid=1000,gid=1000 \
-    yarn workspaces focus --all --production && rm -rf "$(yarn cache clean)"
+    YARN_ENABLE_INLINE_BUILDS=true yarn workspaces focus --all --production && \
+    rm -rf "$(yarn cache clean)"
 
 # This will include the examples, if you don't need these simply remove this line
 COPY --chown=node:node examples ./examples
