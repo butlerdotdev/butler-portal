@@ -147,6 +147,7 @@ describe('BASELINE_ROUTES structural gating (catches mutations that remove the g
 			'/settings',
 			'/catalog-graph',
 			'/notifications',
+			'/rbac',
 			'/butler/*',
 			'/workspaces/*',
 			'/registry/*',

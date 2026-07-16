@@ -41,6 +41,16 @@ with dynamicPlugins disabled (chart default) and butler off (chart default), pod
               value: "false"
             - name: APP_CONFIG_plugins_pipeline_enabled
               value: "false"
+            - name: APP_CONFIG_permission_enabled
+              value: "true"
+            - name: APP_CONFIG_permission_rbac_pluginsWithPermission
+              value: '["catalog","scaffolder","permission"]'
+            - name: APP_CONFIG_permission_rbac_defaultPermissions
+              value: '{"basicPermissions":[{"action":"read","permission":"catalog.entity.read"},{"action":"read","permission":"catalog.location.read"},{"action":"read","permission":"scaffolder.task.read"},{"action":"read","permission":"scaffolder.template.parameter.read"},{"action":"read","permission":"scaffolder.template.step.read"}],"defaultRole":"role:default/butler-portal-user"}'
+            - name: APP_CONFIG_permission_rbac_policies-csv-file
+              value: /etc/butler-portal-rbac/policy.csv
+            - name: APP_CONFIG_permission_rbac_policyFileReload
+              value: "true"
           image: ghcr.io/butlerdotdev/butler-portal:snapshot-baseline
           imagePullPolicy: IfNotPresent
           livenessProbe:
@@ -67,7 +77,15 @@ with dynamicPlugins disabled (chart default) and butler off (chart default), pod
             requests:
               cpu: 250m
               memory: 512Mi
+          volumeMounts:
+            - mountPath: /etc/butler-portal-rbac
+              name: rbac-policy
+              readOnly: true
       serviceAccountName: butler-portal
+      volumes:
+        - configMap:
+            name: butler-portal-rbac-policy
+          name: rbac-policy
 with dynamicPlugins disabled and butler enabled, pod template byte-identical to 0.4.0 snapshot:
   1: |
     metadata:
@@ -121,6 +139,16 @@ with dynamicPlugins disabled and butler enabled, pod template byte-identical to 
                 secretKeyRef:
                   key: password
                   name: butler-server-auth-test
+            - name: APP_CONFIG_permission_enabled
+              value: "true"
+            - name: APP_CONFIG_permission_rbac_pluginsWithPermission
+              value: '["catalog","scaffolder","permission"]'
+            - name: APP_CONFIG_permission_rbac_defaultPermissions
+              value: '{"basicPermissions":[{"action":"read","permission":"catalog.entity.read"},{"action":"read","permission":"catalog.location.read"},{"action":"read","permission":"scaffolder.task.read"},{"action":"read","permission":"scaffolder.template.parameter.read"},{"action":"read","permission":"scaffolder.template.step.read"}],"defaultRole":"role:default/butler-portal-user"}'
+            - name: APP_CONFIG_permission_rbac_policies-csv-file
+              value: /etc/butler-portal-rbac/policy.csv
+            - name: APP_CONFIG_permission_rbac_policyFileReload
+              value: "true"
           image: ghcr.io/butlerdotdev/butler-portal:snapshot-baseline
           imagePullPolicy: IfNotPresent
           livenessProbe:
@@ -147,4 +175,12 @@ with dynamicPlugins disabled and butler enabled, pod template byte-identical to 
             requests:
               cpu: 250m
               memory: 512Mi
+          volumeMounts:
+            - mountPath: /etc/butler-portal-rbac
+              name: rbac-policy
+              readOnly: true
       serviceAccountName: butler-portal
+      volumes:
+        - configMap:
+            name: butler-portal-rbac-policy
+          name: rbac-policy

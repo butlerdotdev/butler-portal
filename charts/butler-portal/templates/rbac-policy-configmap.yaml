@@ -1,0 +1,24 @@
+{{- /*
+Renders the RBAC policy CSV as a ConfigMap when
+.Values.permission.rbac.policy.csv is non-empty. The deployment mounts this
+at .Values.permission.rbac.policies-csv-file so @backstage-community/plugin-
+rbac-backend can read it at boot and reload on change when policyFileReload
+is true.
+
+Adopters who prefer to ship a fully-external CSV (via a Secret, a
+postRenderer, or a separately-managed ConfigMap) can set
+.Values.permission.rbac.policy.csv to "" and mount their own file at
+.Values.permission.rbac.policies-csv-file; the chart omits its ConfigMap
+in that case.
+*/}}
+{{- if .Values.permission.rbac.policy.csv }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "butler-portal.fullname" . }}-rbac-policy
+  labels:
+    {{- include "butler-portal.labels" . | nindent 4 }}
+data:
+  policy.csv: |-
+{{ .Values.permission.rbac.policy.csv | indent 4 }}
+{{- end }}

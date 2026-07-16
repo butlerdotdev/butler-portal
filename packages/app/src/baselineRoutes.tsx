@@ -41,6 +41,7 @@ import { CatalogGraphPage } from '@backstage/plugin-catalog-graph';
 import { RequirePermission } from '@backstage/plugin-permission-react';
 import { catalogEntityCreatePermission } from '@backstage/plugin-catalog-common/alpha';
 import { NotificationsPage } from '@backstage/plugin-notifications';
+import { RbacPage } from '@backstage-community/plugin-rbac';
 import Grid from '@material-ui/core/Grid';
 import { ButlerPage } from '@internal/plugin-butler';
 import { WorkspacesPluginPage } from '@internal/plugin-workspaces';
@@ -151,6 +152,7 @@ export const BASELINE_ROUTES: BaselineRoute[] = [
 	},
 	{ path: '/catalog-graph', element: <CatalogGraphPage /> },
 	{ path: '/notifications', element: <NotificationsPage /> },
+	{ path: '/rbac', element: <RbacPage /> },
 	{
 		path: '/butler/*',
 		element: (

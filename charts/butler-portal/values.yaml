@@ -61,6 +61,82 @@ appConfig:
   auth:
     provider: guest
 
+# RBAC configuration (chart 0.6.0+). butler-portal replaces the ad-hoc
+# adjudicator seam with @backstage-community/plugin-rbac-backend so adopters
+# can gate their plugins via CSV / admin UI instead of forking the distro.
+#
+# The default policy CSV shipped in the chart gates the known-privileged
+# scaffolder writes and catalog.location.create to a role that adopters
+# bind to their real admin group. Reads flow via
+# permission.rbac.defaultPermissions and apply to every authenticated user.
+#
+# permission.rbac.pluginsWithPermission is REQUIRED. RBAC does NOT
+# auto-discover plugins. A plugin whose id is not listed here returns an
+# empty rule set from the discovery API and enforcement silently passes
+# through with no boot warning. Add every plugin that declares permissions
+# or rules — including your own adopter dynamic plugins.
+permission:
+  # Whether the framework enforces at all. Chart-level default matches the
+  # base app-config; leave true unless you know why.
+  enabled: true
+  rbac:
+    admin:
+      # Users/groups permitted to manage RBAC via the admin UI + API. Do
+      # NOT grant automatic access to other plugins' permissions.
+      users: []
+      # Users/groups granted unrestricted access across the entire portal.
+      # Bootstrap identities go here so an operator can configure RBAC from
+      # the UI before the CSV is populated.
+      superUsers: []
+    # Path where the deployment mounts the policy CSV. Chart renders a
+    # ConfigMap from .Values.permission.rbac.policy.csv and mounts it here
+    # when permission.rbac.policy.csv is non-empty. Overriding the path is
+    # supported for adopters who mount their own CSV via a postRenderer.
+    policies-csv-file: /etc/butler-portal-rbac/policy.csv
+    # Reload the CSV without restarting the pod. Reasonable default; some
+    # operators prefer immutable-only rollouts and set it to false.
+    policyFileReload: true
+    # Plugins whose permissions + rules participate in RBAC discovery.
+    # SILENT-PASS-THROUGH warning above: unlisted plugins are enforced as
+    # no-op. Chart default lists the Backstage core plugins that ship
+    # permissions. Adopter dynamic plugins declaring pe.*, myplugin.* etc
+    # add their pluginId here.
+    pluginsWithPermission:
+      - catalog
+      - scaffolder
+      - permission
+    # Default read-tier policy applied to every authenticated user. Adds
+    # a virtual role that grants the enumerated reads; writes stay routed
+    # through the CSV policy.
+    defaultPermissions:
+      defaultRole: role:default/butler-portal-user
+      basicPermissions:
+        - permission: catalog.entity.read
+          action: read
+        - permission: catalog.location.read
+          action: read
+        - permission: scaffolder.task.read
+          action: read
+        - permission: scaffolder.template.parameter.read
+          action: read
+        - permission: scaffolder.template.step.read
+          action: read
+    # Adopter policy CSV. Rendered as a ConfigMap and mounted at
+    # policies-csv-file. Default gates the known-privileged scaffolder
+    # writes and catalog.location.create to role:default/butler-portal-
+    # admin. Fresh adopters bind their real admin group to that role at
+    # the last line of the CSV — the PLACEHOLDER binding must be replaced
+    # before non-superUser writes are permitted.
+    policy:
+      csv: |
+        p, role:default/butler-portal-admin, scaffolder.task.create, use, allow
+        p, role:default/butler-portal-admin, scaffolder.task.cancel, use, allow
+        p, role:default/butler-portal-admin, scaffolder.action.execute, use, allow
+        p, role:default/butler-portal-admin, scaffolder.template.management, use, allow
+        p, role:default/butler-portal-admin, catalog.location.create, create, allow
+
+        g, group:default/PLACEHOLDER-ADMIN-GROUP, role:default/butler-portal-admin
+
 # Service-account credentials for authenticating to butler-server.
 # REQUIRED when plugins.butler.enabled is true: chart install/upgrade fails
 # if Butler is enabled and butlerAuth.existingSecret is unset. When Butler
