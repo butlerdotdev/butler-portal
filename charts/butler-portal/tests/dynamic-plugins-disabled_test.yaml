@@ -68,18 +68,28 @@ tests:
           path: spec.template.spec.initContainers
 
   - it: no dynamic-plugins volume when dynamicPlugins disabled
+    set:
+      # Chart 0.6.0 ships an RBAC policy CSV by default (safe-by-default:
+      # the shipped CSV gates the privileged scaffolder writes and
+      # catalog.location.create to a placeholder admin group that fresh
+      # adopters replace). The RBAC volume renders whenever policy.csv is
+      # non-empty, regardless of dynamicPlugins. To assert the specific
+      # invariant "no dynamic-plugins volume when dynamicPlugins disabled"
+      # without the RBAC volume as noise, explicitly empty policy.csv for
+      # this test only. Real deployments keep the default.
+      permission:
+        rbac:
+          policy:
+            csv: ""
     asserts:
-      # In the chart-default disabled state (no butlerSigning secret,
-      # no dynamicPlugins), spec.template.spec.volumes is absent
+      # With both dynamicPlugins and the RBAC policy CSV disabled and no
+      # butlerSigning secret, spec.template.spec.volumes is absent
       # entirely (the templates/deployment.yaml gates the whole volumes
-      # block behind the same `or` that gates volumeMounts -- if
-      # neither butlerSigning nor dynamicPlugins is on, no volumes
-      # block renders). The intent of this test is "no volume named
-      # dynamic-plugins appears in the rendered pod template," and an
-      # absent volumes section satisfies that as strongly as an empty
-      # one. isNull is also compatible across helm-unittest versions
-      # (0.5.2 CI pin + 1.x local), while notContains against an
-      # absent path errors on 0.5.2 with "unknown path."
+      # block behind the same `or` that gates volumeMounts -- if none of
+      # butlerSigning, dynamicPlugins, or the RBAC policy CSV are on, no
+      # volumes block renders). isNull is also compatible across helm-
+      # unittest versions (0.5.2 CI pin + 1.x local), while notContains
+      # against an absent path errors on 0.5.2 with "unknown path."
       - isNull:
           path: spec.template.spec.volumes
 
