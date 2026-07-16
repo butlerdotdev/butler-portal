@@ -215,7 +215,35 @@ spec:
             - name: NODE_PATH
               value: /app/node_modules
             {{- end }}
-          {{- if or .Values.butlerSigning.existingSecret .Values.dynamicPlugins.enabled }}
+            # RBAC configuration. Arrays and nested objects are serialized as
+            # JSON via toJson; Backstage's config-loader parses APP_CONFIG_*
+            # env vars as JSON. The policy CSV itself lives in a separate
+            # ConfigMap and mounts at policies-csv-file (not env-injected).
+            - name: APP_CONFIG_permission_enabled
+              value: {{ .Values.permission.enabled | quote }}
+            {{- if .Values.permission.rbac.admin.users }}
+            - name: APP_CONFIG_permission_rbac_admin_users
+              value: {{ .Values.permission.rbac.admin.users | toJson | quote }}
+            {{- end }}
+            {{- if .Values.permission.rbac.admin.superUsers }}
+            - name: APP_CONFIG_permission_rbac_admin_superUsers
+              value: {{ .Values.permission.rbac.admin.superUsers | toJson | quote }}
+            {{- end }}
+            {{- if .Values.permission.rbac.pluginsWithPermission }}
+            - name: APP_CONFIG_permission_rbac_pluginsWithPermission
+              value: {{ .Values.permission.rbac.pluginsWithPermission | toJson | quote }}
+            {{- end }}
+            {{- if .Values.permission.rbac.defaultPermissions }}
+            - name: APP_CONFIG_permission_rbac_defaultPermissions
+              value: {{ .Values.permission.rbac.defaultPermissions | toJson | quote }}
+            {{- end }}
+            {{- if .Values.permission.rbac.policy.csv }}
+            - name: APP_CONFIG_permission_rbac_policies-csv-file
+              value: {{ index .Values.permission.rbac "policies-csv-file" | quote }}
+            - name: APP_CONFIG_permission_rbac_policyFileReload
+              value: {{ .Values.permission.rbac.policyFileReload | quote }}
+            {{- end }}
+          {{- if or .Values.butlerSigning.existingSecret .Values.dynamicPlugins.enabled .Values.permission.rbac.policy.csv }}
           volumeMounts:
             {{- if .Values.butlerSigning.existingSecret }}
             - name: butler-signing-key
@@ -228,6 +256,11 @@ spec:
               # hardcoded write path. The backend container mounts it
               # read-only.
               mountPath: /dynamic-plugins-root
+              readOnly: true
+            {{- end }}
+            {{- if .Values.permission.rbac.policy.csv }}
+            - name: rbac-policy
+              mountPath: /etc/butler-portal-rbac
               readOnly: true
             {{- end }}
           {{- end }}
@@ -245,7 +278,7 @@ spec:
             periodSeconds: 5
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
-      {{- if or .Values.butlerSigning.existingSecret .Values.dynamicPlugins.enabled }}
+      {{- if or .Values.butlerSigning.existingSecret .Values.dynamicPlugins.enabled .Values.permission.rbac.policy.csv }}
       volumes:
         {{- if .Values.butlerSigning.existingSecret }}
         - name: butler-signing-key
@@ -266,6 +299,11 @@ spec:
         - name: dynamic-plugins-config
           configMap:
             name: {{ include "butler-portal.fullname" . }}-dynamic-plugins
+        {{- end }}
+        {{- if .Values.permission.rbac.policy.csv }}
+        - name: rbac-policy
+          configMap:
+            name: {{ include "butler-portal.fullname" . }}-rbac-policy
         {{- end }}
       {{- end }}
       {{- with .Values.nodeSelector }}

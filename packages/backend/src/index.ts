@@ -52,13 +52,14 @@ backend.add(
 // See https://backstage.io/docs/features/software-catalog/configuration#subscribing-to-catalog-errors
 backend.add(import('@backstage/plugin-catalog-backend-module-logs'));
 
-// permission plugin. Wired via a delegating policy that routes each
-// authorize() call to a plugin-provided adjudicator by permission-name
-// prefix (see authAdjudicator.ts). Unclaimed namespaces fall through to
-// ALLOW, preserving Backstage core plugin behavior.
+// permission plugin. The @backstage-community RBAC plugin owns the singleton
+// permission policy; deployments configure adopter policy via CSV and the
+// admin UI at /rbac. Adopter plugins that expose permissions must be listed
+// in permission.rbac.pluginsWithPermission or their permissions are silently
+// discovered as empty and enforcement passes through — see the adopter guide
+// in examples/adopter-plugin/.
 backend.add(import('@backstage/plugin-permission-backend'));
-backend.add(import('./permissionPolicy'));
-backend.add(import('./registryAdjudicator'));
+backend.add(import('@backstage-community/plugin-rbac-backend'));
 
 // search plugin
 backend.add(import('@backstage/plugin-search-backend'));
