@@ -1,0 +1,7 @@
+node_modules/
+dist/
+dist-dynamic/
+dist-types/
+# The example is a reference adopters copy; we do not ship a lockfile.
+# npm regenerates one on each install (and CI does the same).
+package-lock.json
