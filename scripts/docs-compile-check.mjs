@@ -269,11 +269,20 @@ async function checkDoc(docPath) {
   await writeFile(resolve(harness, 'tsconfig.json'), JSON.stringify(TSCONFIG, null, 2));
 
   // Install.
+  // --legacy-peer-deps mirrors examples/adopter-plugin/backend/.npmrc.
+  // Yarn (used across butler-portal) resolves peer conflicts more loosely
+  // than npm 9+; @backstage/cli@0.36.4's peerOptional jsdom range
+  // conflicts with a transitive jest-environment-jsdom's jsdom. Docs do
+  // not currently pull @backstage/cli into the harness, so this is
+  // future-proofing rather than an active fix — kept aligned so a doc
+  // that adds a CLI-adjacent dep does not hit ERESOLVE from a different
+  // install semantic than the rest of the repo.
   console.log('npm install ...');
-  const install = spawnSync('npm', ['install', '--no-audit', '--no-fund', '--silent'], {
-    cwd: harness,
-    stdio: 'inherit',
-  });
+  const install = spawnSync(
+    'npm',
+    ['install', '--no-audit', '--no-fund', '--legacy-peer-deps', '--silent'],
+    { cwd: harness, stdio: 'inherit' },
+  );
   if (install.status !== 0) {
     return { ok: false, docPath, reason: 'npm install failed', otherBareBlocks };
   }

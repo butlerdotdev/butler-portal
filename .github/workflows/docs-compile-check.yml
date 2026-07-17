@@ -30,21 +30,16 @@ jobs:
         run: node scripts/docs-compile-check.mjs
 
       # The adopter-plugin reference is the "runnable reference" the docs
-      # point at as ground truth. Ground truth that doesn't compile is
-      # worse than the doc bug it solved (see butlerdotdev/butler-portal#52).
-      # This step is intentionally continue-on-error: true UNTIL #52 lands
-      # and rule.ts compiles; the failing state is visible in every run so
-      # nobody can forget it is broken. Once #52 lands, remove
-      # continue-on-error so the reference is enforced going forward.
+      # point at as ground truth. Both install and compile are enforced;
+      # the reference is the docs' claim, and a claim that does not
+      # build is worse than the doc bug the reference was meant to
+      # solve. The .npmrc in examples/adopter-plugin/backend/ pins
+      # legacy-peer-deps=true so npm accepts the @backstage/cli@0.36.4
+      # jsdom peer conflict the same way yarn (used everywhere else in
+      # the repo) already does.
       - name: Install adopter-plugin reference deps
         working-directory: examples/adopter-plugin/backend
-        continue-on-error: true
         run: npm install --no-audit --no-fund
-      - name: Compile adopter-plugin reference (allow-failure until #52)
+      - name: Compile adopter-plugin reference
         working-directory: examples/adopter-plugin/backend
-        continue-on-error: true
-        run: >
-          npx tsc --noEmit
-          --strict --skipLibCheck --esModuleInterop
-          --target ES2020 --module CommonJS --moduleResolution node
-          src/*.ts
+        run: npx tsc --noEmit
