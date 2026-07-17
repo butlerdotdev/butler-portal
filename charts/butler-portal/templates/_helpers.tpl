@@ -113,21 +113,40 @@ permissions, so the guard is opt-in per plugin. But opt-in has an
 inherent gap — the adopters who would forget the pluginsWithPermission
 listing are the same adopters who would forget to opt into the guard.
 
-This helper fires a NOTES.txt warning on every plugin entry that does
-not opt in. The warning names the CONSEQUENCE (RBAC enforcement is OFF
-for this plugin if it declares permissions, and its gated writes pass
-through as ALLOW), not the omission (consider opting in). The framing
-matters: without it, the warning reads as a lint nit; with it, the
-warning reads as "your authz is not running."
+This helper fires a NOTES.txt warning on plugin entries that neither
+opt into the guard NOR explicitly assert they have no permissions. The
+warning names the CONSEQUENCE (RBAC enforcement is OFF for this plugin
+if it declares permissions, and its gated writes pass-through as
+ALLOW), not the omission (consider opting in). The framing matters:
+without it, the warning reads as a lint nit; with it, the warning
+reads as "your authz is not running."
 
-Renders empty when every plugin entry has permissions.enforced=true or
-when dynamicPlugins.plugins is empty.
+An entry is EXCLUDED from the warning when any of:
+
+- `disabled: true` — the plugin is not loaded, so its permissions are
+  not in play. Re-enabling it re-surfaces the entry in the warn.
+- `permissions.declared: false` — explicit operator assertion "I know
+  this plugin has no permissions, don't warn me." Use for purely-UI
+  plugins (catalog providers, auth providers, frontend widgets).
+- `permissions.enforced: true` — opted into the structural guard.
+
+Any real fleet ends up with a mix: enforced true for permission-
+declaring plugins, declared false for known-UI-only plugins, and
+disabled true for temporary opt-outs. The warn surfaces only entries
+the operator has not explicitly categorized.
+
+Renders empty when every plugin entry is categorized or when
+dynamicPlugins.plugins is empty.
 */}}
 {{- define "butler-portal.warnRbacUnopted" -}}
 {{- $unopted := list -}}
 {{- range $p := .Values.dynamicPlugins.plugins -}}
-  {{- if not (and $p.permissions $p.permissions.enforced) -}}
-    {{- $unopted = append $unopted (default "<unnamed>" $p.package) -}}
+  {{- if not $p.disabled -}}
+    {{- if not (and $p.permissions $p.permissions.enforced) -}}
+      {{- if not (and $p.permissions (hasKey $p.permissions "declared") (not $p.permissions.declared)) -}}
+        {{- $unopted = append $unopted (default "<unnamed>" $p.package) -}}
+      {{- end -}}
+    {{- end -}}
   {{- end -}}
 {{- end -}}
 {{- if gt (len $unopted) 0 }}
@@ -140,15 +159,17 @@ their gated writes pass-through as ALLOW regardless of your policy CSV.
 
 {{ range $unopted }}  - {{ . }}
 {{ end }}
-Set `permissions.enforced: true` and `permissions.pluginId: <id>` on
-each plugin entry to structurally enforce the pluginsWithPermission
-listing at helm install/upgrade. The guard is opt-in because the
-chart cannot read OCI plugin manifests to auto-detect which plugins
-declare permissions; the opt-in is your assertion that the plugin does.
+Two ways to resolve each entry:
 
-If a plugin does NOT declare permissions (purely-UI plugins, frontend
-widgets, etc.), leaving this unset is correct — this warning applies
-only when a listed plugin gates anything via `permissions.authorize()`
-inside its backend.
+- If the plugin DECLARES permissions: set `permissions.enforced: true`
+  and `permissions.pluginId: <id>` on the entry to structurally
+  enforce the pluginsWithPermission listing at helm install/upgrade.
+- If the plugin has NO permissions (purely-UI plugins, catalog
+  providers, auth providers, frontend widgets): set
+  `permissions.declared: false` on the entry to silence this warning.
+
+The guard is opt-in because the chart cannot read OCI plugin manifests
+to auto-detect which plugins declare permissions; the opt-in — either
+direction — is your assertion about the plugin.
 {{- end -}}
 {{- end }}

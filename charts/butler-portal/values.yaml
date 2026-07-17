@@ -362,21 +362,42 @@ dynamicPlugins:
   # silently passes through as ALLOW) into a helm error the operator has
   # to fix before deploy.
   #
-  # Opt-in per plugin, WITH LOUD WARN ON OPT-OUT. The chart cannot detect
-  # from a plugin's OCI entry whether it declares permissions (no plugin
-  # manifest is accessible at helm-template time), so the guard cannot be
-  # default-on without breaking every values file that lists purely-UI
-  # plugins. Instead, every plugin entry that does NOT set
-  # `permissions.enforced: true` triggers a NOTES.txt warning naming the
-  # consequence: if the plugin declares permissions, its authz is NOT
-  # running and its gated writes pass through as ALLOW. The warning
-  # renders on every install and upgrade so an operator sees it every
-  # time; ignore only when the plugin declares no permissions.
+  # Opt-in per plugin, WITH LOUD WARN ON UNCATEGORIZED ENTRIES. The
+  # chart cannot detect from a plugin's OCI entry whether it declares
+  # permissions (no plugin manifest is accessible at helm-template
+  # time), so the guard cannot be default-on without breaking every
+  # values file that lists purely-UI plugins. Instead, each plugin
+  # entry has to be categorized in one of three ways or a NOTES.txt
+  # warning fires naming the consequence for that entry:
+  #
+  #   permissions.enforced: true   guard enforces at helm template time
+  #                                (fail if pluginId is missing from
+  #                                permission.rbac.pluginsWithPermission).
+  #                                Use for plugins that declare permissions.
+  #
+  #   permissions.declared: false  explicit assertion "this plugin has no
+  #                                permissions". Silences the warn for this
+  #                                entry. Use for catalog providers, auth
+  #                                providers, frontend widgets — anything
+  #                                that never calls permissions.authorize().
+  #
+  #   disabled: true               plugin is not loaded; the warn skips it
+  #                                automatically. Re-enabling re-surfaces
+  #                                the entry unless it also carries one of
+  #                                the two categorizations above.
+  #
+  # Any real fleet ends up mixed: enforced true for permission-
+  # declaring plugins, declared false for UI-only plugins. Uncategorized
+  # entries land in the NOTES.txt warning on every install/upgrade until
+  # the operator makes a call about them.
   #
   # Example:
   #   plugins:
+  #     # Purely UI plugin (frontend widget) — no permissions.
   #     - package: oci://ghcr.io/customer/butler-tempo-plugin:1.0.0
   #       integrity: sha512:abc123...
+  #       permissions:
+  #         declared: false
   #       pluginConfig:
   #         dynamicPlugins:
   #           frontend:
@@ -385,6 +406,7 @@ dynamicPlugins:
   #                 - path: /tempo
   #                   importName: TempoPage
   #                   menuItem: { text: Tempo }
+  #     # Backend plugin that declares Backstage permissions.
   #     - package: oci://ghcr.io/customer/butler-tempo-plugin:1.0.0-backend
   #       integrity: sha512:def456...
   #       permissions:
