@@ -1,0 +1,50 @@
+name: docs compile-check
+
+on:
+  pull_request:
+    paths:
+      - "docs/plugin-authoring/**/*.md"
+      - "docs/architecture/**/*.md"
+      - "examples/adopter-plugin/**"
+      - "scripts/docs-compile-check.mjs"
+      - ".github/workflows/docs-compile-check.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "docs/plugin-authoring/**/*.md"
+      - "docs/architecture/**/*.md"
+      - "examples/adopter-plugin/**"
+      - "scripts/docs-compile-check.mjs"
+      - ".github/workflows/docs-compile-check.yml"
+
+jobs:
+  compile-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Extract fenced blocks and compile
+        run: node scripts/docs-compile-check.mjs
+
+      # The adopter-plugin reference is the "runnable reference" the docs
+      # point at as ground truth. Ground truth that doesn't compile is
+      # worse than the doc bug it solved (see butlerdotdev/butler-portal#52).
+      # This step is intentionally continue-on-error: true UNTIL #52 lands
+      # and rule.ts compiles; the failing state is visible in every run so
+      # nobody can forget it is broken. Once #52 lands, remove
+      # continue-on-error so the reference is enforced going forward.
+      - name: Install adopter-plugin reference deps
+        working-directory: examples/adopter-plugin/backend
+        continue-on-error: true
+        run: npm install --no-audit --no-fund
+      - name: Compile adopter-plugin reference (allow-failure until #52)
+        working-directory: examples/adopter-plugin/backend
+        continue-on-error: true
+        run: >
+          npx tsc --noEmit
+          --strict --skipLibCheck --esModuleInterop
+          --target ES2020 --module CommonJS --moduleResolution node
+          src/*.ts
