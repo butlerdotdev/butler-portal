@@ -175,14 +175,15 @@ permission:
   rbac:
     policy:
       csv: |
-        p, role:default/portal-privileged, myplugin.thing.write, update, allow
-        g, group:default/portal-admins, role:default/portal-privileged
+        p, role:default/butler-portal-admin, myplugin.thing.write, update, allow
+        g, group:default/your-admin-group, role:default/butler-portal-admin
 ```
 
 The `p, ...` row grants the permission to a role. The `g, ...` row
-binds a group to that role. Adopters replace `portal-admins` with
-their own group name; the role name is a butler-portal convention
-that any adopter can override.
+binds a group to that role. `role:default/butler-portal-admin` is
+the privileged role the chart ships by default; adopters who split
+roles further (e.g. `role:default/myplugin-writer`) reference their
+custom roles the same way.
 
 ## Frontend visibility
 
@@ -263,7 +264,7 @@ Every plugin that declares permissions should ship a top-level
 
 | Permission name | Action | UI/API surface gated | Default role granting |
 |---|---|---|---|
-| `myplugin.thing.write` | update | POST /api/my-plugin/things/:id | role:default/portal-privileged |
+| `myplugin.thing.write` | update | POST /api/my-plugin/things/:id | role:default/butler-portal-admin |
 
 ## Enforcement mechanism
 
@@ -272,7 +273,7 @@ Route handlers call `requirePermission(req, <perm>, permissions, httpAuth)` befo
 ## Adopter configuration
 
 Add `my-plugin` to `permission.rbac.pluginsWithPermission` and bind
-the desired role to `role:default/portal-privileged` (or override).
+the desired role to `role:default/butler-portal-admin` (or override).
 ```
 
 The doc lands in the same PR as the permission declaration. Reviewers
