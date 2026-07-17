@@ -95,18 +95,27 @@ export default createBackendModule({
             try {
               const scanned = dynamicPlugins.getScannedPackage(plugin);
               // The plugin's own backstage.pluginId in package.json is
-              // the authoritative source; fall back to the package
-              // name only if pluginId is unset (Backstage tolerates this).
-              pluginId =
-                (scanned.manifest.backstage as { pluginId?: string })?.pluginId ??
-                scanned.manifest.name;
+              // the authoritative source. Do NOT fall back to
+              // manifest.name (the npm package name), because the
+              // package name and pluginId are unrelated — e.g.,
+              // '@backstage-community/plugin-rbac-backend' has
+              // pluginId 'permission'. Wrong pluginId leads to a
+              // wrong discovery lookup and a bogus 404 the audit
+              // would silently accept.
+              pluginId = (scanned.manifest.backstage as { pluginId?: string })
+                ?.pluginId;
             } catch (err) {
               logger.warn(
                 `${CATEGORIZED_LOG_PREFIX} could not resolve pluginId for '${plugin.name}': ${err}. Skipping this entry.`,
               );
               continue;
             }
-            if (!pluginId) continue;
+            if (!pluginId) {
+              logger.debug(
+                `${CATEGORIZED_LOG_PREFIX} plugin '${plugin.name}' has no backstage.pluginId in its package.json manifest; skipping (the audit cannot check pluginsWithPermission listing without knowing the pluginId).`,
+              );
+              continue;
+            }
 
             let baseUrl: string;
             try {
@@ -142,11 +151,24 @@ export default createBackendModule({
               if (!res.ok) {
                 // 404 is the common case: the plugin never called
                 // addPermissions/addResourceType, so no integration
-                // router was wired. Not an error — the plugin is invisible
-                // to the audit by design (see coverage limit above).
-                logger.debug(
-                  `${CATEGORIZED_LOG_PREFIX} plugin '${pluginId}' returned ${res.status} on /permission/metadata; treating as no-permissions-declared`,
-                );
+                // router was wired. Not an error — the plugin is
+                // invisible to the audit by design (see coverage limit
+                // above). BUT: if the operator LISTED this plugin in
+                // pluginsWithPermission, they expected permissions from
+                // it. A 404 there is not benign; it means the plugin
+                // did not register what the listing implies it should
+                // register. Surface at info so operators auditing
+                // logs see the surprise without confusing it for an
+                // error.
+                if (listed.has(pluginId)) {
+                  logger.info(
+                    `${CATEGORIZED_LOG_PREFIX} plugin '${pluginId}' is listed in permission.rbac.pluginsWithPermission but its /permission/metadata returned ${res.status}. The plugin loaded but did not register any permissions via permissionsRegistry.addPermissions()/.addResourceType(). Either the listing is stale (remove '${pluginId}' from pluginsWithPermission) or the plugin is missing the registration call (see the plugin-authoring docs' addPermissions convention).`,
+                  );
+                } else {
+                  logger.debug(
+                    `${CATEGORIZED_LOG_PREFIX} plugin '${pluginId}' returned ${res.status} on /permission/metadata; treating as no-permissions-declared`,
+                  );
+                }
                 continue;
               }
               metadata = (await res.json()) as PermissionMetadata;
