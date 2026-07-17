@@ -354,6 +354,25 @@ dynamicPlugins:
   # (frontend MF chunks + backend bundle) plus the pluginConfig that
   # registers its UI in the portal shell.
   #
+  # Optional per-entry `permissions` block turns on the pluginsWithPermission
+  # guard for that plugin: if `enforced: true`, helm template FAILS at
+  # install/upgrade unless the entry's `pluginId` is also present in
+  # `permission.rbac.pluginsWithPermission`. This turns the near-security
+  # G1 failure mode (unlisted plugin -> discovery returns [] -> enforcement
+  # silently passes through as ALLOW) into a helm error the operator has
+  # to fix before deploy.
+  #
+  # Opt-in per plugin, WITH LOUD WARN ON OPT-OUT. The chart cannot detect
+  # from a plugin's OCI entry whether it declares permissions (no plugin
+  # manifest is accessible at helm-template time), so the guard cannot be
+  # default-on without breaking every values file that lists purely-UI
+  # plugins. Instead, every plugin entry that does NOT set
+  # `permissions.enforced: true` triggers a NOTES.txt warning naming the
+  # consequence: if the plugin declares permissions, its authz is NOT
+  # running and its gated writes pass through as ALLOW. The warning
+  # renders on every install and upgrade so an operator sees it every
+  # time; ignore only when the plugin declares no permissions.
+  #
   # Example:
   #   plugins:
   #     - package: oci://ghcr.io/customer/butler-tempo-plugin:1.0.0
@@ -366,4 +385,12 @@ dynamicPlugins:
   #                 - path: /tempo
   #                   importName: TempoPage
   #                   menuItem: { text: Tempo }
+  #     - package: oci://ghcr.io/customer/butler-tempo-plugin:1.0.0-backend
+  #       integrity: sha512:def456...
+  #       permissions:
+  #         # The pluginId the plugin registers as (see plugin's PERMISSIONS.md).
+  #         pluginId: tempo
+  #         # When true, helm template fails if pluginId is missing from
+  #         # permission.rbac.pluginsWithPermission below.
+  #         enforced: true
   plugins: []

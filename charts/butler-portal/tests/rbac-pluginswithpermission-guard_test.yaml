@@ -1,0 +1,167 @@
+suite: pluginsWithPermission guard -- opt-in per-plugin structural check
+templates:
+  - templates/deployment.yaml
+  - templates/dynamic-plugins-configmap.yaml
+release:
+  name: butler-portal
+  namespace: butler-portal
+
+# G1 was a documented-4x, enforced-0x failure mode: a plugin whose id is
+# not listed in permission.rbac.pluginsWithPermission returns [] from
+# RBAC's discovery API and every authorize() call for it silently passes
+# through as ALLOW regardless of policy. This suite pins the helm-time
+# guard that turns the drift into an install-time error the operator has
+# to fix.
+#
+# Guard is opt-in per plugin via plugins[].permissions.enforced=true;
+# entries without that flag are ignored so purely-UI dynamic plugins and
+# backward-compatible values files still install unchanged.
+
+tests:
+
+  # --- opt-out cases ---
+
+  - it: chart default renders (no plugins declared; guard is a no-op)
+    asserts:
+      - isKind:
+          of: Deployment
+        template: templates/deployment.yaml
+
+  - it: plugin without permissions block renders (opt-out is the default)
+    set:
+      dynamicPlugins:
+        enabled: true
+        plugins:
+          - package: oci://example.com/ui-only:1.0.0
+            integrity: sha512-xxx
+    asserts:
+      - isKind:
+          of: Deployment
+        template: templates/deployment.yaml
+
+  - it: plugin with permissions.enforced=false renders (explicit opt-out)
+    set:
+      dynamicPlugins:
+        enabled: true
+        plugins:
+          - package: oci://example.com/foo:1.0.0
+            integrity: sha512-xxx
+            permissions:
+              pluginId: foo
+              enforced: false
+    asserts:
+      - isKind:
+          of: Deployment
+        template: templates/deployment.yaml
+
+  # --- opt-in, correctly wired: renders ---
+
+  - it: plugin enforced with pluginId listed in pluginsWithPermission renders
+    set:
+      dynamicPlugins:
+        enabled: true
+        plugins:
+          - package: oci://example.com/foo:1.0.0
+            integrity: sha512-xxx
+            permissions:
+              pluginId: foo
+              enforced: true
+      permission:
+        rbac:
+          pluginsWithPermission:
+            - catalog
+            - scaffolder
+            - permission
+            - foo
+    asserts:
+      - isKind:
+          of: Deployment
+        template: templates/deployment.yaml
+
+  # --- opt-in, misconfigured: guard fails install ---
+
+  - it: enforced plugin missing from pluginsWithPermission FAILS with actionable error
+    set:
+      dynamicPlugins:
+        enabled: true
+        plugins:
+          - package: oci://example.com/foo:1.0.0
+            integrity: sha512-xxx
+            permissions:
+              pluginId: foo
+              enforced: true
+      permission:
+        rbac:
+          pluginsWithPermission:
+            - catalog
+            - scaffolder
+            - permission
+    asserts:
+      - failedTemplate:
+          errorPattern: 'pluginsWithPermission does not include "foo"'
+        template: templates/deployment.yaml
+
+  - it: enforced plugin with pluginsWithPermission empty FAILS
+    set:
+      dynamicPlugins:
+        enabled: true
+        plugins:
+          - package: oci://example.com/foo:1.0.0
+            integrity: sha512-xxx
+            permissions:
+              pluginId: foo
+              enforced: true
+      permission:
+        rbac:
+          pluginsWithPermission: []
+    asserts:
+      - failedTemplate:
+          errorPattern: "silently passes through as ALLOW"
+        template: templates/deployment.yaml
+
+  - it: enforced without pluginId FAILS with instructive error
+    set:
+      dynamicPlugins:
+        enabled: true
+        plugins:
+          - package: oci://example.com/foo:1.0.0
+            integrity: sha512-xxx
+            permissions:
+              enforced: true
+      permission:
+        rbac:
+          pluginsWithPermission:
+            - catalog
+    asserts:
+      - failedTemplate:
+          errorPattern: 'omits permissions\.pluginId'
+        template: templates/deployment.yaml
+
+  # --- multi-plugin: one enforced-and-wired, one enforced-and-missing = FAIL ---
+
+  - it: multi-plugin — one enforced-and-listed, one enforced-and-missing FAILS on the missing one
+    set:
+      dynamicPlugins:
+        enabled: true
+        plugins:
+          - package: oci://example.com/foo:1.0.0
+            integrity: sha512-xxx
+            permissions:
+              pluginId: foo
+              enforced: true
+          - package: oci://example.com/bar:1.0.0
+            integrity: sha512-yyy
+            permissions:
+              pluginId: bar
+              enforced: true
+      permission:
+        rbac:
+          pluginsWithPermission:
+            - catalog
+            - scaffolder
+            - permission
+            - foo
+    asserts:
+      - failedTemplate:
+          errorPattern: 'pluginId "bar".*does not include "bar"'
+        template: templates/deployment.yaml

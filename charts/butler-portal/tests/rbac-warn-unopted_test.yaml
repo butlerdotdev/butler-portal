@@ -1,0 +1,155 @@
+suite: pluginsWithPermission -- warn-loudly on plugin entries that opt out of the guard
+templates:
+  - templates/NOTES.txt
+release:
+  name: butler-portal
+  namespace: butler-portal
+
+# Complements the structural guard in rbac-pluginswithpermission-guard_test.yaml.
+# The guard fails install/upgrade when an opted-in plugin's id is missing from
+# permission.rbac.pluginsWithPermission; this suite pins the WARN that fires on
+# plugins that do NOT opt in.
+#
+# The warning phrases the consequence, not the omission: not "these are
+# unchecked, consider opting in" but "your authz is not running for these
+# plugins if they declare permissions." Framing is load-bearing — the same
+# people who forget to opt in are the ones who need to see what OFF means, not
+# an invitation to enable a switch they might treat as optional.
+
+tests:
+
+  - it: no warning when there are no dynamic plugins
+    asserts:
+      - notMatchRegex:
+          path: raw
+          pattern: "pluginsWithPermission enforcement is OFF"
+
+  - it: no warning when every plugin opts in
+    set:
+      dynamicPlugins:
+        enabled: true
+        plugins:
+          - package: oci://example.com/foo:1.0.0
+            integrity: sha512-xxx
+            permissions:
+              pluginId: foo
+              enforced: true
+      permission:
+        rbac:
+          pluginsWithPermission:
+            - catalog
+            - scaffolder
+            - permission
+            - foo
+    asserts:
+      - notMatchRegex:
+          path: raw
+          pattern: "pluginsWithPermission enforcement is OFF"
+
+  - it: warns when a plugin entry has no permissions block
+    set:
+      dynamicPlugins:
+        enabled: true
+        plugins:
+          - package: oci://example.com/foo:1.0.0
+            integrity: sha512-xxx
+    asserts:
+      - matchRegex:
+          path: raw
+          pattern: "pluginsWithPermission enforcement is OFF"
+      - matchRegex:
+          path: raw
+          pattern: "authz is NOT running"
+      - matchRegex:
+          path: raw
+          pattern: "oci://example.com/foo:1.0.0"
+
+  - it: warns when a plugin entry has permissions.enforced=false explicitly
+    set:
+      dynamicPlugins:
+        enabled: true
+        plugins:
+          - package: oci://example.com/foo:1.0.0
+            integrity: sha512-xxx
+            permissions:
+              pluginId: foo
+              enforced: false
+      permission:
+        rbac:
+          pluginsWithPermission:
+            - catalog
+            - foo
+    asserts:
+      - matchRegex:
+          path: raw
+          pattern: "pluginsWithPermission enforcement is OFF"
+
+  - it: warning names the CONSEQUENCE, not the omission
+    set:
+      dynamicPlugins:
+        enabled: true
+        plugins:
+          - package: oci://example.com/foo:1.0.0
+            integrity: sha512-xxx
+    asserts:
+      # Consequence phrases: presence proves the warning explains what is broken.
+      - matchRegex:
+          path: raw
+          pattern: "pass-through as ALLOW"
+      - matchRegex:
+          path: raw
+          pattern: "declares Backstage permissions"
+
+  - it: singular count when only one plugin is unopted
+    set:
+      dynamicPlugins:
+        enabled: true
+        plugins:
+          - package: oci://example.com/foo:1.0.0
+            integrity: sha512-xxx
+    asserts:
+      - matchRegex:
+          path: raw
+          pattern: "1 plugin entry\\."
+
+  - it: plural count when multiple plugins are unopted
+    set:
+      dynamicPlugins:
+        enabled: true
+        plugins:
+          - package: oci://example.com/foo:1.0.0
+            integrity: sha512-xxx
+          - package: oci://example.com/bar:1.0.0
+            integrity: sha512-yyy
+    asserts:
+      - matchRegex:
+          path: raw
+          pattern: "2 plugin entries\\."
+
+  - it: mixed — opted-in + opted-out — warns only about the opted-out
+    set:
+      dynamicPlugins:
+        enabled: true
+        plugins:
+          - package: oci://example.com/foo:1.0.0
+            integrity: sha512-xxx
+            permissions:
+              pluginId: foo
+              enforced: true
+          - package: oci://example.com/bar:1.0.0
+            integrity: sha512-yyy
+      permission:
+        rbac:
+          pluginsWithPermission:
+            - catalog
+            - foo
+    asserts:
+      - matchRegex:
+          path: raw
+          pattern: "1 plugin entry\\."
+      - matchRegex:
+          path: raw
+          pattern: "oci://example.com/bar:1.0.0"
+      - notMatchRegex:
+          path: raw
+          pattern: "oci://example.com/foo:1.0.0"
