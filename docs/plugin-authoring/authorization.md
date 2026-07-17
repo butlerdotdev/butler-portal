@@ -13,6 +13,10 @@ for the framework overview. This page is the plugin-author contract:
 what you write in your plugin so the adopter's RBAC policy can gate
 your surface.
 
+Runnable reference:
+[examples/adopter-plugin](https://github.com/butlerdotdev/butler-portal/tree/main/examples/adopter-plugin).
+Every pattern below has a working counterpart there.
+
 ## Contract at a glance
 
 1. Pick a permission-name prefix for your plugin. End it with a
@@ -139,6 +143,13 @@ export const myPlugin = createBackendPlugin({
       async init({ logger, httpRouter, httpAuth, permissions }) {
         const router = await createRouter({ logger, httpAuth, permissions });
         httpRouter.use(router);
+        // Backstage's default HTTP auth policy for backend routes does
+        // NOT accept the browser's user session cookie. Without this,
+        // browser-originating requests to /api/my-plugin/things/:id
+        // return 401 BEFORE authorize() runs, and the caller sees an
+        // auth failure they cannot resolve. Declare the paths that
+        // accept the user cookie explicitly.
+        httpRouter.addAuthPolicy({ path: '/things/:id', allow: 'user-cookie' });
       },
     });
   },
@@ -147,6 +158,102 @@ export const myPlugin = createBackendPlugin({
 
 `NotAllowedError` from `@backstage/errors` serializes as HTTP 403 by
 default when thrown from an Express handler.
+
+## Conditional policies and permission rules
+
+The `permissions.authorize()` pattern above supports only unconditional
+allow/deny. To gate a permission on properties of the target resource
+(e.g., "user can edit only entities they own"), the plugin declares a
+permission RULE, registers it with the permissions registry, and the
+adopter references it from RBAC's `conditionalPoliciesFile`.
+
+Declare the rule with `createPermissionRule` (typically in a
+`backend/src/rule.ts`):
+
+```ts
+import { createPermissionResourceRef } from '@backstage/plugin-permission-node';
+import { createPermissionRule } from '@backstage/plugin-permission-node';
+import { z } from 'zod';
+
+export type Thing = { id: string; owner: string };
+
+export const thingResourceRef = createPermissionResourceRef<
+  Thing,
+  { expectedOwner: string }
+>().with({ pluginId: 'my-plugin', resourceType: 'my-thing' });
+
+export const isThingOwnerRule = createPermissionRule({
+  name: 'IS_THING_OWNER',
+  description: 'Allow when the caller owns the thing',
+  resourceRef: thingResourceRef,
+  paramsSchema: z.object({ expectedOwner: z.string() }),
+  apply: (resource, { expectedOwner }) => resource.owner === expectedOwner,
+  toQuery: () => ({}),
+});
+```
+
+Register the rule and its resource type in your plugin's `init`, then
+call `authorize()` with a `resourceRef`:
+
+```ts
+env.registerInit({
+  deps: {
+    /* ...as before... */
+    permissionsRegistry: coreServices.permissionsRegistry,
+  },
+  async init({ /* ... */ permissions, permissionsRegistry }) {
+    permissionsRegistry.addResourceType({
+      resourceRef: thingResourceRef,
+      permissions: [myPluginThingReadPermission],
+      rules: [isThingOwnerRule],
+      getResources: async refs => refs.map(loadThingById),
+    });
+
+    router.get('/things/:id', async (req, res) => {
+      const credentials = await httpAuth.credentials(req);
+      const [decision] = await permissions.authorize(
+        [{ permission: myPluginThingReadPermission, resourceRef: req.params.id }],
+        { credentials },
+      );
+      if (decision.result === AuthorizeResult.DENY) {
+        res.status(403).json({ error: 'forbidden' });
+        return;
+      }
+      // ... proceed
+    });
+  },
+});
+```
+
+Adopters then reference the rule from a conditional policy file, one
+YAML document per policy separated by `---`:
+
+```yaml
+---
+result: CONDITIONAL
+roleEntityRef: role:default/thing-reader
+pluginId: my-plugin
+resourceType: my-thing
+permissionMapping:
+  - read
+conditions:
+  rule: IS_THING_OWNER
+  resourceType: my-thing
+  params:
+    expectedOwner: $currentUser
+```
+
+`$currentUser` and `$ownerRefs` are built-in RBAC aliases substituted
+at authorize-time with the caller's user ref and ownership refs.
+Point adopters at
+[`permission.rbac.conditionalPoliciesFile`](../architecture/permissions.md#shipped-default-policy)
+for where the file mounts.
+
+Working end-to-end reference (permission + rule + resource type +
+gated route + conditional policy YAML):
+[examples/adopter-plugin/backend/src/plugin.ts](https://github.com/butlerdotdev/butler-portal/blob/main/examples/adopter-plugin/backend/src/plugin.ts)
+and
+[examples/adopter-plugin/backend/src/rule.ts](https://github.com/butlerdotdev/butler-portal/blob/main/examples/adopter-plugin/backend/src/rule.ts).
 
 ## Adopter configuration
 

@@ -14,6 +14,13 @@ Plugin authors writing a permission-declaring plugin should read
 [Plugin Authoring: Authorization](../plugin-authoring/authorization.md)
 after this page.
 
+The runnable reference for everything on this page lives at
+[examples/adopter-plugin](https://github.com/butlerdotdev/butler-portal/tree/main/examples/adopter-plugin) —
+a minimal end-to-end plugin declaring a permission, registering a
+permission rule via `permissionsRegistry.addResourceType`, and
+exposing a gated route. Every code snippet below has a working
+counterpart there.
+
 ## Framework
 
 Backstage's upstream permission framework enforces one
@@ -36,6 +43,26 @@ Plugins register their permissions by declaring them with
 `createPermission()` and calling `permissions.authorize()` in their
 request handlers. No plugin-level policy object is needed. RBAC
 evaluates the calls centrally.
+
+## Frontend + backend packages
+
+RBAC ships as two separate packages that must both be installed and
+wired for the `/rbac` UI to appear:
+
+- **Backend**: `@backstage-community/plugin-rbac-backend`, added in
+  `packages/backend/src/index.ts` (butler-portal already does this at
+  `packages/backend/src/index.ts:62`). Handles authorization
+  evaluation.
+- **Frontend**: `@backstage-community/plugin-rbac`, added in
+  `packages/app/` and wired as a route. Butler-portal wires it at
+  `packages/app/src/baselineRoutes.tsx:44` (import) and mounts
+  `<RbacPage />` at path `/rbac`.
+
+Installing only the backend gives you policy evaluation with no admin
+UI — signed-in admins have no way to inspect or edit role bindings
+outside the CSV. Adopters starting from butler-portal's shipped
+`packages/app/` inherit the frontend wiring automatically; adopters
+who bring their own Backstage app must add both packages themselves.
 
 ## Two admin tiers
 
@@ -62,8 +89,6 @@ can override:
 - `permission.enabled: true` — permission enforcement is on.
 - `permission.rbac.admin.users: []` and
   `permission.rbac.admin.superUsers: []` — both empty by default.
-  Adopters MUST populate `superUsers` at install time or nobody can
-  perform gated writes.
 - `permission.rbac.defaultPermissions.defaultRole:
   role:default/butler-portal-user` — every authenticated user is
   implicitly a member of `butler-portal-user`.
@@ -79,15 +104,51 @@ can override:
   `scaffolder.action.execute`, `scaffolder.template.management`,
   `catalog.location.create`.
 - The shipped CSV binds `group:default/PLACEHOLDER-ADMIN-GROUP` to
-  `role:default/butler-portal-admin`. **This is a placeholder that
-  MUST be replaced.** Fresh adopters overwrite the group ref with
-  their real admin group (e.g. their SSO-provisioned platform team)
-  before non-superUser writes become possible.
+  `role:default/butler-portal-admin`. That group does not exist in
+  any tenant's directory; the binding is a placeholder.
 
 The two-role split (`butler-portal-user` for reads,
 `butler-portal-admin` for writes) is the reference shape. Adopters can
 flatten it, extend it, or replace it wholesale — the role names are
 conventions the chart establishes, not hard-coded framework names.
+
+### First-boot state and two paths to unblock writes
+
+Out of the box, `superUsers` is empty AND the `PLACEHOLDER-ADMIN-GROUP`
+binding names a group that no directory resolves. In that state,
+signed-in users can read via `defaultPermissions` but nobody can
+perform gated writes AND nobody can reach the `/rbac` admin UI to
+grant themselves a role (because `admin.users` is also empty). Safe
+by default, bricked for bootstrap. You cannot unbrick from the UI —
+you edit the chart values.
+
+Two independent unblockers, either alone is sufficient:
+
+1. **Populate `superUsers`** with a break-glass identity or group.
+   Members bypass all policy evaluation and can immediately perform
+   writes AND administer RBAC via `/rbac`. Recommended for the
+   initial bootstrap identity only; keep the list to one or two refs.
+2. **Replace `PLACEHOLDER-ADMIN-GROUP`** in the policy CSV with a
+   real group ref your directory resolves (e.g. an SSO-provisioned
+   platform team). Members immediately hold the privileged writes
+   granted by the shipped `role:default/butler-portal-admin`. This
+   path does NOT grant `/rbac` UI access — for that you also need to
+   add the same group to `admin.users`.
+
+The two paths can compose. Typical adopter setup:
+
+1. Set `permission.rbac.admin.superUsers` to one break-glass identity
+   (a service-team on-call user ref).
+2. Replace `PLACEHOLDER-ADMIN-GROUP` in the CSV with your real admin
+   group ref.
+3. Add the same admin group to `permission.rbac.admin.users` so its
+   members can manage RBAC through `/rbac`.
+4. List every plugin that declares permissions under
+   `permission.rbac.pluginsWithPermission` (see below — this is
+   REQUIRED, silently pass-through otherwise).
+5. Deploy. Sign in as an admin-group member. Confirm
+   `GET /api/permission/plugins/condition-rules` returns every plugin
+   ID you listed.
 
 ## What adopters must configure
 
@@ -128,16 +189,36 @@ Two paths ship a CSV binding of a group to a role:
    `permission.rbac.policy.csv`. Gitops-friendly; changes flow
    through the standard chart-values MR path. Recommended for
    production adopters.
-2. **RBAC admin UI** — a superuser edits role assignments through
-   the `/rbac` UI. State lives in the RBAC database. Useful for
-   experimentation; less auditable than gitops.
+2. **RBAC admin UI** — a policy admin or superuser edits role
+   assignments through the `/rbac` UI. State lives in the RBAC
+   database. Useful for experimentation; less auditable than gitops.
 
-Both paths compose; the chart CSV is applied on every reload and the
-UI-created entries persist independently. Adopters who want gitops
-as the sole source of truth should disable admin-UI writes and
-manage everything through the chart values.
+Both paths compose. CSV changes hot-reload without a pod restart:
+Helm rewrites the ConfigMap when values change, kubelet updates the
+mounted file at `permission.rbac.policies-csv-file` (chart default
+`/etc/butler-portal-rbac/policy.csv`), and RBAC's file watcher
+re-reads the file because `permission.rbac.policyFileReload` is
+`true` by chart default. UI-created entries are stored in the RBAC
+database independently of the CSV mount.
+
+To make gitops the sole source of truth, keep
+`permission.rbac.admin.users: []`. Only identities listed under
+`admin.superUsers` can then reach `/rbac`, so day-to-day operators
+cannot make policy edits that would drift from the CSV. RBAC has no
+dedicated toggle to disable UI writes; empty `admin.users` is the
+lever.
 
 ## Migration from the pre-0.6.0 adjudicator seam
+
+> **Pre-upgrade warning.** Before bumping Butler Portal past 0.5.x,
+> migrate any plugin that imports `authAdjudicatorExtensionPoint` from
+> `packages/backend/src/authAdjudicator.ts` — that file is deleted in
+> 0.6.0. In-tree plugins fail at TypeScript build. Pre-built dynamic-
+> plugin OCI artifacts compiled against pre-0.6.0 fail at runtime when
+> the dynamic-plugin loader tries to resolve the removed import; the
+> loader error may not be prominent in boot output, so a plugin can
+> appear to load and silently register no routes. Migrate the plugin
+> and republish the OCI artifact BEFORE upgrading the portal.
 
 Butler Portal versions prior to 0.6.0 shipped `ButlerPortalDelegatingPolicy`
 in `packages/backend/src/permissionPolicy.ts`. Plugins registered a
@@ -153,14 +234,19 @@ to the RBAC pattern:
   into RBAC policy CSV rows.
 - Keep the `createPermission()` declarations; they are still the
   canonical way to name what gets gated.
-- If your adjudicator did conditional decisions (e.g., "user can edit
-  only the entity they own"), express those as conditional policies
-  via RBAC's `permission-rules` API and `permission.rbac.conditionalPoliciesFile`.
+- If your adjudicator did conditional decisions (e.g. "user can edit
+  only the entity they own"), express those via RBAC's
+  `permission.rbac.conditionalPoliciesFile`, and declare the rule
+  itself via `permissionsRegistry.addResourceType({ resourceRef,
+  permissions, rules, getResources })` in your plugin's `init`. See
+  [examples/adopter-plugin/backend/src/plugin.ts](https://github.com/butlerdotdev/butler-portal/blob/main/examples/adopter-plugin/backend/src/plugin.ts)
+  for a working `createPermissionRule` + `addResourceType` +
+  conditional-policy end-to-end.
 
 The migration is mechanical for boolean allow/deny adjudicators.
 Conditional adjudicators require a small refactor to expose the
-condition as a `createPermissionRule()` and reference it from the
-policy file.
+condition as a `createPermissionRule()` and register it via
+`permissionsRegistry.addResourceType`.
 
 ## Known gotchas
 
