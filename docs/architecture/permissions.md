@@ -122,32 +122,28 @@ grant themselves a role (because `admin.users` is also empty). Safe
 by default, bricked for bootstrap. You cannot unbrick from the UI —
 you edit the chart values.
 
-Two independent unblockers, either alone is sufficient:
-
-1. **Populate `superUsers`** with a break-glass identity or group.
-   Members bypass all policy evaluation and can immediately perform
-   writes AND administer RBAC via `/rbac`. Recommended for the
-   initial bootstrap identity only; keep the list to one or two refs.
-2. **Replace `PLACEHOLDER-ADMIN-GROUP`** in the policy CSV with a
-   real group ref your directory resolves (e.g. an SSO-provisioned
-   platform team). Members immediately hold the privileged writes
-   granted by the shipped `role:default/butler-portal-admin`. This
-   path does NOT grant `/rbac` UI access — for that you also need to
-   add the same group to `admin.users`.
-
-Two separate steps, in this order. Do NOT treat them as a single
-checklist — the first block unbricks access; the second is what
-makes enforcement actually work.
+Two separate blocks of work, in this order. Do NOT treat them as one
+checklist — Block A unbricks access; Block B is what makes enforcement
+actually work.
 
 **A. Bootstrap access** (recovery mechanics — makes the portal
 usable at all):
 
+There are two independent levers that unblock writes: populating
+`superUsers` (bypass everything for a break-glass identity) or
+replacing `PLACEHOLDER-ADMIN-GROUP` in the policy CSV with a real
+group your directory resolves. Either alone is sufficient. The
+typical setup uses both, plus `admin.users` for policy management:
+
 1. Set `permission.rbac.admin.superUsers` to one break-glass identity
-   (a service-team on-call user ref).
+   (a service-team on-call user ref). This is bypass access, so keep
+   it to one or two refs.
 2. Replace `PLACEHOLDER-ADMIN-GROUP` in the policy CSV with your real
-   admin group ref.
+   admin group ref (e.g. an SSO-provisioned platform team). Members
+   inherit `role:default/butler-portal-admin`'s privileged writes.
 3. Add the same admin group to `permission.rbac.admin.users` so its
-   members can manage RBAC through `/rbac`.
+   members can manage RBAC through `/rbac`. Step 2 alone does NOT
+   grant UI access; step 3 is what does.
 
 After block A, admins can sign in and perform gated writes. It is
 tempting to stop here — the portal appears to work. It is not
@@ -156,6 +152,10 @@ enforced.
 **B. Wire plugin enforcement** (required for enforcement to work at
 all — skipping this leaves every plugin's writes silently allowed
 regardless of your CSV):
+
+Block B assumes Block A is complete. Step 5 in particular requires
+signing in as an admin-group member, which only exists after Block A
+steps 2-3.
 
 4. **REQUIRED.** List every plugin that declares permissions under
    `permission.rbac.pluginsWithPermission` — including your own
@@ -166,7 +166,12 @@ regardless of your CSV):
 5. Deploy. Sign in as an admin-group member. Confirm
    `GET /api/permission/plugins/condition-rules` returns every plugin
    ID you listed. Missing IDs from the response = enforcement is off
-   for those plugins. Block your rollout on this check.
+   for those plugins. Blocking the rollout on this check is a norm
+   today, not a mechanism — no chart-side gate stops a deploy where
+   `pluginsWithPermission` is missing entries unless the operator
+   opts each plugin entry into the structural guard from
+   [butlerdotdev/butler-portal#42](https://github.com/butlerdotdev/butler-portal/pull/42)
+   (`permissions.enforced: true` per plugin entry).
 
 Block A without block B = "safe by default, but every plugin's writes
 are unenforced." Block B alone (skipping A) leaves the portal locked
@@ -275,12 +280,15 @@ condition as a `createPermissionRule()` and register it via
 - **`pluginsWithPermission` is required.** Empty list means silent
   pass-through. Every rollout should verify
   `GET /api/permission/plugins/condition-rules` (with a superuser
-  identity) returns the expected plugin IDs. For adopter dynamic
-  plugins, the chart accepts an opt-in guard on each plugin entry
-  (`permissions.enforced: true` with `permissions.pluginId: <id>`);
-  when set, `helm template` fails at install/upgrade if the plugin
-  id is missing from `pluginsWithPermission`. See
-  [butlerdotdev/butler-portal#42](https://github.com/butlerdotdev/butler-portal/pull/42).
+  identity) returns the expected plugin IDs. The chart offers an
+  opt-in structural guard from
+  [butlerdotdev/butler-portal#42](https://github.com/butlerdotdev/butler-portal/pull/42):
+  set `permissions.enforced: true` with `permissions.pluginId: <id>`
+  on each plugin entry in `dynamicPlugins.plugins` and `helm template`
+  fails at install/upgrade when the id is missing from
+  `pluginsWithPermission`. The guard defaults to OFF per plugin
+  entry — an adopter who does not opt in gets no structural
+  protection, only this doc.
 - **`typeorm-adapter` transitively requires `mongodb`.** RBAC's
   Casbin adapter does a top-level `require('mongodb')` even when
   configured for SQLite or PostgreSQL. `packages/backend/package.json`

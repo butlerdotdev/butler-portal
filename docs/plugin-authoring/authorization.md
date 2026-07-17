@@ -39,6 +39,18 @@ plugin's permissions. RBAC handles evaluation centrally.
 
 ## Minimal example
 
+This section shows the pattern for UNCONDITIONAL gating: a role
+either has the permission or it does not, regardless of properties of
+the target resource. The permissions declared below are
+`BasicPermission` values from `@backstage/plugin-permission-common`.
+
+For CONDITIONAL gating (permission granted only when the caller
+satisfies some property of the target resource — "is the owner",
+"is in the workspace", etc.), skip ahead to
+[Conditional policies and permission rules](#conditional-policies-and-permission-rules).
+A plugin can and often does declare both kinds — pick per permission,
+not per plugin. Both live in the same `permissions.ts`.
+
 Two files inside a plugin at `my-plugin/backend/src/`:
 
 `permissions.ts` (declarations):
@@ -46,6 +58,7 @@ Two files inside a plugin at `my-plugin/backend/src/`:
 ```ts
 import { createPermission } from '@backstage/plugin-permission-common';
 
+// Unconditional gates. A role either has these or does not.
 export const myPluginThingReadPermission = createPermission({
   name: 'myplugin.thing.read',
   attributes: { action: 'read' },
@@ -161,49 +174,62 @@ default when thrown from an Express handler.
 
 ## Conditional policies and permission rules
 
-The `permissions.authorize()` pattern above supports only unconditional
-allow/deny. To gate a permission on properties of the target resource
-(e.g., "user can edit only entities they own"), the plugin declares a
-permission RULE, registers it with the permissions registry, and the
-adopter references it from RBAC's `conditionalPoliciesFile`.
+This section covers a DIFFERENT pattern from the minimal example
+above — pick one per permission, not one per plugin:
 
-> **Permission shape**: a permission you want to gate conditionally
-> must be a `ResourcePermission`, not the plain `BasicPermission`
-> shown in the minimal example above. The distinction is one field:
-> add `resourceType: '<your-resource-type>'` to the `createPermission`
-> call so the framework knows which registered resource type the
-> permission binds to. Passing a `BasicPermission` to
-> `permissionsRegistry.addResourceType({ permissions: [...] })` fails
-> at TypeScript compile because the API accepts
-> `ResourcePermission<ResourceType>[]`. Working reference:
-> [examples/adopter-plugin/backend/src/permissions.ts](https://github.com/butlerdotdev/butler-portal/blob/main/examples/adopter-plugin/backend/src/permissions.ts)
-> lines 3-7 show the exact `resourceType` addition.
+- **`BasicPermission`** (the minimal example): unconditional gating.
+  A role either has the permission or it does not. Suitable for
+  reads and writes that do not depend on any property of the target
+  resource.
+- **`ResourcePermission` + rule** (this section): conditional gating.
+  Permission granted only when the caller satisfies some property of
+  the target resource ("is the owner", "is in the workspace"). The
+  plugin declares a rule that returns a boolean per (resource,
+  params) pair; the adopter references the rule from a conditional
+  policy YAML.
 
-For the samples below, add this dependency to your plugin's
-`backend/package.json` (the working reference uses `"zod": "^3.25.76"`):
+Both kinds coexist in the same `permissions.ts`. The example below
+adds a NEW conditional permission (`myplugin.thing.delete`) alongside
+the two unconditional permissions from the minimal example — it does
+not replace them.
+
+For the samples below, add these dependencies to your plugin's
+`backend/package.json`. The versions match the working reference at
+[examples/adopter-plugin/backend/package.json](https://github.com/butlerdotdev/butler-portal/blob/main/examples/adopter-plugin/backend/package.json):
 
 ```jsonc
 "dependencies": {
   "@backstage/backend-plugin-api": "^1.9.3",
   "@backstage/plugin-permission-common": "^0.9.9",
   "@backstage/plugin-permission-node": "^0.11.2",
-  "zod": "^3.25.76"
+  "@backstage/errors": "^1.3.1"
 }
 ```
 
+`@backstage/errors` supplies `NotAllowedError` used by the minimal
+example's `requirePermission` helper.
+
 Declare the rule with `createPermissionRule` (typically in a
-`backend/src/rule.ts`):
+`backend/src/rule.ts`). The example below types the callback
+parameters explicitly rather than deriving them from a
+`paramsSchema`, because `plugin-permission-node@0.11.2`'s inference
+through `zod`'s type outputs currently produces `TS2589: Type
+instantiation is excessively deep` on both the working reference and
+any adopter code following the reference shape. Tracked in
+[butlerdotdev/butler-portal#52](https://github.com/butlerdotdev/butler-portal/issues/52).
+The shape below compiles clean under strict TypeScript and behaves
+identically at runtime except for the runtime schema validation
+`paramsSchema` would have provided:
 
 ```ts
 import {
   createPermissionResourceRef,
   createPermissionRule,
 } from '@backstage/plugin-permission-node';
-import { z } from 'zod';
 
-// owner is optional so a resource missing the field does not crash
-// apply(). Match the working reference at examples/adopter-plugin/
-// backend/src/rule.ts:7.
+// owner is optional so a resource with a missing owner field does
+// not throw when apply() dereferences it. Match the working
+// reference at examples/adopter-plugin/backend/src/rule.ts:7.
 export type Thing = { id: string; owner?: string };
 export type ThingQuery = { ownerFilter?: string };
 
@@ -216,23 +242,24 @@ export const isThingOwnerRule = createPermissionRule({
   name: 'IS_THING_OWNER',
   description: 'Allow when the caller owns the thing',
   resourceRef: thingResourceRef,
-  paramsSchema: z.object({ expectedOwner: z.string() }),
-  apply: (resource, { expectedOwner }) =>
-    resource?.owner === expectedOwner,
-  toQuery: ({ expectedOwner }) => ({ ownerFilter: expectedOwner }),
+  apply: (resource: Thing, params: { expectedOwner: string }) =>
+    resource?.owner === params.expectedOwner,
+  toQuery: (params: { expectedOwner: string }) => ({
+    ownerFilter: params.expectedOwner,
+  }),
 });
 ```
 
-Re-declare `myPluginThingReadPermission` as a `ResourcePermission`
-matching the resource type (the earlier BasicPermission version cannot
-be reused here):
+Add the conditional permission to your existing `permissions.ts`
+alongside the unconditional ones. `resourceType` is what makes this a
+`ResourcePermission` — the type the framework needs to route the
+permission to the resource type registered below:
 
 ```ts
-import { createPermission } from '@backstage/plugin-permission-common';
-
-export const myPluginThingReadPermission = createPermission({
-  name: 'myplugin.thing.read',
-  attributes: { action: 'read' },
+// Extends the permissions.ts from the minimal example.
+export const myPluginThingDeletePermission = createPermission({
+  name: 'myplugin.thing.delete',
+  attributes: { action: 'delete' },
   resourceType: 'my-thing',
 });
 ```
@@ -243,10 +270,16 @@ supplied loader that resolves a batch of resource refs to their live
 values so `apply()` can inspect them:
 
 ```ts
-async function loadThingsById(refs: string[]): Promise<Array<Thing | undefined>> {
-  // Your storage / API lookup. Return one entry per ref, undefined
-  // where the ref does not resolve. RBAC evaluates apply(undefined)
-  // as DENY, matching the working reference's optional-owner shape.
+async function loadThingsById(
+  refs: string[],
+): Promise<Array<Thing | undefined>> {
+  // Your storage / API lookup, keyed by the resource ref you pass
+  // in the authorize() call. Return one entry per input ref;
+  // undefined for refs that do not resolve. The rule's apply()
+  // above uses `resource?.owner` so an undefined resource returns
+  // false; a false result means the rule does not authorize the
+  // caller, so this permission ends up DENY unless another policy
+  // row grants it unconditionally.
   return refs.map(id => YOUR_STORE.get(id));
 }
 
@@ -258,15 +291,20 @@ env.registerInit({
   async init({ /* ... */ permissions, permissionsRegistry }) {
     permissionsRegistry.addResourceType({
       resourceRef: thingResourceRef,
-      permissions: [myPluginThingReadPermission],
+      permissions: [myPluginThingDeletePermission],
       rules: [isThingOwnerRule],
       getResources: loadThingsById,
     });
 
-    router.get('/things/:id', async (req, res) => {
+    router.delete('/things/:id', async (req, res) => {
       const credentials = await httpAuth.credentials(req);
       const [decision] = await permissions.authorize(
-        [{ permission: myPluginThingReadPermission, resourceRef: req.params.id }],
+        [
+          {
+            permission: myPluginThingDeletePermission,
+            resourceRef: req.params.id,
+          },
+        ],
         { credentials },
       );
       if (decision.result === AuthorizeResult.DENY) {
@@ -280,9 +318,9 @@ env.registerInit({
 ```
 
 Adopters then reference the rule from a conditional policy file, one
-YAML document per policy separated by `---` (see also the
-[Failure modes](#failure-modes-to-know) entry on this format —
-the list form fails with a misleading error):
+YAML document per policy separated by `---`. The `---` separator is
+load-bearing; the wrong shape fails with a misleading error — see
+[Failure modes](#failure-modes-to-know):
 
 ```yaml
 ---
@@ -408,11 +446,15 @@ per plugin.
   near-security failure: adopters can forget the list entry and
   believe they are enforced when they are not. Document the required
   entry loudly in your plugin's `PERMISSIONS.md`. Adopters using the
-  butler-portal chart can opt in to a structural guard on their
-  plugin entry (`permissions.enforced: true` + `permissions.pluginId`)
-  that fails `helm template` when the id is missing from
-  `pluginsWithPermission` — see
-  [butlerdotdev/butler-portal#42](https://github.com/butlerdotdev/butler-portal/pull/42).
+  butler-portal chart can opt each plugin entry into a structural
+  guard from
+  [butlerdotdev/butler-portal#42](https://github.com/butlerdotdev/butler-portal/pull/42)
+  (`permissions.enforced: true` + `permissions.pluginId`) that fails
+  `helm template` when the id is missing from `pluginsWithPermission`.
+  The guard is OPT-IN per plugin entry, not default-on: an adopter
+  who does not set it gets the same silent pass-through this bullet
+  describes. Recommend it in your plugin's `PERMISSIONS.md` as the
+  wiring adopters should apply for your plugin specifically.
 - **Superusers bypass everything**: an identity resolved into
   `permission.rbac.admin.superUsers` skips all evaluation. If your
   denial test uses a superuser, it will spuriously pass.
