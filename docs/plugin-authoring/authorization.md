@@ -13,6 +13,11 @@ for the framework overview. This page is the plugin-author contract:
 what you write in your plugin so the adopter's RBAC policy can gate
 your surface.
 
+**If you are following the end-to-end sequence** (install → wire →
+enforce → verify), see the
+[Getting Started with Permissions](../getting-started/permissions.md)
+walkthrough. This page is the reference material that page cites.
+
 Runnable reference:
 [examples/adopter-plugin](https://github.com/butlerdotdev/butler-portal/tree/main/examples/adopter-plugin).
 Every pattern below has a working counterpart there.

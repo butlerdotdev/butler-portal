@@ -14,6 +14,12 @@ Plugin authors writing a permission-declaring plugin should read
 [Plugin Authoring: Authorization](../plugin-authoring/authorization.md)
 after this page.
 
+**If you are new to Butler Portal permissions**, start with the
+[Getting Started with Permissions](../getting-started/permissions.md)
+walkthrough — it sequences install, configuration, plugin wiring, and
+audit-verified enforcement in one runnable path. Come back here for
+the reference detail.
+
 The runnable reference for everything on this page lives at
 [examples/adopter-plugin](https://github.com/butlerdotdev/butler-portal/tree/main/examples/adopter-plugin) —
 a minimal end-to-end plugin declaring a permission, registering a
