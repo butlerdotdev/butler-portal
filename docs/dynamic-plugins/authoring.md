@@ -287,11 +287,11 @@ const { allowed } = usePermission({ permission: myPluginRead });
 if (!allowed) return <div>Not authorized.</div>;
 ```
 
-A plugin can also ship its own adjudicator so its authorization
-decisions live inside the plugin package instead of the portal's
-central policy. See
+A plugin declares and enforces its own permissions by calling
+`permissions.authorize()` at its backend route handlers. See
 [plugin-authoring/authorization](../plugin-authoring/authorization.md)
-for the namespace-delegated seam and a minimal example.
+for the direct-authorize pattern, adopter configuration, and a
+minimal working example.
 
 ## Testing locally
 
