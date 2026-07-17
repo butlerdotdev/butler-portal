@@ -55,7 +55,7 @@ Two files inside a plugin at `my-plugin/backend/src/`:
 
 `permissions.ts` (declarations):
 
-```ts
+```ts title="permissions.ts"
 import { createPermission } from '@backstage/plugin-permission-common';
 
 // Unconditional gates. A role either has these or does not.
@@ -72,7 +72,7 @@ export const myPluginThingWritePermission = createPermission({
 
 `router.ts` (enforcement at request time):
 
-```ts
+```ts title="router.ts"
 import express from 'express';
 import Router from 'express-promise-router';
 import {
@@ -85,9 +85,7 @@ import {
   BasicPermission,
 } from '@backstage/plugin-permission-common';
 import { NotAllowedError } from '@backstage/errors';
-import {
-  myPluginThingWritePermission,
-} from '../permissions';
+import { myPluginThingWritePermission } from './permissions';
 
 type Deps = {
   logger: LoggerService;
@@ -136,12 +134,12 @@ export async function createRouter(deps: Deps): Promise<express.Router> {
 
 `module.ts` (thread `permissions` into the router):
 
-```ts
+```ts title="module.ts"
 import {
   coreServices,
   createBackendPlugin,
 } from '@backstage/backend-plugin-api';
-import { createRouter } from './routes/router';
+import { createRouter } from './router';
 
 export const myPlugin = createBackendPlugin({
   pluginId: 'my-plugin',
@@ -191,13 +189,16 @@ above — pick one per permission, not one per plugin:
 Both kinds coexist in the same `permissions.ts`. The example below
 adds a NEW conditional permission (`myplugin.thing.delete`) alongside
 the two unconditional permissions from the minimal example — it does
-not replace them.
+not replace them. Delete is a natural fit for conditional gating
+because delete permissions typically scope to the resource's owner:
+any user can list things they can see, but only the owner can delete
+one.
 
 For the samples below, add these dependencies to your plugin's
 `backend/package.json`. The versions match the working reference at
 [examples/adopter-plugin/backend/package.json](https://github.com/butlerdotdev/butler-portal/blob/main/examples/adopter-plugin/backend/package.json):
 
-```jsonc
+```jsonc title="package.json fragment"
 "dependencies": {
   "@backstage/backend-plugin-api": "^1.9.3",
   "@backstage/plugin-permission-common": "^0.9.9",
@@ -217,11 +218,14 @@ through `zod`'s type outputs currently produces `TS2589: Type
 instantiation is excessively deep` on both the working reference and
 any adopter code following the reference shape. Tracked in
 [butlerdotdev/butler-portal#52](https://github.com/butlerdotdev/butler-portal/issues/52).
-The shape below compiles clean under strict TypeScript and behaves
-identically at runtime except for the runtime schema validation
-`paramsSchema` would have provided:
+Explicit generic parameters on `createPermissionRule` are required
+under `plugin-permission-node@0.11.2`; without them TypeScript picks
+the deprecated overload and infers `TParams` as `undefined`, which
+breaks the callback signatures. The shape below is compile-checked by
+`docs-compile-check` CI workflow on every push (see
+[`.github/workflows/docs-compile-check.yml`](https://github.com/butlerdotdev/butler-portal/blob/main/.github/workflows/docs-compile-check.yml)):
 
-```ts
+```ts title="rule.ts"
 import {
   createPermissionResourceRef,
   createPermissionRule,
@@ -238,25 +242,49 @@ export const thingResourceRef = createPermissionResourceRef<
   ThingQuery
 >().with({ pluginId: 'my-plugin', resourceType: 'my-thing' });
 
-export const isThingOwnerRule = createPermissionRule({
+export const isThingOwnerRule = createPermissionRule<
+  typeof thingResourceRef,
+  { expectedOwner: string }
+>({
   name: 'IS_THING_OWNER',
   description: 'Allow when the caller owns the thing',
   resourceRef: thingResourceRef,
-  apply: (resource: Thing, params: { expectedOwner: string }) =>
+  apply: (resource, params) =>
     resource?.owner === params.expectedOwner,
-  toQuery: (params: { expectedOwner: string }) => ({
-    ownerFilter: params.expectedOwner,
-  }),
+  toQuery: params => ({ ownerFilter: params.expectedOwner }),
 });
 ```
+
+**If [#52](https://github.com/butlerdotdev/butler-portal/issues/52)
+lands** and you want runtime schema validation of the rule params,
+add `"zod": "^3.25.76"` to your dependencies and a `paramsSchema:
+z.object({ expectedOwner: z.string() })` field to the rule above.
+Until #52 lands, adding those reintroduces the `TS2589` error the
+explicit-generics shape works around.
+
+**If the rule stops compiling in a way you cannot resolve**, treat
+that as an early warning rather than a nuisance to cast past. The
+compile error is the friction that surfaces a type mismatch between
+your rule and the plugin-permission-node contract. Silencing it with
+`@ts-ignore` or an `as any` cast lets the plugin build but leaves the
+rule in a broken state — the callback types no longer match what the
+framework passes at runtime, so `apply()` may see `undefined` where
+you expected the resource, or the wrong shape for `params`. Combined
+with the opt-in guard from
+[#42](https://github.com/butlerdotdev/butler-portal/pull/42) being
+OFF for a plugin the adopter did not explicitly enable, the failure
+is silent: permissions are declared, `authorize()` runs, and RBAC
+either evaluates the wrong result or passes through as ALLOW because
+the rule never registers correctly.
 
 Add the conditional permission to your existing `permissions.ts`
 alongside the unconditional ones. `resourceType` is what makes this a
 `ResourcePermission` — the type the framework needs to route the
 permission to the resource type registered below:
 
-```ts
-// Extends the permissions.ts from the minimal example.
+```ts title="permissions.ts" append
+// Add these lines to the same permissions.ts alongside the
+// unconditional ones from the minimal example.
 export const myPluginThingDeletePermission = createPermission({
   name: 'myplugin.thing.delete',
   attributes: { action: 'delete' },
@@ -269,7 +297,7 @@ call `authorize()` with a `resourceRef`. `getResources` is the plugin-
 supplied loader that resolves a batch of resource refs to their live
 values so `apply()` can inspect them:
 
-```ts
+```ts noCompile
 async function loadThingsById(
   refs: string[],
 ): Promise<Array<Thing | undefined>> {
@@ -392,9 +420,12 @@ Gate UI controls with `usePermission()` from
 `@backstage/plugin-permission-react` so users do not see buttons
 they cannot use:
 
-```tsx
+```tsx noCompile
+// Frontend snippet — lives in your plugin's frontend package, not
+// the backend package the samples above target. `Button` here is
+// a stand-in for your app's button component.
 import { usePermission } from '@backstage/plugin-permission-react';
-import { myPluginThingWritePermission } from '../permissions';
+import { myPluginThingWritePermission } from './permissions';
 
 export const WriteButton = () => {
   const { allowed } = usePermission({
