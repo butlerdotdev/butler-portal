@@ -167,19 +167,49 @@ allow/deny. To gate a permission on properties of the target resource
 permission RULE, registers it with the permissions registry, and the
 adopter references it from RBAC's `conditionalPoliciesFile`.
 
+> **Permission shape**: a permission you want to gate conditionally
+> must be a `ResourcePermission`, not the plain `BasicPermission`
+> shown in the minimal example above. The distinction is one field:
+> add `resourceType: '<your-resource-type>'` to the `createPermission`
+> call so the framework knows which registered resource type the
+> permission binds to. Passing a `BasicPermission` to
+> `permissionsRegistry.addResourceType({ permissions: [...] })` fails
+> at TypeScript compile because the API accepts
+> `ResourcePermission<ResourceType>[]`. Working reference:
+> [examples/adopter-plugin/backend/src/permissions.ts](https://github.com/butlerdotdev/butler-portal/blob/main/examples/adopter-plugin/backend/src/permissions.ts)
+> lines 3-7 show the exact `resourceType` addition.
+
+For the samples below, add this dependency to your plugin's
+`backend/package.json` (the working reference uses `"zod": "^3.25.76"`):
+
+```jsonc
+"dependencies": {
+  "@backstage/backend-plugin-api": "^1.9.3",
+  "@backstage/plugin-permission-common": "^0.9.9",
+  "@backstage/plugin-permission-node": "^0.11.2",
+  "zod": "^3.25.76"
+}
+```
+
 Declare the rule with `createPermissionRule` (typically in a
 `backend/src/rule.ts`):
 
 ```ts
-import { createPermissionResourceRef } from '@backstage/plugin-permission-node';
-import { createPermissionRule } from '@backstage/plugin-permission-node';
+import {
+  createPermissionResourceRef,
+  createPermissionRule,
+} from '@backstage/plugin-permission-node';
 import { z } from 'zod';
 
-export type Thing = { id: string; owner: string };
+// owner is optional so a resource missing the field does not crash
+// apply(). Match the working reference at examples/adopter-plugin/
+// backend/src/rule.ts:7.
+export type Thing = { id: string; owner?: string };
+export type ThingQuery = { ownerFilter?: string };
 
 export const thingResourceRef = createPermissionResourceRef<
   Thing,
-  { expectedOwner: string }
+  ThingQuery
 >().with({ pluginId: 'my-plugin', resourceType: 'my-thing' });
 
 export const isThingOwnerRule = createPermissionRule({
@@ -187,15 +217,39 @@ export const isThingOwnerRule = createPermissionRule({
   description: 'Allow when the caller owns the thing',
   resourceRef: thingResourceRef,
   paramsSchema: z.object({ expectedOwner: z.string() }),
-  apply: (resource, { expectedOwner }) => resource.owner === expectedOwner,
-  toQuery: () => ({}),
+  apply: (resource, { expectedOwner }) =>
+    resource?.owner === expectedOwner,
+  toQuery: ({ expectedOwner }) => ({ ownerFilter: expectedOwner }),
+});
+```
+
+Re-declare `myPluginThingReadPermission` as a `ResourcePermission`
+matching the resource type (the earlier BasicPermission version cannot
+be reused here):
+
+```ts
+import { createPermission } from '@backstage/plugin-permission-common';
+
+export const myPluginThingReadPermission = createPermission({
+  name: 'myplugin.thing.read',
+  attributes: { action: 'read' },
+  resourceType: 'my-thing',
 });
 ```
 
 Register the rule and its resource type in your plugin's `init`, then
-call `authorize()` with a `resourceRef`:
+call `authorize()` with a `resourceRef`. `getResources` is the plugin-
+supplied loader that resolves a batch of resource refs to their live
+values so `apply()` can inspect them:
 
 ```ts
+async function loadThingsById(refs: string[]): Promise<Array<Thing | undefined>> {
+  // Your storage / API lookup. Return one entry per ref, undefined
+  // where the ref does not resolve. RBAC evaluates apply(undefined)
+  // as DENY, matching the working reference's optional-owner shape.
+  return refs.map(id => YOUR_STORE.get(id));
+}
+
 env.registerInit({
   deps: {
     /* ...as before... */
@@ -206,7 +260,7 @@ env.registerInit({
       resourceRef: thingResourceRef,
       permissions: [myPluginThingReadPermission],
       rules: [isThingOwnerRule],
-      getResources: async refs => refs.map(loadThingById),
+      getResources: loadThingsById,
     });
 
     router.get('/things/:id', async (req, res) => {
@@ -226,7 +280,9 @@ env.registerInit({
 ```
 
 Adopters then reference the rule from a conditional policy file, one
-YAML document per policy separated by `---`:
+YAML document per policy separated by `---` (see also the
+[Failure modes](#failure-modes-to-know) entry on this format —
+the list form fails with a misleading error):
 
 ```yaml
 ---
@@ -329,6 +385,12 @@ The two tests worth writing:
    route. Repeat with a user not in the role, assert 403. Slower
    but covers the full stack.
 
+Shared helpers for both patterns (`mockPermissionsService()` and a
+fixture-CSV RBAC boot harness) are tracked in
+[butlerdotdev/butler-portal#43](https://github.com/butlerdotdev/butler-portal/issues/43).
+Until they land, adopters write the mock and fixture boot from scratch
+per plugin.
+
 ## Prefix conventions
 
 - One prefix per plugin, terminated with a separator (`.` conventional).
@@ -345,7 +407,12 @@ The two tests worth writing:
   policy. No warning is emitted at boot. This is a real
   near-security failure: adopters can forget the list entry and
   believe they are enforced when they are not. Document the required
-  entry loudly in your plugin's `PERMISSIONS.md`.
+  entry loudly in your plugin's `PERMISSIONS.md`. Adopters using the
+  butler-portal chart can opt in to a structural guard on their
+  plugin entry (`permissions.enforced: true` + `permissions.pluginId`)
+  that fails `helm template` when the id is missing from
+  `pluginsWithPermission` — see
+  [butlerdotdev/butler-portal#42](https://github.com/butlerdotdev/butler-portal/pull/42).
 - **Superusers bypass everything**: an identity resolved into
   `permission.rbac.admin.superUsers` skips all evaluation. If your
   denial test uses a superuser, it will spuriously pass.
@@ -357,7 +424,10 @@ The two tests worth writing:
   if you introduce a `createPermissionRule()` and adopters want to
   wire conditional policies against it, the file format is YAML
   documents separated by `---`, not a top-level YAML list. The list
-  form fails with a misleading error.
+  form fails with a misleading `'roleEntityRef' must be specified`
+  error even when the field is present. See
+  [Conditional policies and permission rules](#conditional-policies-and-permission-rules)
+  above for a working example of the YAML shape.
 
 ## PERMISSIONS.md contract for your plugin
 

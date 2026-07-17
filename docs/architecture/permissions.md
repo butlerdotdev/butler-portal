@@ -135,20 +135,42 @@ Two independent unblockers, either alone is sufficient:
    path does NOT grant `/rbac` UI access — for that you also need to
    add the same group to `admin.users`.
 
-The two paths can compose. Typical adopter setup:
+Two separate steps, in this order. Do NOT treat them as a single
+checklist — the first block unbricks access; the second is what
+makes enforcement actually work.
+
+**A. Bootstrap access** (recovery mechanics — makes the portal
+usable at all):
 
 1. Set `permission.rbac.admin.superUsers` to one break-glass identity
    (a service-team on-call user ref).
-2. Replace `PLACEHOLDER-ADMIN-GROUP` in the CSV with your real admin
-   group ref.
+2. Replace `PLACEHOLDER-ADMIN-GROUP` in the policy CSV with your real
+   admin group ref.
 3. Add the same admin group to `permission.rbac.admin.users` so its
    members can manage RBAC through `/rbac`.
-4. List every plugin that declares permissions under
-   `permission.rbac.pluginsWithPermission` (see below — this is
-   REQUIRED, silently pass-through otherwise).
+
+After block A, admins can sign in and perform gated writes. It is
+tempting to stop here — the portal appears to work. It is not
+enforced.
+
+**B. Wire plugin enforcement** (required for enforcement to work at
+all — skipping this leaves every plugin's writes silently allowed
+regardless of your CSV):
+
+4. **REQUIRED.** List every plugin that declares permissions under
+   `permission.rbac.pluginsWithPermission` — including your own
+   adopter dynamic plugins. Unlisted plugins return `[]` from RBAC's
+   discovery API and every `authorize()` call for them passes
+   through as ALLOW no matter what the CSV says. No boot warning is
+   emitted. This is a near-security failure, not a convenience item.
 5. Deploy. Sign in as an admin-group member. Confirm
    `GET /api/permission/plugins/condition-rules` returns every plugin
-   ID you listed.
+   ID you listed. Missing IDs from the response = enforcement is off
+   for those plugins. Block your rollout on this check.
+
+Block A without block B = "safe by default, but every plugin's writes
+are unenforced." Block B alone (skipping A) leaves the portal locked
+down but adopters cannot administer it.
 
 ## What adopters must configure
 
@@ -253,7 +275,12 @@ condition as a `createPermissionRule()` and register it via
 - **`pluginsWithPermission` is required.** Empty list means silent
   pass-through. Every rollout should verify
   `GET /api/permission/plugins/condition-rules` (with a superuser
-  identity) returns the expected plugin IDs.
+  identity) returns the expected plugin IDs. For adopter dynamic
+  plugins, the chart accepts an opt-in guard on each plugin entry
+  (`permissions.enforced: true` with `permissions.pluginId: <id>`);
+  when set, `helm template` fails at install/upgrade if the plugin
+  id is missing from `pluginsWithPermission`. See
+  [butlerdotdev/butler-portal#42](https://github.com/butlerdotdev/butler-portal/pull/42).
 - **`typeorm-adapter` transitively requires `mongodb`.** RBAC's
   Casbin adapter does a top-level `require('mongodb')` even when
   configured for SQLite or PostgreSQL. `packages/backend/package.json`
