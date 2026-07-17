@@ -153,3 +153,91 @@ tests:
       - notMatchRegex:
           path: raw
           pattern: "oci://example.com/foo:1.0.0"
+
+  # --- fatigue-fix filters (chart 0.6.1) ---
+
+  - it: skips disabled plugins from the warn
+    set:
+      dynamicPlugins:
+        enabled: true
+        plugins:
+          - package: oci://example.com/foo:1.0.0
+            integrity: sha512-xxx
+            disabled: true
+    asserts:
+      - notMatchRegex:
+          path: raw
+          pattern: "pluginsWithPermission enforcement is OFF"
+
+  - it: permissions.declared=false silences the warn for known-no-permissions plugins
+    set:
+      dynamicPlugins:
+        enabled: true
+        plugins:
+          - package: oci://ghcr.io/redhat-developer/rhdh-plugin-export-overlays/backstage-plugin-catalog-backend-module-msgraph:bs_1.45.3__0.8.2
+            integrity: sha512-xxx
+            permissions:
+              declared: false
+    asserts:
+      - notMatchRegex:
+          path: raw
+          pattern: "pluginsWithPermission enforcement is OFF"
+
+  - it: permissions.declared=true (or absent) still warns
+    set:
+      dynamicPlugins:
+        enabled: true
+        plugins:
+          - package: oci://example.com/foo:1.0.0
+            integrity: sha512-xxx
+            permissions:
+              declared: true
+    asserts:
+      - matchRegex:
+          path: raw
+          pattern: "pluginsWithPermission enforcement is OFF"
+
+  - it: real-fleet mix — enforced + declared:false + disabled + one uncategorized
+    set:
+      dynamicPlugins:
+        enabled: true
+        plugins:
+          - package: oci://example.com/pe:v0.2.51
+            integrity: sha512-a
+            permissions:
+              pluginId: platform-engineering
+              enforced: true
+          - package: oci://example.com/msgraph:1.0.0
+            integrity: sha512-b
+            permissions:
+              declared: false
+          - package: oci://example.com/gitlab:1.0.0
+            integrity: sha512-c
+            permissions:
+              declared: false
+          - package: oci://example.com/wip:1.0.0
+            integrity: sha512-d
+            disabled: true
+          - package: oci://example.com/uncategorized:1.0.0
+            integrity: sha512-e
+      permission:
+        rbac:
+          pluginsWithPermission:
+            - catalog
+            - platform-engineering
+    asserts:
+      - matchRegex:
+          path: raw
+          pattern: "1 plugin entry\\."
+      - matchRegex:
+          path: raw
+          pattern: "oci://example.com/uncategorized:1.0.0"
+      - notMatchRegex:
+          path: raw
+          pattern: "oci://example.com/pe:v0.2.51"
+      - notMatchRegex:
+          path: raw
+          pattern: "oci://example.com/msgraph:1.0.0"
+      - notMatchRegex:
+          path: raw
+          pattern: "oci://example.com/wip:1.0.0"
