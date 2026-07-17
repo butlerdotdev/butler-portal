@@ -210,6 +210,18 @@ For the samples below, add these dependencies to your plugin's
 `@backstage/errors` supplies `NotAllowedError` used by the minimal
 example's `requirePermission` helper.
 
+> **If you install with npm rather than yarn**, add an `.npmrc` next
+> to your `package.json` with `legacy-peer-deps=true`.
+> `@backstage/cli@0.36.4` declares a `peerOptional jsdom@^27.1.0` that
+> conflicts with its own transitive `jest-environment-jsdom@30.4.1`
+> (which brings `jsdom@29`). Yarn (used everywhere else in butler-
+> portal) resolves this loosely; npm 9+ rejects it as `ERESOLVE`.
+> Same accommodation the runnable reference at
+> [examples/adopter-plugin/backend/.npmrc](https://github.com/butlerdotdev/butler-portal/blob/main/examples/adopter-plugin/backend/.npmrc)
+> ships. Adopters writing a plugin from scratch inherit the same
+> constraint until `@backstage/cli` ships a version that either
+> relaxes the peer range or matches the transitive jsdom.
+
 > **Reproducing the CI compile-check locally**: the docs-compile-check
 > harness reads the dependency snippet above and adds `express`,
 > `express-promise-router`, `typescript`, and `@types/express` on top
