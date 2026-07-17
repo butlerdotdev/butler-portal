@@ -16,3 +16,4 @@ Portal base URL: {{ .Values.appConfig.baseUrl }}
 
 To check pod status:
   kubectl get pods --namespace {{ .Release.Namespace }} -l app.kubernetes.io/name={{ include "butler-portal.name" . }}
+{{ include "butler-portal.warnRbacUnopted" . }}
