@@ -275,13 +275,86 @@ Conditional adjudicators require a small refactor to expose the
 condition as a `createPermissionRule()` and register it via
 `permissionsRegistry.addResourceType`.
 
+## Runtime audit for pluginsWithPermission gaps
+
+Butler Portal ships a startup audit module
+(`packages/backend/src/pluginsWithPermissionAuditModule.ts`, wired
+automatically from `packages/backend/src/index.ts`) that catches
+plugins whose permissions are declared at runtime but not listed in
+`permission.rbac.pluginsWithPermission`. This complements the
+chart-time guard (`permissions.enforced: true`) and the NOTES.txt
+warn: the chart mechanisms see values-file INTENT; the runtime audit
+sees REALITY.
+
+### What it checks
+
+Once, at backend startup after dynamic plugins finish loading, the
+audit:
+
+1. Enumerates every loaded backend dynamic plugin via
+   `dynamicPluginsServiceRef.backendPlugins()`.
+2. For each plugin, HTTP-fetches its own
+   `/.well-known/backstage/permissions/metadata` endpoint (auto-wired
+   by `@backstage/plugin-permission-node`'s
+   `createPermissionIntegrationRouter` when the plugin calls
+   `permissionsRegistry.addPermissions()` or
+   `.addResourceType()`).
+3. For each plugin that declared permissions at runtime AND is missing
+   from `permission.rbac.pluginsWithPermission`, logs at level=error:
+   > `[pluginsWithPermission audit] plugin '<id>' declared N permission(s) at runtime and is NOT in permission.rbac.pluginsWithPermission. Authz is NOT running for this plugin: RBAC's discovery API returns [] for it, and every authorize() call for its permissions passes through as ALLOW regardless of your policy CSV. Add '<id>' to permission.rbac.pluginsWithPermission.`
+4. For each plugin that IS listed but returned 404 on
+   `/permission/metadata`, logs at level=info: either the listing is
+   stale, or the plugin loaded without calling `addPermissions`.
+
+Log lines survive every deployment model (helm interactive, Flux
+`HelmRelease`, Argo CD, `kubectl apply`) — they land in the backend
+container's stdout, which every observability stack captures.
+
+### If you see the log
+
+If your backend logs contain:
+
+```
+[pluginsWithPermission audit] plugin '<id>' declared N permission(s) at runtime and is NOT in permission.rbac.pluginsWithPermission ...
+```
+
+add `<id>` to `permission.rbac.pluginsWithPermission` in your chart
+values and redeploy. The audit will re-run at next boot and confirm
+the gap closed (its "audit complete: no gaps found" info line).
+
+If the log is:
+
+```
+[pluginsWithPermission audit] plugin '<id>' is listed in permission.rbac.pluginsWithPermission but its /permission/metadata returned 404 ...
+```
+
+either the listing is stale (remove `<id>` from
+`pluginsWithPermission`) or the plugin is missing its
+`permissionsRegistry.addPermissions([...])` call at init (see the
+[plugin-authoring guide](../plugin-authoring/authorization.md#minimal-example)'s
+`addPermissions` convention).
+
+### Coverage limit
+
+The audit reads `/permission/metadata`, which is auto-wired by
+`createPermissionIntegrationRouter` **only when the plugin calls
+`permissionsRegistry.addPermissions()` or `.addResourceType()`**. A
+plugin that only does `createPermission({name})` +
+`permissions.authorize()` never populates that endpoint and is
+invisible to the audit. The plugin-authoring guide's minimal example
+now calls `addPermissions()` so the pattern the docs teach is visible
+to the audit; older plugins written without the convention remain
+blind spots.
+
 ## Known gotchas
 
 - **`pluginsWithPermission` is required.** Empty list means silent
   pass-through. Every rollout should verify
   `GET /api/permission/plugins/condition-rules` (with a superuser
-  identity) returns the expected plugin IDs. The chart offers an
-  opt-in structural guard from
+  identity) returns the expected plugin IDs — or rely on the runtime
+  audit (see [Runtime audit for pluginsWithPermission gaps](#runtime-audit-for-pluginswithpermission-gaps))
+  which does the check automatically at every backend start. The chart
+  offers an opt-in structural guard from
   [butlerdotdev/butler-portal#42](https://github.com/butlerdotdev/butler-portal/pull/42):
   set `permissions.enforced: true` with `permissions.pluginId: <id>`
   on each plugin entry in `dynamicPlugins.plugins` and `helm template`

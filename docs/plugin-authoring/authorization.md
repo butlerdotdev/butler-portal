@@ -132,7 +132,8 @@ export async function createRouter(deps: Deps): Promise<express.Router> {
 }
 ```
 
-`module.ts` (thread `permissions` into the router):
+`module.ts` (thread `permissions` into the router and register the
+plugin's permissions with the framework):
 
 ```ts title="module.ts"
 import {
@@ -140,6 +141,10 @@ import {
   createBackendPlugin,
 } from '@backstage/backend-plugin-api';
 import { createRouter } from './router';
+import {
+  myPluginThingReadPermission,
+  myPluginThingWritePermission,
+} from './permissions';
 
 export const myPlugin = createBackendPlugin({
   pluginId: 'my-plugin',
@@ -150,8 +155,22 @@ export const myPlugin = createBackendPlugin({
         httpRouter: coreServices.httpRouter,
         httpAuth: coreServices.httpAuth,
         permissions: coreServices.permissions,
+        permissionsRegistry: coreServices.permissionsRegistry,
       },
-      async init({ logger, httpRouter, httpAuth, permissions }) {
+      async init({ logger, httpRouter, httpAuth, permissions, permissionsRegistry }) {
+        // Register every permission this plugin declares with the
+        // framework's permissions registry. This is what populates
+        // /.well-known/backstage/permissions/metadata, the endpoint
+        // RBAC's discovery walks to find each plugin's permissions.
+        // A plugin that skips this registration is invisible to RBAC's
+        // own tooling AND to the pluginsWithPermission runtime audit;
+        // its permissions still work at authorize()-time but nothing
+        // else can enumerate them. Always register.
+        permissionsRegistry.addPermissions([
+          myPluginThingReadPermission,
+          myPluginThingWritePermission,
+        ]);
+
         const router = await createRouter({ logger, httpAuth, permissions });
         httpRouter.use(router);
         // Backstage's default HTTP auth policy for backend routes does
@@ -169,6 +188,18 @@ export const myPlugin = createBackendPlugin({
 
 `NotAllowedError` from `@backstage/errors` serializes as HTTP 403 by
 default when thrown from an Express handler.
+
+> **Why `permissionsRegistry.addPermissions` matters even for
+> unconditional permissions**: RBAC's discovery endpoint walks each
+> plugin's `/.well-known/backstage/permissions/metadata`. A plugin
+> that never calls `addPermissions` never populates that endpoint,
+> so RBAC cannot introspect what the plugin gates. Registration is
+> the plugin-authoring convention that makes discovery work end to
+> end. Butler Portal also runs a startup audit
+> (`pluginsWithPermissionAuditModule` in `packages/backend`) that
+> reads the same endpoint to detect plugins declared but missing
+> from `permission.rbac.pluginsWithPermission`; a plugin that skips
+> `addPermissions` is invisible to that audit too. Always register.
 
 ## Conditional policies and permission rules
 

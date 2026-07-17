@@ -60,6 +60,13 @@ backend.add(import('@backstage/plugin-catalog-backend-module-logs'));
 // in examples/adopter-plugin/.
 backend.add(import('@backstage/plugin-permission-backend'));
 backend.add(import('@backstage-community/plugin-rbac-backend'));
+// Runtime audit for permission.rbac.pluginsWithPermission gaps. Complements
+// the chart-time guard + NOTES.txt warn (butler-portal chart 0.6.1) by
+// checking values-file REALITY (which plugins actually registered
+// permissions at runtime) rather than values-file INTENT. See the module
+// header for the coverage limit and the plugin-authoring doc for the
+// addPermissions() convention that makes plugins visible to the audit.
+backend.add(import('./pluginsWithPermissionAuditModule'));
 
 // search plugin
 backend.add(import('@backstage/plugin-search-backend'));
