@@ -210,6 +210,23 @@ For the samples below, add these dependencies to your plugin's
 `@backstage/errors` supplies `NotAllowedError` used by the minimal
 example's `requirePermission` helper.
 
+> **Reproducing the CI compile-check locally**: the docs-compile-check
+> harness reads the dependency snippet above and adds `express`,
+> `express-promise-router`, `typescript`, and `@types/express` on top
+> so the router.ts sample resolves. If you build a local harness by
+> copying the snippet verbatim, include those four packages too or
+> tsc will fail with `Cannot find module 'express'`.
+>
+> **Fenced-block annotations** used throughout this doc are read by
+> the compile-check CI. `title="foo.ts"` extracts the block as
+> `foo.ts` in the harness and compiles it (with `append` if the file
+> is split across multiple blocks). `noCompile="<reason>"` marks an
+> illustrative fragment the CI should skip, with a mandatory reason so
+> a reviewer sees why. Unannotated `ts`/`tsx` blocks fail the check —
+> silent skipping is how a broken sample hides. See
+> [`scripts/docs-compile-check.mjs`](https://github.com/butlerdotdev/butler-portal/blob/main/scripts/docs-compile-check.mjs)
+> for the annotation contract.
+
 Declare the rule with `createPermissionRule` (typically in a
 `backend/src/rule.ts`). The example below types the callback
 parameters explicitly rather than deriving them from a
@@ -297,7 +314,7 @@ call `authorize()` with a `resourceRef`. `getResources` is the plugin-
 supplied loader that resolves a batch of resource refs to their live
 values so `apply()` can inspect them:
 
-```ts noCompile
+```ts noCompile="illustrative fragment — references undefined YOUR_STORE and splices into the module.ts above rather than standing alone"
 async function loadThingsById(
   refs: string[],
 ): Promise<Array<Thing | undefined>> {
@@ -420,7 +437,7 @@ Gate UI controls with `usePermission()` from
 `@backstage/plugin-permission-react` so users do not see buttons
 they cannot use:
 
-```tsx noCompile
+```tsx noCompile="frontend snippet — different package than the backend samples above, and Button is a stand-in for your app's button component"
 // Frontend snippet — lives in your plugin's frontend package, not
 // the backend package the samples above target. `Button` here is
 // a stand-in for your app's button component.
