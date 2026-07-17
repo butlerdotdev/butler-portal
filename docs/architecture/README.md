@@ -86,5 +86,6 @@ Tenant clusters are the Kubernetes clusters provisioned and managed by Butler. W
 ## See Also
 
 - [Plugin System](./plugin-system.md) for details on how Backstage plugins are structured
+- [Permissions](./permissions.md) for how authorization is enforced and how adopters configure the shipped default policy
 - [Getting Started](../getting-started/) for connecting Portal to your management cluster
 - [Reference](../reference/) for configuration options

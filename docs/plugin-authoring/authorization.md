@@ -5,47 +5,33 @@ sidebar_label: Authorization
 
 # Authorization
 
-How a plugin gates its own authorization inside butler-portal without
-editing butler-portal core.
+How a plugin declares and enforces its own permissions inside
+butler-portal.
 
-## Why the seam exists
-
-Backstage's upstream permission framework enforces exactly one
-`PermissionPolicy` per instance. The framework's
-`PolicyExtensionPointImpl.setPolicy` throws `Policy already set` if
-two modules try to register a policy. Without help, that leaves every
-plugin's authorization living inside the integrator's central policy
-file, which defeats the plugin ecosystem.
-
-Butler-portal provides a namespace-delegated seam on top of the
-framework so plugins own their own decision logic. The central policy
-(`ButlerPortalDelegatingPolicy`) routes each `authorize()` call to a
-plugin-registered adjudicator based on the permission-name prefix.
-Unclaimed namespaces fall through to `ALLOW`, so Backstage core plugins
-(catalog, scaffolder, techdocs, search, kubernetes) continue to work
-with no per-plugin edit.
-
-This seam is butler-portal's, not Backstage's. If upstream Backstage
-ships an official namespace-delegated policy, migrate to it and delete
-this page.
+Read [Architecture: Permissions](../architecture/permissions.md) first
+for the framework overview. This page is the plugin-author contract:
+what you write in your plugin so the adopter's RBAC policy can gate
+your surface.
 
 ## Contract at a glance
 
 1. Pick a permission-name prefix for your plugin. End it with a
-   separator so it cannot accidentally match another plugin
-   (`myplugin.` not `myplugin`).
-2. Declare your permissions with `createPermission({ name: 'myplugin.<resource>.<action>', attributes: { action: '...' } })`.
-3. Write an adjudicator function that maps a `(request, user)` pair to
-   a `PolicyDecision`. Reads may return `ALLOW` for any authenticated
-   user; writes should check group membership on
-   `user.info.ownershipEntityRefs`.
-4. Register the adjudicator via `authAdjudicatorExtensionPoint` in a
-   `createBackendModule` that lives inside your plugin package.
-5. Call `authorize()` in the routes you want to gate. Cache the
-   `PermissionsService` from `coreServices` at plugin init.
+   separator so it cannot accidentally collide (`myplugin.` not
+   `myplugin`).
+2. Declare your permissions with
+   `createPermission({ name: 'myplugin.<resource>.<action>', attributes: { action: '...' } })`.
+3. In each route you want to gate, resolve credentials via `httpAuth`,
+   call `permissions.authorize()`, and 403 on non-ALLOW.
+4. Tell adopters to list your plugin ID in
+   `permission.rbac.pluginsWithPermission`. Without it, your
+   `authorize()` calls silently pass through — no boot warning, no
+   audit trail, no signal.
+5. Ship a `PERMISSIONS.md` in your plugin repo listing every
+   permission, what surface it gates, and the shipped default role
+   that grants it.
 
-Every step happens in your plugin package. Nothing in butler-portal
-core needs to change.
+Nothing in butler-portal core changes when you add or modify a
+plugin's permissions. RBAC handles evaluation centrally.
 
 ## Minimal example
 
@@ -67,96 +53,142 @@ export const myPluginThingWritePermission = createPermission({
 });
 ```
 
-`adjudicator.ts` (decision logic + registration):
+`router.ts` (enforcement at request time):
 
 ```ts
-import { createBackendModule } from '@backstage/backend-plugin-api';
-import { AuthorizeResult } from '@backstage/plugin-permission-common';
-// See "Consuming the extension point" below for the current import
-// story. Today the extension-point definition lives inside butler-
-// portal source and is only reachable by in-tree plugins. Publishing
-// it as a small helper package for external dynamic plugins is
-// tracked as a follow-up.
-import { authAdjudicatorExtensionPoint } from 'butler-portal/authAdjudicator';
+import express from 'express';
+import Router from 'express-promise-router';
+import {
+  HttpAuthService,
+  LoggerService,
+  PermissionsService,
+} from '@backstage/backend-plugin-api';
+import {
+  AuthorizeResult,
+  BasicPermission,
+} from '@backstage/plugin-permission-common';
+import { NotAllowedError } from '@backstage/errors';
+import {
+  myPluginThingWritePermission,
+} from '../permissions';
 
-const ADMIN_GROUP = 'group:default/butler-platform-admins';
+type Deps = {
+  logger: LoggerService;
+  httpAuth: HttpAuthService;
+  permissions: PermissionsService;
+};
 
-export default createBackendModule({
-  pluginId: 'permission',
-  moduleId: 'my-plugin-adjudicator',
-  register(reg) {
-    reg.registerInit({
-      deps: { adjudicators: authAdjudicatorExtensionPoint },
-      async init({ adjudicators }) {
-        adjudicators.register('myplugin.', (request, user) => {
-          const refs = user?.info.ownershipEntityRefs ?? [];
-          const name = request.permission.name;
-          const isAdmin = refs.includes(ADMIN_GROUP);
+async function requirePermission(
+  req: express.Request,
+  permission: BasicPermission,
+  permissions: PermissionsService,
+  httpAuth: HttpAuthService,
+): Promise<void> {
+  const credentials = await httpAuth.credentials(req);
+  const [decision] = await permissions.authorize(
+    [{ permission }],
+    { credentials },
+  );
+  if (decision.result !== AuthorizeResult.ALLOW) {
+    throw new NotAllowedError(`Permission denied: ${permission.name}`);
+  }
+}
 
-          if (name.endsWith('.read')) {
-            return { result: AuthorizeResult.ALLOW };
-          }
-          return {
-            result: isAdmin ? AuthorizeResult.ALLOW : AuthorizeResult.DENY,
-          };
-        });
+export async function createRouter(deps: Deps): Promise<express.Router> {
+  const { httpAuth, permissions } = deps;
+  const router = Router();
+
+  router.post('/things/:id', async (req, res, next) => {
+    try {
+      await requirePermission(
+        req,
+        myPluginThingWritePermission,
+        permissions,
+        httpAuth,
+      );
+      // ... write
+      res.json({ ok: true });
+    } catch (e) {
+      next(e);
+    }
+  });
+
+  return router;
+}
+```
+
+`module.ts` (thread `permissions` into the router):
+
+```ts
+import {
+  coreServices,
+  createBackendPlugin,
+} from '@backstage/backend-plugin-api';
+import { createRouter } from './routes/router';
+
+export const myPlugin = createBackendPlugin({
+  pluginId: 'my-plugin',
+  register(env) {
+    env.registerInit({
+      deps: {
+        logger: coreServices.logger,
+        httpRouter: coreServices.httpRouter,
+        httpAuth: coreServices.httpAuth,
+        permissions: coreServices.permissions,
+      },
+      async init({ logger, httpRouter, httpAuth, permissions }) {
+        const router = await createRouter({ logger, httpAuth, permissions });
+        httpRouter.use(router);
       },
     });
   },
 });
 ```
 
-Export the module from your plugin's backend entry point alongside
-the plugin itself:
+`NotAllowedError` from `@backstage/errors` serializes as HTTP 403 by
+default when thrown from an Express handler.
 
-```ts
-export { default as myPluginPlugin } from './plugin';
-export { default as myPluginAdjudicator } from './adjudicator';
+## Adopter configuration
+
+Two chart-values entries are required for your plugin's permissions
+to be evaluated. Document both in your plugin's `PERMISSIONS.md`.
+
+**Register the plugin with RBAC** so `authorize()` calls are
+evaluated instead of passing through:
+
+```yaml
+permission:
+  enabled: true
+  rbac:
+    pluginsWithPermission:
+      - catalog
+      - scaffolder
+      - permission
+      - my-plugin        # your plugin ID
 ```
 
-The RHDH dynamic-plugin loader picks up both. Your adjudicator
-registers the `myplugin.` namespace at boot.
+**Bind the permission to a role** via the policy CSV or the RBAC
+admin UI:
 
-## Enforcing at the route
-
-In a route handler, resolve the caller's credentials via the
-`httpAuth` core service and call `authorize()`:
-
-```ts
-router.post('/things', async (req, res) => {
-  const credentials = await httpAuth.credentials(req, { allow: ['user'] });
-  const decision = await permissions.authorize(
-    [{ permission: myPluginThingWritePermission }],
-    { credentials },
-  );
-  if (decision[0].result !== AuthorizeResult.ALLOW) {
-    res.status(403).json({ error: 'forbidden' });
-    return;
-  }
-  // ... proceed
-});
+```yaml
+permission:
+  rbac:
+    policy:
+      csv: |
+        p, role:default/portal-privileged, myplugin.thing.write, update, allow
+        g, group:default/portal-admins, role:default/portal-privileged
 ```
 
-## Testing
+The `p, ...` row grants the permission to a role. The `g, ...` row
+binds a group to that role. Adopters replace `portal-admins` with
+their own group name; the role name is a butler-portal convention
+that any adopter can override.
 
-Two tests worth writing:
+## Frontend visibility
 
-1. Unit test of the adjudicator function: pass in constructed
-   `PolicyQuery` + `PolicyQueryUser` shapes and assert the returned
-   `PolicyDecision`. This gives fast coverage of every role branch.
-2. Behavioral-equivalence test if you migrate an existing inline
-   policy into a namespaced adjudicator: exercise the same
-   `(permission, identity)` matrix under both shapes and assert equal
-   outcomes. `packages/backend/src/permissionPolicy.test.ts` in
-   butler-portal does this for the registry adjudicator; use it as
-   the template.
-
-## Frontend gating (UX only)
-
-The backend `authorize()` call is the security boundary. Frontend
-gating is UX - it hides buttons and pages the user cannot act on to
-avoid confusing 403 loops. Use `usePermission()` from
-`@backstage/plugin-permission-react`:
+Gate UI controls with `usePermission()` from
+`@backstage/plugin-permission-react` so users do not see buttons
+they cannot use:
 
 ```tsx
 import { usePermission } from '@backstage/plugin-permission-react';
@@ -166,60 +198,83 @@ export const WriteButton = () => {
   const { allowed } = usePermission({
     permission: myPluginThingWritePermission,
   });
-  return <Button disabled={!allowed}>Save</Button>;
+  if (!allowed) return null;
+  return <Button>Save</Button>;
 };
 ```
 
-Do not rely on frontend gating for security. Do not skip the backend
-`authorize()` because the button is hidden.
+Frontend gating is UX, not security. The backend `authorize()` call
+is the security boundary. Do not skip backend enforcement because
+the button is hidden.
 
-## Choosing a prefix
+## Testing
 
-Recommendations:
+The two tests worth writing:
+
+1. **Handler-level authorize integration**: mock the
+   `PermissionsService` to return DENY, hit the route, assert 403.
+   Then flip to ALLOW, assert 200. Covers the `requirePermission`
+   wiring without depending on RBAC's policy engine.
+2. **End-to-end policy test against a fixture RBAC config**: boot
+   RBAC with a fixture CSV that grants your permission to a fixture
+   role bound to a fixture user, sign in as that user, hit the
+   route. Repeat with a user not in the role, assert 403. Slower
+   but covers the full stack.
+
+## Prefix conventions
 
 - One prefix per plugin, terminated with a separator (`.` conventional).
-- Short and specific: `pe.`, `myplugin.`, not `backstage.myplugin.`.
-- Do not shadow another plugin: check
-  `packages/backend/src/*` and other adjudicators in the tree before
-  registering.
-- Registering the same prefix twice throws at boot with an explicit
-  error naming the collision.
+- Short and specific: `myplugin.`, `pe.`, not `backstage.myplugin.`.
+- Do not shadow another plugin's prefix. Check other plugins'
+  `PERMISSIONS.md` files before choosing.
+- Use `<subject>.<action>` for the tail (`thing.read`, `thing.write`,
+  `admin.settings.update`).
 
-## Consuming the extension point
+## Failure modes to know
 
-The `authAdjudicatorExtensionPoint` marker is defined in
-`packages/backend/src/authAdjudicator.ts`. Today it is only reachable
-from code that lives inside butler-portal's own workspace, which is
-sufficient for first-party in-tree plugins and for the registry
-adjudicator itself.
+- **Silent pass-through when `pluginsWithPermission` omits your
+  plugin ID**: your `authorize()` call returns ALLOW regardless of
+  policy. No warning is emitted at boot. This is a real
+  near-security failure: adopters can forget the list entry and
+  believe they are enforced when they are not. Document the required
+  entry loudly in your plugin's `PERMISSIONS.md`.
+- **Superusers bypass everything**: an identity resolved into
+  `permission.rbac.admin.superUsers` skips all evaluation. If your
+  denial test uses a superuser, it will spuriously pass.
+- **Guest identity resolves to `user:development/guest`**: local
+  dev with the guest auth provider uses namespace `development`,
+  not `default`. A superusers list with `user:default/guest` will
+  not match. This bites only local dev.
+- **Conditional policies YAML uses `---` separators**, not a list:
+  if you introduce a `createPermissionRule()` and adopters want to
+  wire conditional policies against it, the file format is YAML
+  documents separated by `---`, not a top-level YAML list. The list
+  form fails with a misleading error.
 
-For external dynamic plugins (plugins loaded from an OCI artifact at
-runtime, like the corteva-internal PE plugin) the extension point
-marker needs to move into a small consumable helper package that
-both butler-portal and the external plugin can depend on. That
-packaging change is tracked as a follow-up to this PR; until it
-lands, external dynamic plugins cannot register their own adjudicator
-without vendoring the extension-point marker.
+## PERMISSIONS.md contract for your plugin
 
-If you are writing an in-tree plugin today, use the import path
-above and you are done. If you are writing an external dynamic
-plugin, wait for the helper package or file an issue if you are
-blocked and need it accelerated.
+Every plugin that declares permissions should ship a top-level
+`PERMISSIONS.md` in its repository. The format:
 
-## Failure handling
+```markdown
+# my-plugin permissions
 
-If your adjudicator throws or returns a rejected promise, the
-dispatcher fails closed and returns `DENY`. A broken adjudicator
-does not silently become an accidental `ALLOW`. Keep this in mind
-when writing tests: your adjudicator should throw only in cases
-where DENY is the intended outcome anyway. Prefer explicit
-`{ result: AuthorizeResult.DENY }` returns over throws for
-readability.
+## Permissions
 
-## When to graduate
+| Permission name | Action | UI/API surface gated | Default role granting |
+|---|---|---|---|
+| `myplugin.thing.write` | update | POST /api/my-plugin/things/:id | role:default/portal-privileged |
 
-If Backstage ships an official namespace-delegated policy interface,
-migrate off this seam so the plugin stays on framework grain. The
-migration is mechanical (swap the extension point, keep the
-adjudicator function shape). Track this in the note at the top of
-`packages/backend/src/authAdjudicator.ts`.
+## Enforcement mechanism
+
+Route handlers call `requirePermission(req, <perm>, permissions, httpAuth)` before mutating state.
+
+## Adopter configuration
+
+Add `my-plugin` to `permission.rbac.pluginsWithPermission` and bind
+the desired role to `role:default/portal-privileged` (or override).
+```
+
+The doc lands in the same PR as the permission declaration. Reviewers
+should block PRs that add a permission without updating the plugin's
+`PERMISSIONS.md`.
