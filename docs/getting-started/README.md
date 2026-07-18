@@ -113,5 +113,6 @@ If the connection fails, check the backend logs in your terminal for errors rela
 ## Next Steps
 
 - [Enable Your First Plugin](./first-plugin.md) to configure Chambers for workspace management.
+- [Getting Started with Permissions](./permissions.md) to gate a plugin's writes with RBAC end to end, from install through audit-verified enforcement.
 - Explore the [Plugins overview](../plugins/) to learn about Keeper, Herald, and other available plugins.
 - Review the [Architecture](../architecture/) section to understand how Butler Portal connects to the Butler ecosystem.
