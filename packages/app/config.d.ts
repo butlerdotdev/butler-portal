@@ -15,6 +15,19 @@
  */
 
 export interface Config {
+  /**
+   * Sign-in page options. Butler Portal renders a Guest card by default;
+   * identity-provider cards (Google, Microsoft, ...) are opt-in via
+   * auth.providers.<key>. See packages/app/src/signInProviders.ts.
+   */
+  signInPage?: {
+    /**
+     * Hide the Guest sign-in card -- e.g. an SSO-only production deployment.
+     * Must be frontend-visible: the sign-in page reads it in the browser.
+     * @visibility frontend
+     */
+    disableGuest?: boolean;
+  };
   plugins?: {
     butler?: {
       /**
