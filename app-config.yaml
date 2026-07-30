@@ -27,12 +27,16 @@ permission:
 auth:
   environment: development
   providers:
+    # Guest is the default sign-in affordance. Identity providers are opt-in:
+    # wire the provider's auth.providers.<key> subtree (see docs/reference
+    # "Authentication and Authorization") and its sign-in card + backend route
+    # appear together. Example for Google:
+    #   google:
+    #     development:
+    #       clientId: ${AUTH_GOOGLE_CLIENT_ID}
+    #       clientSecret: ${AUTH_GOOGLE_CLIENT_SECRET}
+    #       prompt: select_account
     guest: {}
-    google:
-      development:
-        clientId: ${AUTH_GOOGLE_CLIENT_ID}
-        clientSecret: ${AUTH_GOOGLE_CLIENT_SECRET}
-        prompt: select_account
 
 integrations:
   github:

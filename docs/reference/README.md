@@ -114,15 +114,60 @@ The service account needs RBAC permissions to read and manage Butler CRDs. At mi
 
 ## Authentication and Authorization
 
-### Guest Access (Development)
+Butler Portal shows a **Guest** sign-in card by default. Every identity provider
+(Google, Microsoft, GitHub, generic OIDC) is **opt-in**: its sign-in card and
+backend route appear only when the matching `auth.providers.<key>` subtree below
+is present. This keeps the login screen from ever showing a card whose backend
+route returns 404. To require SSO, hide the Guest card with
+`signInPage.disableGuest`.
 
-For local development, you can enable guest access:
+### Guest Access
+
+Guest is the default card. Locally it works out of the box; to allow it outside
+development you must opt in explicitly:
 
 ```yaml
 auth:
   providers:
     guest:
-      dangerouslyAllowOutsideDevelopment: false
+      dangerouslyAllowOutsideDevelopment: true
+```
+
+Hide the Guest card entirely — for example an SSO-only production deployment:
+
+```yaml
+signInPage:
+  disableGuest: true
+```
+
+### Google Authentication
+
+Opt in to the Google card and its backend route:
+
+```yaml
+auth:
+  providers:
+    google:
+      development:
+        clientId: ${AUTH_GOOGLE_CLIENT_ID}
+        clientSecret: ${AUTH_GOOGLE_CLIENT_SECRET}
+        prompt: select_account
+```
+
+### Microsoft (Entra) Authentication
+
+Butler Portal renders the Microsoft card when this subtree is present; wire the
+stock `@backstage/plugin-auth-backend-module-microsoft-provider` as a dynamic
+plugin so the backend route exists to match the card:
+
+```yaml
+auth:
+  providers:
+    microsoft:
+      production:
+        clientId: ${AUTH_MICROSOFT_CLIENT_ID}
+        clientSecret: ${AUTH_MICROSOFT_CLIENT_SECRET}
+        tenantId: ${AUTH_MICROSOFT_TENANT_ID}
 ```
 
 ### GitHub Authentication

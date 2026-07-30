@@ -22,15 +22,18 @@ import {
 } from '@backstage/core-plugin-api';
 
 // Pure builder for the SignInPage providers array. Extracted so the
-// regression guard (no-microsoft-config adopters render Guest + Google
-// only, unchanged) can be tested with a ConfigReader, matching the
+// regression guard can be tested with a ConfigReader, matching the
 // existing pure-config-function test pattern used elsewhere in this
 // distribution (see packages/backend/src/butlerLabsPluginGates.ts).
 //
-// Optional provider cards (Microsoft today; future OIDC, Okta, etc.)
-// follow the same conditional shape: card renders only when the
-// adopter has the corresponding auth.providers.<key> subtree wired in
-// app-config. Default render is always Guest + Google.
+// Guest is the default sign-in affordance: it renders unless an adopter
+// opts out with `signInPage.disableGuest: true` (e.g. an SSO-only
+// production deployment). Every identity-provider card (Google,
+// Microsoft, future OIDC/Okta) is opt-in: it renders only when the
+// adopter has the corresponding `auth.providers.<key>` subtree wired in
+// app-config, which also keeps the sign-in page from showing a card whose
+// backend route 404s. So the default render is Guest only, and each
+// provider is added the same conditional way.
 export function buildSignInProviders(
   config: Config,
 ): Array<'guest' | SignInProviderConfig> {
@@ -47,14 +50,24 @@ export function buildSignInProviders(
     apiRef: microsoftAuthApiRef,
   };
 
-  const providers: Array<'guest' | SignInProviderConfig> = [
-    'guest',
-    googleProvider,
-  ];
+  const providers: Array<'guest' | SignInProviderConfig> = [];
 
-  // Render the Microsoft card only when the adopter wired the microsoft
-  // auth provider in app-config. Keeps the default sign-in page from
-  // showing a card whose backend route 404s.
+  // Guest renders by default. Read the opt-out via getOptional (raw value)
+  // so a legacy scalar `signInPage` value can never throw a type error.
+  const signInPage = config.getOptional('signInPage');
+  const disableGuest =
+    typeof signInPage === 'object' &&
+    signInPage !== null &&
+    (signInPage as { disableGuest?: unknown }).disableGuest === true;
+  if (!disableGuest) {
+    providers.push('guest');
+  }
+
+  // Opt-in identity providers: a card renders only when its
+  // auth.providers.<key> subtree is present in app-config.
+  if (config.getOptionalConfig('auth.providers.google')) {
+    providers.push(googleProvider);
+  }
   if (config.getOptionalConfig('auth.providers.microsoft')) {
     providers.push(microsoftProvider);
   }

@@ -34,8 +34,21 @@ backend.add(import('@backstage/plugin-auth-backend'));
 // See https://backstage.io/docs/backend-system/building-backends/migrating#the-auth-plugin
 backend.add(import('@backstage/plugin-auth-backend-module-guest-provider'));
 // Custom Google auth module -- issues tokens from Google profile email
-// without requiring User entities in the catalog.
-backend.add(import('./authModuleGoogleProvider'));
+// without requiring User entities in the catalog. Opt-in: registered only
+// when the adopter wires auth.providers.google in app-config, mirroring the
+// frontend sign-in card gate (packages/app/src/signInProviders.ts) so the
+// provider's backend route and its login card appear together or not at all.
+// Guest above stays unconditional -- it is the default sign-in affordance.
+backend.add(
+  createBackendFeatureLoader({
+    deps: { config: coreServices.rootConfig },
+    async *loader({ config }) {
+      if (config.getOptionalConfig('auth.providers.google')) {
+        yield import('./authModuleGoogleProvider');
+      }
+    },
+  }),
+);
 // See https://backstage.io/docs/auth/guest/provider
 
 // catalog plugin
