@@ -17,68 +17,65 @@
 import { ConfigReader } from '@backstage/config';
 import { buildSignInProviders } from './signInProviders';
 
-// These tests pin the SignInPage providers list. The without-config
-// case is the load-bearing regression guard for every existing
-// butler-portal adopter: when no optional provider is configured the
-// login screen must render exactly Guest + Google, unchanged from
-// before optional providers were introduced.
+// These tests pin the SignInPage providers list. Guest is the default
+// card; every identity provider (Google, Microsoft, future OIDC) is
+// opt-in, rendered only when its auth.providers.<key> subtree is wired.
+// The load-bearing guard is that a plain config renders Guest only — no
+// provider card whose backend route would 404.
 
 const config = (data: unknown) => new ConfigReader(data as object);
 
+const google = { production: { clientId: 'x', clientSecret: 'y' } };
+const microsoft = {
+  production: { clientId: 'x', clientSecret: 'y', tenantId: 'z' },
+};
+const ids = (ps: ReturnType<typeof buildSignInProviders>) =>
+  ps.map(p => (typeof p === 'string' ? p : p.id));
+
 describe('buildSignInProviders', () => {
-  it('renders guest + google only when no optional provider is configured', () => {
-    const providers = buildSignInProviders(config({}));
-    expect(providers).toHaveLength(2);
-    expect(providers[0]).toBe('guest');
-    expect(providers[1]).toMatchObject({
-      id: 'google-auth-provider',
-      title: 'Google',
-    });
+  it('renders guest only when no identity provider is configured', () => {
+    expect(ids(buildSignInProviders(config({})))).toEqual(['guest']);
   });
 
-  it('renders guest + google + microsoft when auth.providers.microsoft is configured', () => {
+  it('renders guest + google only when auth.providers.google is configured', () => {
     const providers = buildSignInProviders(
-      config({
-        auth: {
-          providers: {
-            microsoft: {
-              production: {
-                clientId: 'test-id',
-                clientSecret: 'test-secret',
-                tenantId: 'test-tenant',
-              },
-            },
-          },
-        },
-      }),
+      config({ auth: { providers: { google } } }),
     );
-    expect(providers).toHaveLength(3);
-    expect(providers[0]).toBe('guest');
-    expect(providers[1]).toMatchObject({
-      id: 'google-auth-provider',
-      title: 'Google',
-    });
-    expect(providers[2]).toMatchObject({
-      id: 'microsoft-auth-provider',
-      title: 'Microsoft',
-    });
+    expect(ids(providers)).toEqual(['guest', 'google-auth-provider']);
+    expect(providers[1]).toMatchObject({ id: 'google-auth-provider', title: 'Google' });
   });
 
-  it('does not render the microsoft card when only an unrelated auth provider is configured', () => {
+  it('renders guest + microsoft only when auth.providers.microsoft is configured', () => {
     const providers = buildSignInProviders(
-      config({
-        auth: {
-          providers: {
-            google: { production: { clientId: 'x', clientSecret: 'y' } },
-          },
-        },
-      }),
+      config({ auth: { providers: { microsoft } } }),
     );
-    expect(providers).toHaveLength(2);
-    expect(
-      providers.find(
-        p => typeof p !== 'string' && p.id === 'microsoft-auth-provider',
-      ),
-    ).toBeUndefined();
+    expect(ids(providers)).toEqual(['guest', 'microsoft-auth-provider']);
+    expect(providers[1]).toMatchObject({ id: 'microsoft-auth-provider', title: 'Microsoft' });
+  });
+
+  it('renders guest + google + microsoft when both are configured', () => {
+    const providers = buildSignInProviders(
+      config({ auth: { providers: { google, microsoft } } }),
+    );
+    expect(ids(providers)).toEqual([
+      'guest',
+      'google-auth-provider',
+      'microsoft-auth-provider',
+    ]);
+  });
+
+  it('omits the guest card when signInPage.disableGuest is true', () => {
+    const providers = buildSignInProviders(
+      config({ signInPage: { disableGuest: true }, auth: { providers: { microsoft } } }),
+    );
+    expect(ids(providers)).toEqual(['microsoft-auth-provider']);
+  });
+
+  it('keeps guest and does not throw when signInPage is a legacy scalar', () => {
+    // Older adopters set `signInPage: <string>`, which is unread; it must
+    // neither throw nor be mistaken for the disableGuest opt-out.
+    expect(ids(buildSignInProviders(config({ signInPage: 'microsoft' })))).toEqual([
+      'guest',
+    ]);
   });
 });

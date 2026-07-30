@@ -181,6 +181,34 @@ The chart's behaviour does not depend on the image tag; the per-plugin
 gates work against any image that ships the matching backend code. The
 tag pin is purely about which application binary you want to run.
 
+## Migrating from 0.6.x to 0.7.0
+
+`0.7.0` makes every identity provider opt-in. Previously the sign-in page always
+rendered a **Google** card and the backend always registered the Google auth
+module, requiring `AUTH_GOOGLE_CLIENT_ID` / `AUTH_GOOGLE_CLIENT_SECRET` to be set
+even when Google was not used. From `0.7.0`, a provider's sign-in card and
+backend route appear only when its `auth.providers.<key>` subtree is present.
+
+**Guest is unchanged** — it is still the default sign-in card.
+
+For upgraders this is a behavior change only if you relied on the built-in
+Google card. To restore it, opt in explicitly:
+
+```yaml
+auth:
+  providers:
+    google:
+      development:
+        clientId: ${AUTH_GOOGLE_CLIENT_ID}
+        clientSecret: ${AUTH_GOOGLE_CLIENT_SECRET}
+        prompt: select_account
+```
+
+If you do not use Google, no action is needed — drop the now-unused
+`AUTH_GOOGLE_*` environment variables. To require SSO and hide the Guest card,
+set `signInPage.disableGuest: true`. See the "Authentication and Authorization"
+section of the reference docs for all providers.
+
 ## Migrating from 0.3.x to 0.4.0
 
 `0.4.0` introduces the per-plugin runtime gates documented in the previous
