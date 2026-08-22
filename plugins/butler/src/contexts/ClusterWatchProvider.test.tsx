@@ -179,21 +179,37 @@ describe('ClusterWatchProvider', () => {
     });
     await waitFor(() => expect(FakeWebSocket.instances).toHaveLength(3));
 
-    // A successful open resets the backoff.
+    // A short-lived open (the relay accepts the upgrade, the server hop
+    // fails) does not reset the backoff: next retry waits 4s, not 1s.
     act(() => {
       latestSocket().emitOpen();
       latestSocket().emitServerClose();
     });
     act(() => {
-      jest.advanceTimersByTime(1000);
+      jest.advanceTimersByTime(3999);
+    });
+    expect(FakeWebSocket.instances).toHaveLength(3);
+    act(() => {
+      jest.advanceTimersByTime(1);
     });
     await waitFor(() => expect(FakeWebSocket.instances).toHaveLength(4));
+
+    // A connection that stays up for 10s resets the backoff to 1s.
+    act(() => {
+      latestSocket().emitOpen();
+      jest.advanceTimersByTime(10000);
+      latestSocket().emitServerClose();
+    });
+    act(() => {
+      jest.advanceTimersByTime(1000);
+    });
+    await waitFor(() => expect(FakeWebSocket.instances).toHaveLength(5));
   });
 
-  it('stops retrying after five failed attempts', async () => {
+  it('keeps retrying at the 30s cap instead of giving up', async () => {
     renderProvider();
     await waitFor(() => expect(FakeWebSocket.instances).toHaveLength(1));
-    for (let attempt = 0; attempt < 5; attempt += 1) {
+    for (let attempt = 0; attempt < 8; attempt += 1) {
       act(() => latestSocket().emitServerClose());
       act(() => {
         jest.advanceTimersByTime(30000);
@@ -203,14 +219,16 @@ describe('ClusterWatchProvider', () => {
         expect(FakeWebSocket.instances).toHaveLength(attempt + 2),
       );
     }
+    // Delay is capped: after many failures a retry still happens within 30s.
     act(() => latestSocket().emitServerClose());
     act(() => {
-      jest.advanceTimersByTime(60000);
+      jest.advanceTimersByTime(29999);
     });
-    await act(async () => {
-      await Promise.resolve();
+    expect(FakeWebSocket.instances).toHaveLength(9);
+    act(() => {
+      jest.advanceTimersByTime(1);
     });
-    expect(FakeWebSocket.instances).toHaveLength(6);
+    await waitFor(() => expect(FakeWebSocket.instances).toHaveLength(10));
   });
 
   it('closes the socket and cancels reconnects on unmount', async () => {
