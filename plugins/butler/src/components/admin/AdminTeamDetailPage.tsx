@@ -52,6 +52,7 @@ import ArrowUpwardIcon from '@material-ui/icons/ArrowUpward';
 import { butlerApiRef } from '../../api/ButlerApi';
 import type { Cluster } from '../../api/types/clusters';
 import { StatusBadge } from '../StatusBadge/StatusBadge';
+import { useButlerRoutes } from '../../hooks/useButlerRoutes';
 
 const useStyles = makeStyles(theme => ({
   header: {
@@ -235,6 +236,7 @@ function formatAge(timestamp: string | undefined): string {
 export const AdminTeamDetailPage = () => {
   const classes = useStyles();
   const api = useApi(butlerApiRef);
+  const routes = useButlerRoutes();
   const { teamName } = useParams<{ teamName: string }>();
   const [team, setTeam] = useState<TeamDetail | null>(null);
   const [clusters, setClusters] = useState<Cluster[]>([]);
@@ -578,7 +580,7 @@ export const AdminTeamDetailPage = () => {
       <Button
         startIcon={<ArrowBackIcon />}
         component={RouterLink}
-        to="/butler/admin/teams"
+        to={routes.adminTeams()}
         style={{ textTransform: 'none', marginBottom: 16 }}
       >
         Back to Teams

@@ -10,12 +10,48 @@ import {
 } from '@backstage/core-plugin-api';
 import { butlerApiRef } from './api/ButlerApi';
 import { ButlerApiClient } from './api/ButlerApiClient';
-import { rootRouteRef } from './routes';
+import {
+  rootRouteRef,
+  teamRouteRef,
+  clustersRouteRef,
+  createClusterRouteRef,
+  clusterDetailRouteRef,
+  teamMembersRouteRef,
+  teamSettingsRouteRef,
+  adminRouteRef,
+  adminClustersRouteRef,
+  adminManagementRouteRef,
+  adminTeamsRouteRef,
+  adminTeamDetailRouteRef,
+  adminUsersRouteRef,
+  adminProvidersRouteRef,
+  adminCreateProviderRouteRef,
+  adminIdentityProvidersRouteRef,
+  adminCreateIdentityProviderRouteRef,
+  adminSettingsRouteRef,
+} from './routes';
 
 export const butlerPlugin = createPlugin({
   id: 'butler',
   routes: {
     root: rootRouteRef,
+    team: teamRouteRef,
+    clusters: clustersRouteRef,
+    createCluster: createClusterRouteRef,
+    clusterDetail: clusterDetailRouteRef,
+    teamMembers: teamMembersRouteRef,
+    teamSettings: teamSettingsRouteRef,
+    admin: adminRouteRef,
+    adminClusters: adminClustersRouteRef,
+    adminManagement: adminManagementRouteRef,
+    adminTeams: adminTeamsRouteRef,
+    adminTeamDetail: adminTeamDetailRouteRef,
+    adminUsers: adminUsersRouteRef,
+    adminProviders: adminProvidersRouteRef,
+    adminCreateProvider: adminCreateProviderRouteRef,
+    adminIdentityProviders: adminIdentityProvidersRouteRef,
+    adminCreateIdentityProvider: adminCreateIdentityProviderRouteRef,
+    adminSettings: adminSettingsRouteRef,
   },
   apis: [
     createApiFactory({

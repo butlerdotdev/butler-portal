@@ -27,6 +27,7 @@ import ArrowForwardIcon from '@material-ui/icons/ArrowForward';
 import CheckIcon from '@material-ui/icons/Check';
 import { butlerApiRef } from '../../api/ButlerApi';
 import type { Provider, ImageInfo, NetworkInfo } from '../../api/types/providers';
+import { useButlerRoutes } from '../../hooks/useButlerRoutes';
 
 interface CreateClusterFormState {
   // Basic Info
@@ -162,6 +163,7 @@ const initialFormState: CreateClusterFormState = {
 export const CreateClusterPage = () => {
   const classes = useStyles();
   const api = useApi(butlerApiRef);
+  const routes = useButlerRoutes();
   const navigate = useNavigate();
   const { team } = useParams<{ team: string }>();
 
@@ -380,7 +382,7 @@ export const CreateClusterPage = () => {
           proxmoxTemplateID: parseInt(form.proxmoxTemplateID, 10) || undefined,
         }),
       });
-      navigate(`/butler/t/${team}/clusters`);
+      navigate(routes.clusters({ team: team ?? '' }));
     } catch (e) {
       setSubmitError(
         e instanceof Error ? e.message : 'Failed to create cluster',
@@ -1043,7 +1045,7 @@ export const CreateClusterPage = () => {
         <Button
           size="small"
           startIcon={<ArrowBackIcon />}
-          onClick={() => navigate(`/butler/t/${team}/clusters`)}
+          onClick={() => navigate(routes.clusters({ team: team ?? '' }))}
         >
           Back to Clusters
         </Button>

@@ -32,6 +32,7 @@ import RefreshIcon from '@material-ui/icons/Refresh';
 import { butlerApiRef } from '../../api/ButlerApi';
 import { StatusBadge } from '../StatusBadge/StatusBadge';
 import type { Provider } from '../../api/types/providers';
+import { useButlerRoutes } from '../../hooks/useButlerRoutes';
 
 const useStyles = makeStyles(theme => ({
   headerActions: {
@@ -115,6 +116,7 @@ interface ProviderRow {
 export const ProvidersPage = () => {
   const classes = useStyles();
   const api = useApi(butlerApiRef);
+  const routes = useButlerRoutes();
 
   const [providers, setProviders] = useState<Provider[]>([]);
   const [loading, setLoading] = useState(true);
@@ -241,7 +243,7 @@ export const ProvidersPage = () => {
               color="primary"
               startIcon={<AddIcon />}
               component={RouterLink}
-              to="/butler/admin/providers/create"
+              to={routes.adminCreateProvider()}
             >
               Create Provider
             </Button>
@@ -268,7 +270,7 @@ export const ProvidersPage = () => {
                   color="primary"
                   startIcon={<AddIcon />}
                   component={RouterLink}
-                  to="/butler/admin/providers/create"
+                  to={routes.adminCreateProvider()}
                 >
                   Create Provider
                 </Button>

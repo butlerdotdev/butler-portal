@@ -24,6 +24,7 @@ import {
   PROVIDER_PRESETS,
   type ProviderPresetKey,
 } from '../../api/types/identity-providers';
+import { useButlerRoutes } from '../../hooks/useButlerRoutes';
 
 const useStyles = makeStyles(theme => ({
   header: {
@@ -119,6 +120,7 @@ interface FormData {
 export const CreateIdentityProviderPage = () => {
   const classes = useStyles();
   const api = useApi(butlerApiRef);
+  const routes = useButlerRoutes();
   const navigate = useNavigate();
 
   const [selectedPreset, setSelectedPreset] = useState<PresetOption | null>(
@@ -271,7 +273,7 @@ export const CreateIdentityProviderPage = () => {
       <Button
         startIcon={<ArrowBackIcon />}
         component={RouterLink}
-        to="/butler/admin/identity-providers"
+        to={routes.adminIdentityProviders()}
         style={{ textTransform: 'none', marginBottom: 16 }}
       >
         Back to Identity Providers

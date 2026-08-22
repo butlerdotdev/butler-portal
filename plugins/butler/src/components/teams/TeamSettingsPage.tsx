@@ -29,6 +29,7 @@ import CancelIcon from '@material-ui/icons/Cancel';
 
 import { butlerApiRef } from '../../api/ButlerApi';
 import { useTeamContext } from '../../hooks/useTeamContext';
+import { useButlerRoutes } from '../../hooks/useButlerRoutes';
 
 const useStyles = makeStyles(theme => ({
   fieldRow: {
@@ -127,6 +128,7 @@ export const TeamSettingsPage = () => {
   const classes = useStyles();
   const { team } = useParams<{ team: string }>();
   const api = useApi(butlerApiRef);
+  const routes = useButlerRoutes();
   const { teams } = useTeamContext();
 
   const [teamDetail, setTeamDetail] = useState<TeamDetail | null>(null);
@@ -249,7 +251,7 @@ export const TeamSettingsPage = () => {
               <Button
                 startIcon={<ArrowBackIcon />}
                 component={RouterLink}
-                to={`/butler/t/${team}`}
+                to={routes.team({ team: team ?? '' })}
                 style={{ textTransform: 'none', marginBottom: 16 }}
               >
                 Back to Dashboard

@@ -3,7 +3,8 @@
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useApi } from '@backstage/core-plugin-api';
-import { useNavigate, useLocation } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
+import { useButlerRoutes, useIsAdminRoute } from '../hooks/useButlerRoutes';
 import { Progress } from '@backstage/core-components';
 import { butlerApiRef } from '../api/ButlerApi';
 import { TeamContext } from './TeamContext';
@@ -16,7 +17,8 @@ const MODE_STORAGE_KEY = 'butler-view-mode';
 export const TeamProvider = ({ children }: { children: React.ReactNode }) => {
   const api = useApi(butlerApiRef);
   const navigate = useNavigate();
-  const location = useLocation();
+  const routes = useButlerRoutes();
+  const isAdminRoute = useIsAdminRoute();
 
   const [teams, setTeams] = useState<TeamInfo[]>([]);
   const [activeTeam, setActiveTeam] = useState<string | null>(
@@ -26,9 +28,7 @@ export const TeamProvider = ({ children }: { children: React.ReactNode }) => {
   const [isAdmin, setIsAdmin] = useState(false);
 
   // Derive mode from the current URL path
-  const mode: ViewMode = location.pathname.includes('/butler/admin')
-    ? 'admin'
-    : 'team';
+  const mode: ViewMode = isAdminRoute ? 'admin' : 'team';
 
   useEffect(() => {
     let cancelled = false;
@@ -92,15 +92,15 @@ export const TeamProvider = ({ children }: { children: React.ReactNode }) => {
       setActiveTeam(teamName);
       localStorage.setItem(TEAM_STORAGE_KEY, teamName);
       localStorage.setItem(MODE_STORAGE_KEY, 'team');
-      navigate(`/butler/t/${teamName}`);
+      navigate(routes.team({ team: teamName }));
     },
-    [api, navigate],
+    [api, navigate, routes],
   );
 
   const switchToAdmin = useCallback(() => {
     localStorage.setItem(MODE_STORAGE_KEY, 'admin');
-    navigate('/butler/admin');
-  }, [navigate]);
+    navigate(routes.admin());
+  }, [navigate, routes]);
 
   const activeTeamInfo = useMemo(() => {
     if (!activeTeam) return null;

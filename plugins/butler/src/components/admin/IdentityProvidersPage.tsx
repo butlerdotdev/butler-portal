@@ -30,6 +30,7 @@ import CheckCircleIcon from '@material-ui/icons/CheckCircle';
 import { butlerApiRef } from '../../api/ButlerApi';
 import type { IdentityProvider } from '../../api/types/identity-providers';
 import { StatusBadge } from '../StatusBadge/StatusBadge';
+import { useButlerRoutes } from '../../hooks/useButlerRoutes';
 
 const useStyles = makeStyles(theme => ({
   header: {
@@ -73,6 +74,7 @@ type IdPRow = {
 export const IdentityProvidersPage = () => {
   const classes = useStyles();
   const api = useApi(butlerApiRef);
+  const routes = useButlerRoutes();
   const [providers, setProviders] = useState<IdentityProvider[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<Error | undefined>();
@@ -238,7 +240,7 @@ export const IdentityProvidersPage = () => {
       <Button
         startIcon={<ArrowBackIcon />}
         component={RouterLink}
-        to="/butler/admin"
+        to={routes.admin()}
         style={{ textTransform: 'none', marginBottom: 16 }}
       >
         Back to Admin

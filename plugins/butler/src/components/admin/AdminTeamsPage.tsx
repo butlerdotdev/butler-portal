@@ -26,6 +26,7 @@ import ArrowBackIcon from '@material-ui/icons/ArrowBack';
 import RefreshIcon from '@material-ui/icons/Refresh';
 import { butlerApiRef } from '../../api/ButlerApi';
 import type { TeamInfo } from '../../api/types/teams';
+import { useButlerRoutes } from '../../hooks/useButlerRoutes';
 
 const useStyles = makeStyles(theme => ({
   header: {
@@ -54,6 +55,7 @@ type TeamRow = {
 export const AdminTeamsPage = () => {
   const classes = useStyles();
   const api = useApi(butlerApiRef);
+  const routes = useButlerRoutes();
   const [teams, setTeams] = useState<TeamInfo[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<Error | undefined>();
@@ -173,7 +175,7 @@ export const AdminTeamsPage = () => {
       <Button
         startIcon={<ArrowBackIcon />}
         component={RouterLink}
-        to="/butler/admin"
+        to={routes.admin()}
         style={{ textTransform: 'none', marginBottom: 16 }}
       >
         Back to Admin
