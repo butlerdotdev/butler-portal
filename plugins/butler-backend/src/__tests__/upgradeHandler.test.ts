@@ -178,3 +178,23 @@ describe('createButlerUpgradeHandler', () => {
     expect(socket.ended).toBe(false);
   });
 });
+
+describe('createButlerUpgradeHandler identity', () => {
+  it('consults the provided resolver when the signer is active', async () => {
+    const resolveEmail = jest.fn(async () => 'dev@example.com');
+    const handleUpgrade = jest.fn();
+    const handler = createButlerUpgradeHandler({
+      httpAuth: { credentials: jest.fn(async () => ({ principal: { type: 'user' } })) } as any,
+      wss: { handleUpgrade } as any,
+      targetUrl: 'http://butler',
+      authManager: { getToken: async () => 't' } as any,
+      logger: { info: jest.fn(), warn: jest.fn(), error: jest.fn(), debug: jest.fn() } as any,
+      portalSigner: { sign: () => 'proof' } as any,
+      identityResolver: { resolveEmail } as any,
+    });
+    handler({ url: '/api/butler/ws/clusters', headers: {} } as any, { end: jest.fn() } as any, Buffer.alloc(0));
+    await new Promise(r => setTimeout(r, 0));
+    expect(resolveEmail).toHaveBeenCalled();
+    expect(handleUpgrade).toHaveBeenCalled();
+  });
+});
