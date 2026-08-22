@@ -1,6 +1,7 @@
 // Copyright 2026 The Butler Authors.
 // SPDX-License-Identifier: Apache-2.0
 
+import { useId } from 'react';
 import type { InputHTMLAttributes, ReactNode } from 'react';
 import { makeStyles } from '@material-ui/core/styles';
 import clsx from 'clsx';
@@ -92,10 +93,12 @@ export const ButlerInput = ({
   tone = 'default',
   mono,
   className,
-  id,
+  id: givenId,
   ...props
 }: ButlerInputProps) => {
   const classes = useStyles();
+  const generatedId = useId();
+  const id = givenId ?? generatedId;
   const input = (
     <input
       id={id}

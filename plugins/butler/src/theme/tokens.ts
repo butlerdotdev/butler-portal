@@ -26,7 +26,6 @@ export interface ButlerPalette {
   orange: Record<400 | 500, string>;
   violet: Record<300 | 400 | 500, string>;
   teal: Record<300 | 400 | 500, string>;
-  purple: Record<300 | 400, string>;
 }
 
 const dark: ButlerPalette = {
@@ -79,12 +78,14 @@ const dark: ButlerPalette = {
   orange: { 400: '251 146 60', 500: '249 115 22' },
   violet: { 300: '196 181 253', 400: '167 139 250', 500: '139 92 246' },
   teal: { 300: '94 234 212', 400: '45 212 191', 500: '20 184 166' },
-  purple: { 300: '216 180 254', 400: '192 132 252' },
 };
 
 // Light mode keeps the console's remapping: neutral 50-300 are text
 // shades, 400-600 muted text, 700-950 surfaces; accent 300+ shades darken
 // for contrast on white while the 200 tints stay as subtle backgrounds.
+// Deliberate deviation: the console never remaps orange-400 in light mode
+// (Degraded text stays 251 146 60 on white, below AA); orange-600 is used
+// here so the badge reads on a light surface.
 const light: ButlerPalette = {
   neutral: {
     50: '9 9 11',
@@ -135,7 +136,6 @@ const light: ButlerPalette = {
   orange: { 400: '234 88 12', 500: '249 115 22' },
   violet: { 300: '76 29 149', 400: '91 33 182', 500: '109 40 217' },
   teal: { 300: '17 94 89', 400: '15 118 110', 500: '13 148 136' },
-  purple: { 300: '107 33 168', 400: '126 34 206' },
 };
 
 /** Solid color from an `r g b` triplet. */

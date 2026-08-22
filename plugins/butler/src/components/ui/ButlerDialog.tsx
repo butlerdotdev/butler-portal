@@ -1,6 +1,7 @@
 // Copyright 2026 The Butler Authors.
 // SPDX-License-Identifier: Apache-2.0
 
+import { useId } from 'react';
 import type { ReactNode } from 'react';
 import { Dialog } from '@material-ui/core';
 import { makeStyles } from '@material-ui/core/styles';
@@ -88,10 +89,10 @@ export interface ButlerDialogProps {
   iconTone?: 'danger' | 'neutral';
   footer?: ReactNode;
   children?: ReactNode;
-  maxWidth?: 'xs' | 'sm' | 'md' | 'lg';
+  /** Panel width in px. Console uses 448 (confirm) and 512 (forms). */
+  width?: number;
   /** Block backdrop and escape dismissal while an action is in flight. */
   busy?: boolean;
-  'aria-labelledby'?: string;
 }
 
 /**
@@ -107,18 +108,20 @@ export const ButlerDialog = ({
   iconTone = 'neutral',
   footer,
   children,
-  maxWidth = 'sm',
+  width = 448,
   busy = false,
 }: ButlerDialogProps) => {
   const classes = useStyles();
+  const titleId = useId();
   return (
     <Dialog
       open={open}
       onClose={busy ? undefined : onClose}
-      maxWidth={maxWidth}
+      maxWidth={false}
       fullWidth
+      aria-labelledby={titleId}
       BackdropProps={{ className: classes.backdrop }}
-      PaperProps={{ className: classes.paper }}
+      PaperProps={{ className: classes.paper, style: { maxWidth: width } }}
       disableEscapeKeyDown={busy}
     >
       <div className={classes.header}>
@@ -133,7 +136,9 @@ export const ButlerDialog = ({
           </div>
         )}
         <div>
-          <h2 className={classes.title}>{title}</h2>
+          <h2 id={titleId} className={classes.title}>
+            {title}
+          </h2>
           {subtitle && <p className={classes.subtitle}>{subtitle}</p>}
         </div>
       </div>

@@ -127,7 +127,6 @@ export const DeleteClusterDialog = ({
       open={open}
       onClose={close}
       busy={deleting}
-      maxWidth="xs"
       title="Delete Cluster"
       subtitle="This action cannot be undone"
       icon={<AlertTriangleIcon />}

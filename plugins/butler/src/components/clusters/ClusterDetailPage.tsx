@@ -1,7 +1,7 @@
 // Copyright 2026 The Butler Authors.
 // SPDX-License-Identifier: Apache-2.0
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
 import {
   useParams,
   useNavigate,
@@ -28,6 +28,7 @@ import { MachineRequestsCard } from './MachineRequestsCard';
 import { LoadBalancerRequestsCard } from './LoadBalancerRequestsCard';
 import { InfrastructureOverrideCard } from './InfrastructureOverrideCard';
 import { DeleteClusterDialog } from './DeleteClusterDialog';
+import { ControlPlaneResourcesCard } from './ControlPlaneResourcesCard';
 import { butlerTokens, rgb } from '../../theme';
 import {
   ButlerBanner,
@@ -43,6 +44,7 @@ import {
   ButlerStack,
   ButlerStatusBadge,
   ButlerTable,
+  ButlerTabPanel,
   ButlerTabs,
   DownloadIcon,
   SpinnerIcon,
@@ -357,6 +359,9 @@ export const ClusterDetailPage = () => {
 
   const { subscribe } = useClusterWatch();
   const [deletedRemotely, setDeletedRemotely] = useState(false);
+  // Read through a ref so the subscription does not churn on every poll.
+  const loadedClusterRef = useRef(loadedCluster);
+  loadedClusterRef.current = loadedCluster;
 
   useEffect(
     () =>
@@ -368,14 +373,17 @@ export const ClusterDetailPage = () => {
           ) {
             // A live update overrides the fetched object until the next
             // fetch replaces the base, same mechanism as the workspace toggle.
-            setClusterOverride({ base: loadedCluster, value: event.cluster });
+            setClusterOverride({
+              base: loadedClusterRef.current,
+              value: event.cluster,
+            });
             setDeletedRemotely(false);
           }
         } else if (event.name === name && event.namespace === namespace) {
           setDeletedRemotely(true);
         }
       }),
-    [subscribe, name, namespace, loadedCluster],
+    [subscribe, name, namespace],
   );
 
   // Lazy-load tab data
@@ -618,234 +626,245 @@ export const ClusterDetailPage = () => {
         tabs={tabs}
         value={activeTab}
         onChange={setActiveTab}
+        idPrefix="cluster"
         aria-label="Cluster sections"
       />
 
-      {activeTab === 'overview' && (
-        <ButlerStack>
-          {isFailed && readyCondition?.message && (
-            <ButlerBanner
-              severity="danger"
-              title="Cluster Failed"
-              message={readyCondition.message}
-            />
-          )}
-          {isDegraded && (
-            <ButlerBanner
-              title="Cluster Degraded"
-              message={readyCondition?.message}
-            />
-          )}
-          {hasStaleNodes && (
-            <ButlerBanner
-              title="Stale Nodes Detected"
-              message={`${ready} nodes reporting but only ${desired} desired. Check the Nodes tab for NotReady nodes that may need manual cleanup.`}
-            />
-          )}
-
-          <ButlerGrid>
-            <ButlerCard title="Specification">
-              <ButlerKeyValueList>
-                <ButlerKeyValueRow label="Control Plane Version">
-                  {spec.kubernetesVersion || 'Unknown'}
-                </ButlerKeyValueRow>
-                {os?.type && (
-                  <ButlerKeyValueRow label="Worker OS">
-                    {osVersion ? `${os.type} ${osVersion}` : os.type}
-                  </ButlerKeyValueRow>
-                )}
-                <ButlerKeyValueRow label="Provider">
-                  {spec.providerConfigRef?.name || 'Default'}
-                </ButlerKeyValueRow>
-                <ButlerKeyValueRow label="Team">
-                  {spec.teamRef?.name || team || 'N/A'}
-                </ButlerKeyValueRow>
-                <ButlerKeyValueRow label="Workers">
-                  {workersValue}
-                </ButlerKeyValueRow>
-                {spec.controlPlane?.replicas != null && (
-                  <ButlerKeyValueRow label="Control Plane Replicas">
-                    {spec.controlPlane.replicas}
-                  </ButlerKeyValueRow>
-                )}
-                {spec.workers?.machineTemplate?.cpu != null && (
-                  <ButlerKeyValueRow label="Worker CPU">
-                    {spec.workers.machineTemplate.cpu} cores
-                  </ButlerKeyValueRow>
-                )}
-                {spec.workers?.machineTemplate?.memory && (
-                  <ButlerKeyValueRow label="Worker Memory">
-                    {spec.workers.machineTemplate.memory}
-                  </ButlerKeyValueRow>
-                )}
-                {spec.workers?.machineTemplate?.diskSize && (
-                  <ButlerKeyValueRow label="Worker Disk">
-                    {spec.workers.machineTemplate.diskSize}
-                  </ButlerKeyValueRow>
-                )}
-              </ButlerKeyValueList>
-            </ButlerCard>
-
-            <ButlerCard title="Status">
-              <ButlerKeyValueList>
-                <ButlerKeyValueRow label="Phase">
-                  <ButlerStatusBadge status={phase} />
-                </ButlerKeyValueRow>
-                <ButlerKeyValueRow label="Tenant Namespace">
-                  {status?.tenantNamespace || 'N/A'}
-                </ButlerKeyValueRow>
-                <ButlerKeyValueRow label="Control Plane Ready">
-                  {phase === 'Ready' ? 'Yes' : 'No'}
-                </ButlerKeyValueRow>
-                {workersReady && (
-                  <ButlerKeyValueRow label="Workers Ready">
-                    <ButlerStatusBadge
-                      status={
-                        workersReady.status === 'True' || phase === 'Ready'
-                          ? 'Ready'
-                          : workersReady.reason === 'WorkersProvisioning'
-                          ? 'Provisioning'
-                          : 'Pending'
-                      }
-                    />
-                  </ButlerKeyValueRow>
-                )}
-                {networkReady && (
-                  <ButlerKeyValueRow label="Network Ready">
-                    <ButlerStatusBadge
-                      status={
-                        networkReady.status === 'True'
-                          ? 'Ready'
-                          : networkReady.status === 'False'
-                          ? 'Failed'
-                          : 'Pending'
-                      }
-                    />
-                  </ButlerKeyValueRow>
-                )}
-              </ButlerKeyValueList>
-            </ButlerCard>
-          </ButlerGrid>
-
-          {conditions.length > 0 && (
-            <ButlerCard title="Conditions">
-              <ButlerKeyValueList>
-                {conditions.map(condition => (
-                  <ButlerKeyValueRow
-                    key={condition.type}
-                    label={condition.type}
-                  >
-                    <span className={classes.conditionValue}>
-                      <span className={classes.conditionBadges}>
-                        {condition.reason && condition.status !== 'True' && (
-                          <ButlerChip tone="neutral">
-                            {condition.reason}
-                          </ButlerChip>
-                        )}
-                        <ButlerStatusBadge status={conditionBadge(condition)} />
-                      </span>
-                      {condition.message && (
-                        <span className={classes.conditionMessage}>
-                          {condition.message}
-                        </span>
-                      )}
-                    </span>
-                  </ButlerKeyValueRow>
-                ))}
-              </ButlerKeyValueList>
-            </ButlerCard>
-          )}
-
-          {spec.networking?.loadBalancerPool && (
-            <ButlerCard title="Networking">
-              <ButlerKeyValueList>
-                <ButlerKeyValueRow label="Load Balancer IP Range" mono>
-                  {spec.networking.loadBalancerPool.start} -{' '}
-                  {spec.networking.loadBalancerPool.end}
-                </ButlerKeyValueRow>
-              </ButlerKeyValueList>
-            </ButlerCard>
-          )}
-
-          <MachineRequestsCard machineRequests={machineRequests} />
-          <LoadBalancerRequestsCard
-            loadBalancerRequests={loadBalancerRequests}
-          />
-          <InfrastructureOverrideCard override={spec.infrastructureOverride} />
-
-          <ButlerCard
-            title="Cloud Workspaces"
-            titleAction={
-              <button
-                type="button"
-                role="switch"
-                aria-checked={workspacesEnabled}
-                aria-label="Enable cloud workspaces"
-                className={classes.toggle}
-                disabled={togglingWorkspaces}
-                onClick={() => handleToggleWorkspaces(!workspacesEnabled)}
+      <ButlerTabPanel idPrefix="cluster" id={activeTab}>
+        {activeTab === 'overview' && (
+          <ButlerStack>
+            {isFailed && readyCondition?.message && (
+              <ButlerBanner
+                severity="danger"
+                title="Cluster Failed"
+                message={readyCondition.message}
               />
-            }
-          >
-            <ButlerKeyValueList>
-              <ButlerKeyValueRow label="Enabled">
-                {workspacesEnabled ? 'Yes' : 'No'}
-              </ButlerKeyValueRow>
-            </ButlerKeyValueList>
-          </ButlerCard>
-        </ButlerStack>
-      )}
+            )}
+            {isDegraded && (
+              <ButlerBanner
+                title="Cluster Degraded"
+                message={readyCondition?.message}
+              />
+            )}
+            {hasStaleNodes && (
+              <ButlerBanner
+                title="Stale Nodes Detected"
+                message={`${ready} nodes reporting but only ${desired} desired. Check the Nodes tab for NotReady nodes that may need manual cleanup.`}
+              />
+            )}
 
-      {activeTab === 'control-plane' && namespace && name && (
-        <ControlPlaneTab clusterNamespace={namespace} clusterName={name} />
-      )}
+            <ButlerGrid>
+              <ButlerCard title="Specification">
+                <ButlerKeyValueList>
+                  <ButlerKeyValueRow label="Control Plane Version">
+                    {spec.kubernetesVersion || 'Unknown'}
+                  </ButlerKeyValueRow>
+                  {os?.type && (
+                    <ButlerKeyValueRow label="Worker OS">
+                      {osVersion ? `${os.type} ${osVersion}` : os.type}
+                    </ButlerKeyValueRow>
+                  )}
+                  <ButlerKeyValueRow label="Provider">
+                    {spec.providerConfigRef?.name || 'Default'}
+                  </ButlerKeyValueRow>
+                  <ButlerKeyValueRow label="Team">
+                    {spec.teamRef?.name || team || 'N/A'}
+                  </ButlerKeyValueRow>
+                  <ButlerKeyValueRow label="Workers">
+                    {workersValue}
+                  </ButlerKeyValueRow>
+                  {spec.controlPlane?.replicas != null && (
+                    <ButlerKeyValueRow label="Control Plane Replicas">
+                      {spec.controlPlane.replicas}
+                    </ButlerKeyValueRow>
+                  )}
+                  {spec.workers?.machineTemplate?.cpu != null && (
+                    <ButlerKeyValueRow label="Worker CPU">
+                      {spec.workers.machineTemplate.cpu} cores
+                    </ButlerKeyValueRow>
+                  )}
+                  {spec.workers?.machineTemplate?.memory && (
+                    <ButlerKeyValueRow label="Worker Memory">
+                      {spec.workers.machineTemplate.memory}
+                    </ButlerKeyValueRow>
+                  )}
+                  {spec.workers?.machineTemplate?.diskSize && (
+                    <ButlerKeyValueRow label="Worker Disk">
+                      {spec.workers.machineTemplate.diskSize}
+                    </ButlerKeyValueRow>
+                  )}
+                </ButlerKeyValueList>
+              </ButlerCard>
 
-      {activeTab === 'nodes' &&
-        (nodesLoading ? (
-          <ButlerLoading />
-        ) : nodes.length === 0 ? (
-          <ButlerEmptyState
-            title="No nodes available"
-            description="Nodes appear once the cluster is provisioned and workers are ready."
-          />
-        ) : (
-          <ButlerTable
-            columns={nodeColumns}
-            rows={nodes}
-            rowKey={n => n.name}
-            aria-label="Nodes"
-          />
-        ))}
+              <ButlerCard title="Status">
+                <ButlerKeyValueList>
+                  <ButlerKeyValueRow label="Phase">
+                    <ButlerStatusBadge status={phase} />
+                  </ButlerKeyValueRow>
+                  <ButlerKeyValueRow label="Tenant Namespace">
+                    {status?.tenantNamespace || 'N/A'}
+                  </ButlerKeyValueRow>
+                  <ButlerKeyValueRow label="Control Plane Ready">
+                    {phase === 'Ready' ? 'Yes' : 'No'}
+                  </ButlerKeyValueRow>
+                  {workersReady && (
+                    <ButlerKeyValueRow label="Workers Ready">
+                      <ButlerStatusBadge
+                        status={
+                          workersReady.status === 'True' || phase === 'Ready'
+                            ? 'Ready'
+                            : workersReady.reason === 'WorkersProvisioning'
+                            ? 'Provisioning'
+                            : 'Pending'
+                        }
+                      />
+                    </ButlerKeyValueRow>
+                  )}
+                  {networkReady && (
+                    <ButlerKeyValueRow label="Network Ready">
+                      <ButlerStatusBadge
+                        status={
+                          networkReady.status === 'True'
+                            ? 'Ready'
+                            : networkReady.status === 'False'
+                            ? 'Failed'
+                            : 'Pending'
+                        }
+                      />
+                    </ButlerKeyValueRow>
+                  )}
+                </ButlerKeyValueList>
+              </ButlerCard>
+            </ButlerGrid>
 
-      {activeTab === 'addons' && namespace && name && (
-        <AddonsTab clusterNamespace={namespace} clusterName={name} />
-      )}
+            {conditions.length > 0 && (
+              <ButlerCard title="Conditions">
+                <ButlerKeyValueList>
+                  {conditions.map(condition => (
+                    <ButlerKeyValueRow
+                      key={condition.type}
+                      label={condition.type}
+                    >
+                      <span className={classes.conditionValue}>
+                        <span className={classes.conditionBadges}>
+                          {condition.reason && condition.status !== 'True' && (
+                            <ButlerChip tone="neutral">
+                              {condition.reason}
+                            </ButlerChip>
+                          )}
+                          <ButlerStatusBadge
+                            status={conditionBadge(condition)}
+                          />
+                        </span>
+                        {condition.message && (
+                          <span className={classes.conditionMessage}>
+                            {condition.message}
+                          </span>
+                        )}
+                      </span>
+                    </ButlerKeyValueRow>
+                  ))}
+                </ButlerKeyValueList>
+              </ButlerCard>
+            )}
 
-      {activeTab === 'gitops' && namespace && name && (
-        <GitOpsTab clusterNamespace={namespace} clusterName={name} />
-      )}
+            <ControlPlaneResourcesCard
+              resources={spec.controlPlane?.resources}
+            />
 
-      {activeTab === 'events' &&
-        (eventsLoading ? (
-          <ButlerLoading />
-        ) : events.length === 0 ? (
-          <ButlerEmptyState title="No events found" />
-        ) : (
-          <ButlerTable
-            columns={eventColumns}
-            rows={eventRows}
-            rowKey={e => e.id}
-            aria-label="Events"
-          />
-        ))}
+            {spec.networking?.loadBalancerPool && (
+              <ButlerCard title="Networking">
+                <ButlerKeyValueList>
+                  <ButlerKeyValueRow label="Load Balancer IP Range" mono>
+                    {spec.networking.loadBalancerPool.start} -{' '}
+                    {spec.networking.loadBalancerPool.end}
+                  </ButlerKeyValueRow>
+                </ButlerKeyValueList>
+              </ButlerCard>
+            )}
 
-      {activeTab === 'certificates' && namespace && name && (
-        <CertificatesTab clusterNamespace={namespace} clusterName={name} />
-      )}
+            <MachineRequestsCard machineRequests={machineRequests} />
+            <LoadBalancerRequestsCard
+              loadBalancerRequests={loadBalancerRequests}
+            />
+            <InfrastructureOverrideCard
+              override={spec.infrastructureOverride}
+            />
 
-      {activeTab === 'terminal' && namespace && name && phase === 'Ready' && (
-        <TerminalTab clusterNamespace={namespace} clusterName={name} />
-      )}
+            <ButlerCard
+              title="Cloud Workspaces"
+              titleAction={
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={workspacesEnabled}
+                  aria-label="Enable cloud workspaces"
+                  className={classes.toggle}
+                  disabled={togglingWorkspaces}
+                  onClick={() => handleToggleWorkspaces(!workspacesEnabled)}
+                />
+              }
+            >
+              <ButlerKeyValueList>
+                <ButlerKeyValueRow label="Enabled">
+                  {workspacesEnabled ? 'Yes' : 'No'}
+                </ButlerKeyValueRow>
+              </ButlerKeyValueList>
+            </ButlerCard>
+          </ButlerStack>
+        )}
+
+        {activeTab === 'control-plane' && namespace && name && (
+          <ControlPlaneTab clusterNamespace={namespace} clusterName={name} />
+        )}
+
+        {activeTab === 'nodes' &&
+          (nodesLoading ? (
+            <ButlerLoading />
+          ) : nodes.length === 0 ? (
+            <ButlerEmptyState
+              title="No nodes available"
+              description="Nodes appear once the cluster is provisioned and workers are ready."
+            />
+          ) : (
+            <ButlerTable
+              columns={nodeColumns}
+              rows={nodes}
+              rowKey={n => n.name}
+              aria-label="Nodes"
+            />
+          ))}
+
+        {activeTab === 'addons' && namespace && name && (
+          <AddonsTab clusterNamespace={namespace} clusterName={name} />
+        )}
+
+        {activeTab === 'gitops' && namespace && name && (
+          <GitOpsTab clusterNamespace={namespace} clusterName={name} />
+        )}
+
+        {activeTab === 'events' &&
+          (eventsLoading ? (
+            <ButlerLoading />
+          ) : events.length === 0 ? (
+            <ButlerEmptyState title="No events found" />
+          ) : (
+            <ButlerTable
+              columns={eventColumns}
+              rows={eventRows}
+              rowKey={e => e.id}
+              aria-label="Events"
+            />
+          ))}
+
+        {activeTab === 'certificates' && namespace && name && (
+          <CertificatesTab clusterNamespace={namespace} clusterName={name} />
+        )}
+
+        {activeTab === 'terminal' && namespace && name && phase === 'Ready' && (
+          <TerminalTab clusterNamespace={namespace} clusterName={name} />
+        )}
+      </ButlerTabPanel>
 
       <DeleteClusterDialog
         open={deleteOpen}

@@ -77,9 +77,9 @@ const useStyles = makeStyles(theme => {
       width: 32,
       height: 32,
       borderRadius: '50%',
-      border: `2px solid ${rgb(p.neutral[800])}`,
+      border: `2px solid ${rgb(p.neutral[700])}`,
       borderTopColor: rgb(p.green[500]),
-      animation: '$butlerSpin 0.8s linear infinite',
+      animation: '$butlerSpin 1s linear infinite',
     },
     spinnerSm: { width: 16, height: 16 },
     banner: {
@@ -193,6 +193,7 @@ export const ButlerLoading = ({ className }: { className?: string }) => {
     <div
       className={clsx(classes.loading, className)}
       role="progressbar"
+      aria-label="Loading"
       aria-busy
     >
       <div className={classes.spinner} />

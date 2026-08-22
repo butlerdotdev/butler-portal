@@ -14,6 +14,15 @@ export interface Cluster {
     kubernetesVersion: string;
     controlPlane?: {
       replicas?: number;
+      resources?: Partial<
+        Record<
+          'apiServer' | 'controllerManager' | 'scheduler',
+          {
+            requests?: { cpu?: string; memory?: string };
+            limits?: { cpu?: string; memory?: string };
+          }
+        >
+      >;
     };
     providerConfigRef?: {
       name: string;

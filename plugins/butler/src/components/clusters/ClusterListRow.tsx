@@ -79,7 +79,7 @@ const useStyles = makeStyles(theme => {
       lineHeight: '20px',
       color: t.text.secondary,
     },
-    [theme.breakpoints.down('sm')]: {
+    '@media (max-width: 767px)': {
       row: { flexDirection: 'column', alignItems: 'flex-start' },
       stats: { flexWrap: 'wrap', gap: 16 },
       stat: { textAlign: 'left' },
@@ -113,7 +113,7 @@ export const ClusterListRow = ({
 }: ClusterListRowProps) => {
   const classes = useStyles();
   return (
-    <Link to={to} className={classes.link} aria-label={`Open cluster ${name}`}>
+    <Link to={to} className={classes.link}>
       <ButlerCard hoverable>
         <div className={classes.row}>
           <div className={classes.identity}>

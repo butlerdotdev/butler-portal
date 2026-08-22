@@ -18,14 +18,15 @@ const useStyles = makeStyles(theme => {
     grid: {
       display: 'grid',
       gridTemplateColumns: '1fr',
-      [theme.breakpoints.up('lg')]: {
+      // Tailwind `lg` (1024px), not the MUI breakpoint (1280px).
+      '@media (min-width: 1024px)': {
         gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
       },
     },
     grid3: {
       display: 'grid',
       gridTemplateColumns: '1fr',
-      [theme.breakpoints.up('md')]: {
+      '@media (min-width: 768px)': {
         gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
       },
     },

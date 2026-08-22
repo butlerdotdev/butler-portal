@@ -41,7 +41,7 @@ describe('ClustersPage', () => {
       fixtureClusters.length,
     );
     const row = screen.getByRole('link', {
-      name: `Open cluster ${readyCluster.metadata.name}`,
+      name: new RegExp(`^${readyCluster.metadata.name}`),
     });
     expect(row).toHaveTextContent(readyCluster.spec.kubernetesVersion);
     expect(row).toHaveTextContent('Provider');

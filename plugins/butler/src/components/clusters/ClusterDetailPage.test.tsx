@@ -3,7 +3,7 @@
 
 import '@testing-library/jest-dom';
 import { Route, Routes } from 'react-router-dom';
-import { screen, waitFor } from '@testing-library/react';
+import { fireEvent, screen, waitFor } from '@testing-library/react';
 import {
   renderInTestApp,
   TestApiProvider,
@@ -32,8 +32,8 @@ const alertApi: AlertApi = {
     ({ subscribe: () => ({ unsubscribe: () => {}, closed: false }) } as any),
 };
 
-function renderDetail(api: MockButlerApi, clusterName: string) {
-  const path = `/butler/t/${FIXTURE_TEAM}/clusters/${FIXTURE_NAMESPACE}/${clusterName}`;
+function renderDetail(api: MockButlerApi, clusterName: string, query = '') {
+  const path = `/butler/t/${FIXTURE_TEAM}/clusters/${FIXTURE_NAMESPACE}/${clusterName}${query}`;
   return renderInTestApp(
     <TestApiProvider
       apis={[
@@ -118,5 +118,42 @@ describe('ClusterDetailPage', () => {
       expect(screen.getByText('Cluster not found')).toBeInTheDocument();
     });
     expect(screen.getByText('boom')).toBeInTheDocument();
+  });
+
+  it('opens the tab named in ?tab= and keeps Terminal disabled until Ready', async () => {
+    await renderDetail(
+      new MockButlerApi(),
+      failedCluster.metadata.name,
+      '?tab=nodes',
+    );
+    await screen.findByRole('heading', { name: failedCluster.metadata.name });
+    expect(screen.getByRole('tab', { name: 'Nodes' })).toHaveAttribute(
+      'aria-selected',
+      'true',
+    );
+    expect(screen.getByRole('tab', { name: 'Terminal' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Terminal' })).toBeDisabled();
+    expect(
+      screen.getByRole('button', { name: 'Download Kubeconfig' }),
+    ).toBeDisabled();
+  });
+
+  it('enables Terminal for a Ready cluster and switches tabs from the header', async () => {
+    await renderDetail(new MockButlerApi(), readyCluster.metadata.name);
+    await screen.findByRole('heading', { name: readyCluster.metadata.name });
+    expect(screen.getByRole('tab', { name: 'Overview' })).toHaveAttribute(
+      'aria-selected',
+      'true',
+    );
+    const terminal = screen.getByRole('tab', { name: 'Terminal' });
+    expect(terminal).toBeEnabled();
+    fireEvent.click(screen.getByRole('tab', { name: 'Events' }));
+    expect(screen.getByRole('tab', { name: 'Events' })).toHaveAttribute(
+      'aria-selected',
+      'true',
+    );
+    expect(
+      screen.getByRole('tabpanel', { name: 'Events' }),
+    ).toBeInTheDocument();
   });
 });

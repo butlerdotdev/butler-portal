@@ -11,7 +11,7 @@ export {
 } from './ButlerStatusBadge';
 export { ButlerButton, ButlerIconButton } from './ButlerButton';
 export type { ButlerButtonProps, ButlerButtonVariant } from './ButlerButton';
-export { ButlerTabs } from './ButlerTabs';
+export { ButlerTabs, ButlerTabPanel } from './ButlerTabs';
 export type { ButlerTabItem } from './ButlerTabs';
 export { ButlerPageHeader } from './ButlerPageHeader';
 export { ButlerTable } from './ButlerTable';

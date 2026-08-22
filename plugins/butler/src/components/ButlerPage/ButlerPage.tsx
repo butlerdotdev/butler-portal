@@ -123,7 +123,6 @@ const useStyles = makeStyles(theme => ({
     backgroundColor: butlerTokens(theme).page,
     color: butlerTokens(theme).text.primary,
     fontFamily: butlerTokens(theme).fontSans,
-    padding: 24,
   },
   adminBanner: {
     display: 'flex',
@@ -170,6 +169,7 @@ const useStyles = makeStyles(theme => ({
   contentInner: {
     position: 'relative' as const,
     zIndex: 1,
+    padding: 24,
   },
   headerActions: {
     display: 'flex',
@@ -182,7 +182,7 @@ const ButlerContent = () => {
   const classes = useStyles();
   const location = useLocation();
   return (
-    <Content className={classes.surface}>
+    <Content className={classes.surface} noPadding>
       <div className={classes.watermark} />
       <div className={classes.contentInner}>
       <React.Suspense fallback={<Progress />}>

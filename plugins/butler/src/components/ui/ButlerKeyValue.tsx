@@ -4,7 +4,7 @@
 import type { ReactNode } from 'react';
 import { makeStyles } from '@material-ui/core/styles';
 import clsx from 'clsx';
-import { butlerTokens } from '../../theme';
+import { butlerTokens, rgb } from '../../theme';
 
 const useStyles = makeStyles(theme => {
   const t = butlerTokens(theme);
@@ -46,7 +46,7 @@ const useStyles = makeStyles(theme => {
       overflowWrap: 'anywhere',
     },
     denseValue: {
-      color: rgbText(theme),
+      color: rgb(t.palette.neutral[300]),
     },
     mono: {
       fontFamily: t.fontMono,
@@ -58,11 +58,6 @@ const useStyles = makeStyles(theme => {
     },
   };
 });
-
-function rgbText(theme: Parameters<typeof butlerTokens>[0]) {
-  const t = butlerTokens(theme);
-  return `rgb(${t.palette.neutral[300]})`;
-}
 
 export interface ButlerKeyValueRowProps {
   label: ReactNode;

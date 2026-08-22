@@ -20,7 +20,7 @@ const useStyles = makeStyles(theme => {
       display: 'flex',
       flexDirection: 'column',
       gap: 12,
-      [theme.breakpoints.up('md')]: { flexDirection: 'row' },
+      '@media (min-width: 768px)': { flexDirection: 'row' },
     },
     filters: {
       display: 'flex',
