@@ -21,8 +21,12 @@ import {
   type ClusterWatchListener,
 } from './ClusterWatchContext';
 
-const MAX_RECONNECT_ATTEMPTS = 5;
 const MAX_RECONNECT_DELAY_MS = 30000;
+// A connection that lived at least this long counts as healthy and
+// resets the backoff. Through the relay the upgrade succeeds even when
+// butler-server is down and the socket closes moments later; resetting
+// on open alone would reconnect every second for the whole outage.
+const STABLE_CONNECTION_MS = 10000;
 const MAX_NOTIFICATIONS = 50;
 const SEVERITIES: NotificationSeverity[] = ['success', 'warning', 'error', 'info'];
 const CATEGORIES: NotificationCategory[] = ['cluster', 'team', 'infra', 'security'];
@@ -156,7 +160,6 @@ export const ClusterWatchProvider = ({
 
     const scheduleReconnect = () => {
       if (disposedRef.current) return;
-      if (reconnectAttemptsRef.current >= MAX_RECONNECT_ATTEMPTS) return;
       const delay = Math.min(
         1000 * 2 ** reconnectAttemptsRef.current,
         MAX_RECONNECT_DELAY_MS,
@@ -188,9 +191,10 @@ export const ClusterWatchProvider = ({
       }
       socketRef.current = ws;
 
+      let openedAt: number | null = null;
       ws.onopen = () => {
         if (disposedRef.current) return;
-        reconnectAttemptsRef.current = 0;
+        openedAt = Date.now();
         setConnected(true);
       };
       ws.onmessage = (event: MessageEvent) => {
@@ -203,6 +207,9 @@ export const ClusterWatchProvider = ({
       ws.onclose = () => {
         if (socketRef.current === ws) socketRef.current = null;
         if (disposedRef.current) return;
+        if (openedAt !== null && Date.now() - openedAt >= STABLE_CONNECTION_MS) {
+          reconnectAttemptsRef.current = 0;
+        }
         setConnected(false);
         scheduleReconnect();
       };
