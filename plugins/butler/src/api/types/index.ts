@@ -9,3 +9,4 @@ export * from './gitops';
 export * from './certificates';
 export * from './identity-providers';
 export * from './workspaces';
+export * from './ws';

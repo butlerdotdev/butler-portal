@@ -9,6 +9,8 @@ import { Typography } from '@material-ui/core';
 import SecurityIcon from '@material-ui/icons/Security';
 import { TeamProvider } from '../../contexts/TeamProvider';
 import { TeamSwitcher } from '../TeamSwitcher/TeamSwitcher';
+import { ClusterWatchProvider } from '../../contexts/ClusterWatchProvider';
+import { NotificationBell } from '../NotificationBell/NotificationBell';
 
 // Lazy-load pages
 const OverviewPage = React.lazy(() =>
@@ -138,6 +140,11 @@ const useStyles = makeStyles(() => ({
     position: 'relative' as const,
     zIndex: 1,
   },
+  headerActions: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 8,
+  },
 }));
 
 const ButlerContent = () => {
@@ -214,7 +221,10 @@ const ButlerPageInner = () => {
       )}
       <Page themeId="tool">
         <Header title="Butler" subtitle="Kubernetes-as-a-Service Platform">
-          <TeamSwitcher />
+          <div className={classes.headerActions}>
+            <NotificationBell />
+            <TeamSwitcher />
+          </div>
         </Header>
         <ButlerContent />
       </Page>
@@ -224,6 +234,8 @@ const ButlerPageInner = () => {
 
 export const ButlerPage = () => (
   <TeamProvider>
-    <ButlerPageInner />
+    <ClusterWatchProvider>
+      <ButlerPageInner />
+    </ClusterWatchProvider>
   </TeamProvider>
 );
