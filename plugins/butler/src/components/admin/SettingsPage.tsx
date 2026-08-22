@@ -22,6 +22,8 @@ import ArrowBackIcon from '@material-ui/icons/ArrowBack';
 import RefreshIcon from '@material-ui/icons/Refresh';
 import { butlerApiRef } from '../../api/ButlerApi';
 import type { ManagementCluster } from '../../api/types/clusters';
+import type { PlatformConfig } from '../../api/types/config';
+import type { GitProviderConfig } from '../../api/types/gitops';
 import { StatusBadge } from '../StatusBadge/StatusBadge';
 
 const useStyles = makeStyles(theme => ({
@@ -51,9 +53,10 @@ const useStyles = makeStyles(theme => ({
   },
 }));
 
-interface PlatformConfig {
+// View model for this page, projected from PlatformConfig (GET /admin/config)
+// and the Git provider config. Field names match what the cards render.
+interface SettingsView {
   mode?: string;
-  version?: string;
   hostname?: string;
   defaultProvider?: string;
   gitProvider?: {
@@ -61,10 +64,30 @@ interface PlatformConfig {
     configured?: boolean;
   };
   teamLimits?: {
-    maxTeams?: number;
-    maxClustersPerTeam?: number;
-    maxNodesPerCluster?: number;
-    maxTotalNodes?: number;
+    maxClusters?: number;
+    maxWorkersPerCluster?: number;
+    maxTotalCPU?: string;
+    maxTotalMemory?: string;
+  };
+}
+
+function toSettingsView(
+  config: PlatformConfig | null,
+  git: GitProviderConfig | null,
+): SettingsView {
+  return {
+    mode: config?.multiTenancy?.mode,
+    hostname: config?.controlPlaneExposure?.hostname,
+    defaultProvider: config?.defaultProviderRef?.name,
+    gitProvider: git ? { type: git.type, configured: git.configured } : undefined,
+    teamLimits: config?.defaultTeamLimits
+      ? {
+          maxClusters: config.defaultTeamLimits.maxClusters,
+          maxWorkersPerCluster: config.defaultTeamLimits.maxWorkersPerCluster,
+          maxTotalCPU: config.defaultTeamLimits.maxTotalCPU,
+          maxTotalMemory: config.defaultTeamLimits.maxTotalMemory,
+        }
+      : undefined,
   };
 }
 
@@ -74,7 +97,7 @@ export const SettingsPage = () => {
   const [management, setManagement] = useState<ManagementCluster | null>(
     null,
   );
-  const [config, setConfig] = useState<PlatformConfig | null>(null);
+  const [config, setConfig] = useState<SettingsView | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<Error | undefined>();
 
@@ -82,27 +105,24 @@ export const SettingsPage = () => {
     setLoading(true);
     setError(undefined);
     try {
-      const [mgmtRes, configRes] = await Promise.allSettled([
+      const [mgmtRes, configRes, gitRes] = await Promise.allSettled([
         api.getManagement(),
-        api.getSettings().catch(() => null),
+        api.getPlatformConfig(),
+        api.getGitOpsConfig(),
       ]);
 
       if (mgmtRes.status === 'fulfilled') {
         setManagement(mgmtRes.value);
       }
-
-      if (configRes.status === 'fulfilled' && configRes.value) {
-        setConfig(configRes.value);
-      } else {
-        // Derive config from management data if settings endpoint is not available
-        setConfig({
-          version:
-            mgmtRes.status === 'fulfilled'
-              ? mgmtRes.value?.kubernetesVersion
-              : undefined,
-          mode: 'Multi-Tenant',
-        });
+      if (configRes.status === 'rejected') {
+        throw configRes.reason;
       }
+      setConfig(
+        toSettingsView(
+          configRes.value,
+          gitRes.status === 'fulfilled' ? gitRes.value : null,
+        ),
+      );
     } catch (e) {
       setError(e instanceof Error ? e : new Error(String(e)));
     } finally {
@@ -169,24 +189,12 @@ export const SettingsPage = () => {
             </div>
             <Divider />
 
-            {config?.version && (
-              <>
-                <div className={classes.settingRow}>
-                  <Typography className={classes.settingLabel}>
-                    Kubernetes Version
-                  </Typography>
-                  <Typography>{config.version}</Typography>
-                </div>
-                <Divider />
-              </>
-            )}
-
             <div className={classes.settingRow}>
               <Typography className={classes.settingLabel}>
                 Mode
               </Typography>
               <Chip
-                label={config?.mode || 'Multi-Tenant'}
+                label={config?.mode || 'Unknown'}
                 size="small"
                 color="primary"
                 variant="outlined"
@@ -296,40 +304,40 @@ export const SettingsPage = () => {
               <Grid item xs={12} sm={6} md={3}>
                 <div className={classes.settingRow}>
                   <Typography className={classes.settingLabel}>
-                    Max Teams
+                    Max Clusters
                   </Typography>
                   <Typography>
-                    {config?.teamLimits?.maxTeams ?? 'Unlimited'}
+                    {config?.teamLimits?.maxClusters ?? 'Unlimited'}
                   </Typography>
                 </div>
               </Grid>
               <Grid item xs={12} sm={6} md={3}>
                 <div className={classes.settingRow}>
                   <Typography className={classes.settingLabel}>
-                    Max Clusters/Team
+                    Max Workers/Cluster
                   </Typography>
                   <Typography>
-                    {config?.teamLimits?.maxClustersPerTeam ?? 'Unlimited'}
+                    {config?.teamLimits?.maxWorkersPerCluster ?? 'Unlimited'}
                   </Typography>
                 </div>
               </Grid>
               <Grid item xs={12} sm={6} md={3}>
                 <div className={classes.settingRow}>
                   <Typography className={classes.settingLabel}>
-                    Max Nodes/Cluster
+                    Max Total CPU
                   </Typography>
                   <Typography>
-                    {config?.teamLimits?.maxNodesPerCluster ?? 'Unlimited'}
+                    {config?.teamLimits?.maxTotalCPU ?? 'Unlimited'}
                   </Typography>
                 </div>
               </Grid>
               <Grid item xs={12} sm={6} md={3}>
                 <div className={classes.settingRow}>
                   <Typography className={classes.settingLabel}>
-                    Max Total Nodes
+                    Max Total Memory
                   </Typography>
                   <Typography>
-                    {config?.teamLimits?.maxTotalNodes ?? 'Unlimited'}
+                    {config?.teamLimits?.maxTotalMemory ?? 'Unlimited'}
                   </Typography>
                 </div>
               </Grid>
