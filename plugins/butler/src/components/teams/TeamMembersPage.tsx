@@ -42,6 +42,7 @@ import GroupIcon from '@material-ui/icons/Group';
 import ArrowUpwardIcon from '@material-ui/icons/ArrowUpward';
 import { butlerApiRef } from '../../api/ButlerApi';
 import { useTeamContext } from '../../hooks/useTeamContext';
+import { useButlerRoutes } from '../../hooks/useButlerRoutes';
 
 const useStyles = makeStyles(theme => ({
   header: {
@@ -186,6 +187,7 @@ export const TeamMembersPage = () => {
   const classes = useStyles();
   const { team } = useParams<{ team: string }>();
   const api = useApi(butlerApiRef);
+  const routes = useButlerRoutes();
   const { teams } = useTeamContext();
 
   const [members, setMembers] = useState<TeamMember[]>([]);
@@ -413,7 +415,7 @@ export const TeamMembersPage = () => {
         <Button
           startIcon={<ArrowBackIcon />}
           component={RouterLink}
-          to={`/butler/t/${team}`}
+          to={routes.team({ team: team ?? '' })}
           style={{ textTransform: 'none', marginBottom: 16 }}
         >
           Back to Dashboard

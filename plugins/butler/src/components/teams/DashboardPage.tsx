@@ -30,6 +30,7 @@ import CloudIcon from '@material-ui/icons/Cloud';
 import { butlerApiRef } from '../../api/ButlerApi';
 import { StatusBadge } from '../StatusBadge/StatusBadge';
 import type { Cluster } from '../../api/types/clusters';
+import { useButlerRoutes } from '../../hooks/useButlerRoutes';
 
 const useStyles = makeStyles(theme => ({
   statCard: {
@@ -96,18 +97,27 @@ interface ClusterRow {
   age: string;
 }
 
+const ClusterNameLink = ({ row }: { row: ClusterRow }) => {
+  const routes = useButlerRoutes();
+  return (
+    <RouterLink
+      to={routes.clusterDetail({
+        team: row.team,
+        namespace: row.namespace,
+        name: row.name,
+      })}
+      style={{ textDecoration: 'none', color: 'inherit', fontWeight: 600 }}
+    >
+      {row.name}
+    </RouterLink>
+  );
+};
+
 const columns: TableColumn<ClusterRow>[] = [
   {
     title: 'Name',
     field: 'name',
-    render: (row: ClusterRow) => (
-      <RouterLink
-        to={`/butler/t/${row.team}/clusters/${row.namespace}/${row.name}`}
-        style={{ textDecoration: 'none', color: 'inherit', fontWeight: 600 }}
-      >
-        {row.name}
-      </RouterLink>
-    ),
+    render: (row: ClusterRow) => <ClusterNameLink row={row} />,
   },
   {
     title: 'Phase',
@@ -133,6 +143,7 @@ export const DashboardPage = () => {
   const classes = useStyles();
   const { team } = useParams<{ team: string }>();
   const api = useApi(butlerApiRef);
+  const routes = useButlerRoutes();
 
   const [clusters, setClusters] = useState<Cluster[]>([]);
   const [loading, setLoading] = useState(true);
@@ -234,7 +245,7 @@ export const DashboardPage = () => {
               <Button
                 startIcon={<ArrowBackIcon />}
                 component={RouterLink}
-                to="/butler"
+                to={routes.root()}
                 style={{ textTransform: 'none', marginBottom: 16 }}
               >
                 Back to Overview
@@ -249,7 +260,7 @@ export const DashboardPage = () => {
                   startIcon={<AddIcon />}
                   className={classes.actionButton}
                   component={RouterLink}
-                  to={`/butler/t/${team}/clusters/new`}
+                  to={routes.createCluster({ team: team ?? '' })}
                 >
                   Create Cluster
                 </Button>
@@ -258,7 +269,7 @@ export const DashboardPage = () => {
                   startIcon={<ListIcon />}
                   className={classes.actionButton}
                   component={RouterLink}
-                  to={`/butler/t/${team}/clusters`}
+                  to={routes.clusters({ team: team ?? '' })}
                 >
                   View All Clusters
                 </Button>
@@ -267,7 +278,7 @@ export const DashboardPage = () => {
                   startIcon={<SettingsIcon />}
                   className={classes.actionButton}
                   component={RouterLink}
-                  to={`/butler/t/${team}/settings`}
+                  to={routes.teamSettings({ team: team ?? '' })}
                 >
                   Team Settings
                 </Button>
@@ -349,7 +360,7 @@ export const DashboardPage = () => {
                       color="primary"
                       startIcon={<AddIcon />}
                       component={RouterLink}
-                      to={`/butler/t/${team}/clusters/new`}
+                      to={routes.createCluster({ team: team ?? '' })}
                     >
                       Create Cluster
                     </Button>

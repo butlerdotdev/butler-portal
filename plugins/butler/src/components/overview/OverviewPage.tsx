@@ -36,6 +36,7 @@ import { butlerApiRef } from '../../api/ButlerApi';
 import { useTeamContext } from '../../hooks/useTeamContext';
 import type { TeamInfo } from '../../api/types/teams';
 import type { Cluster } from '../../api/types/clusters';
+import { useButlerRoutes } from '../../hooks/useButlerRoutes';
 
 const useStyles = makeStyles(theme => ({
   statCard: {
@@ -152,6 +153,7 @@ function StatCard({
 export const OverviewPage = () => {
   const classes = useStyles();
   const api = useApi(butlerApiRef);
+  const routes = useButlerRoutes();
   const { teams: userTeams, isAdmin } = useTeamContext();
 
   const [allTeams, setAllTeams] = useState<TeamInfo[]>([]);
@@ -277,14 +279,14 @@ export const OverviewPage = () => {
                             size="small"
                             color="primary"
                             component={RouterLink}
-                            to={`/butler/t/${team.name}`}
+                            to={routes.team({ team: team.name })}
                           >
                             Open Dashboard
                           </Button>
                           <Button
                             size="small"
                             component={RouterLink}
-                            to={`/butler/t/${team.name}/clusters`}
+                            to={routes.clusters({ team: team.name })}
                           >
                             View Clusters
                           </Button>
@@ -315,7 +317,7 @@ export const OverviewPage = () => {
                   <Button
                     className={classes.quickLink}
                     component={RouterLink}
-                    to="/butler/admin/providers"
+                    to={routes.adminProviders()}
                   >
                     <StorageIcon className={classes.quickLinkIcon} />
                     <Box>
@@ -330,7 +332,7 @@ export const OverviewPage = () => {
                   <Button
                     className={classes.quickLink}
                     component={RouterLink}
-                    to="/butler/admin/identity-providers"
+                    to={routes.adminIdentityProviders()}
                   >
                     <PersonIcon className={classes.quickLinkIcon} />
                     <Box>
@@ -345,7 +347,7 @@ export const OverviewPage = () => {
                   <Button
                     className={classes.quickLink}
                     component={RouterLink}
-                    to="/butler/admin/management"
+                    to={routes.adminManagement()}
                   >
                     <SettingsIcon className={classes.quickLinkIcon} />
                     <Box>

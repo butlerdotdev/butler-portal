@@ -25,6 +25,7 @@ import type { ManagementCluster } from '../../api/types/clusters';
 import type { PlatformConfig } from '../../api/types/config';
 import type { GitProviderConfig } from '../../api/types/gitops';
 import { StatusBadge } from '../StatusBadge/StatusBadge';
+import { useButlerRoutes } from '../../hooks/useButlerRoutes';
 
 const useStyles = makeStyles(theme => ({
   header: {
@@ -94,6 +95,7 @@ function toSettingsView(
 export const SettingsPage = () => {
   const classes = useStyles();
   const api = useApi(butlerApiRef);
+  const routes = useButlerRoutes();
   const [management, setManagement] = useState<ManagementCluster | null>(
     null,
   );
@@ -153,7 +155,7 @@ export const SettingsPage = () => {
       <Button
         startIcon={<ArrowBackIcon />}
         component={RouterLink}
-        to="/butler/admin"
+        to={routes.admin()}
         style={{ textTransform: 'none', marginBottom: 16 }}
       >
         Back to Admin

@@ -76,6 +76,7 @@ import type {
   DiscoveryResult,
 } from '../../api/types/gitops';
 import { StatusBadge } from '../StatusBadge/StatusBadge';
+import { useButlerRoutes } from '../../hooks/useButlerRoutes';
 
 // ---------------------------------------------------------------------------
 // Styles
@@ -350,6 +351,7 @@ type ConnectionStatus = 'disconnected' | 'connecting' | 'connected' | 'error';
 export const ManagementPage = () => {
   const classes = useStyles();
   const api = useApi(butlerApiRef);
+  const routes = useButlerRoutes();
 
   // Core state
   const [management, setManagement] = useState<ManagementCluster | null>(null);
@@ -475,7 +477,7 @@ export const ManagementPage = () => {
       <Button
         startIcon={<ArrowBackIcon />}
         component={RouterLink}
-        to="/butler/admin"
+        to={routes.admin()}
         style={{ textTransform: 'none', marginBottom: 16 }}
       >
         Back to Admin

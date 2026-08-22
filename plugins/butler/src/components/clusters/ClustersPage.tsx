@@ -19,6 +19,7 @@ import RefreshIcon from '@material-ui/icons/Refresh';
 import { butlerApiRef } from '../../api/ButlerApi';
 import type { Cluster } from '../../api/types/clusters';
 import { StatusBadge } from '../StatusBadge/StatusBadge';
+import { useButlerRoutes } from '../../hooks/useButlerRoutes';
 
 const useStyles = makeStyles(theme => ({
   header: {
@@ -74,6 +75,7 @@ type ClusterRow = {
 export const ClustersPage = () => {
   const classes = useStyles();
   const api = useApi(butlerApiRef);
+  const routes = useButlerRoutes();
   const { team } = useParams<{ team: string }>();
   const [clusters, setClusters] = useState<Cluster[]>([]);
   const [loading, setLoading] = useState(true);
@@ -115,7 +117,11 @@ export const ClustersPage = () => {
       title: 'Name',
       field: 'name',
       render: (row: ClusterRow) => (
-        <Link to={`/butler/t/${team}/clusters/${row.namespace}/${row.name}`}>
+        <Link to={routes.clusterDetail({
+            team: team ?? '',
+            namespace: row.namespace,
+            name: row.name,
+          })}>
           {row.name}
         </Link>
       ),
@@ -164,7 +170,7 @@ export const ClustersPage = () => {
       <Button
         startIcon={<ArrowBackIcon />}
         component={RouterLink}
-        to={`/butler/t/${team}`}
+        to={routes.team({ team: team ?? '' })}
         style={{ textTransform: 'none', marginBottom: 16 }}
       >
         Back to Dashboard
@@ -182,7 +188,7 @@ export const ClustersPage = () => {
           </Button>
           <Button
             component={RouterLink}
-            to={`/butler/t/${team}/clusters/new`}
+            to={routes.createCluster({ team: team ?? '' })}
             variant="contained"
             color="primary"
             startIcon={<AddIcon />}
@@ -199,7 +205,7 @@ export const ClustersPage = () => {
           action={
             <Button
               component={RouterLink}
-              to={`/butler/t/${team}/clusters/new`}
+              to={routes.createCluster({ team: team ?? '' })}
               variant="contained"
               color="primary"
               startIcon={<AddIcon />}
