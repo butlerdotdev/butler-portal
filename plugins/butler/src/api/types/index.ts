@@ -10,3 +10,4 @@ export * from './certificates';
 export * from './identity-providers';
 export * from './workspaces';
 export * from './config';
+export * from './ws';

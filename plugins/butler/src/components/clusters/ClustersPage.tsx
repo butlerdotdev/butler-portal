@@ -1,6 +1,7 @@
 // Copyright 2026 The Butler Authors.
 // SPDX-License-Identifier: Apache-2.0
 
+import { useEffect, useState } from 'react';
 import { useParams, Link as RouterLink } from 'react-router-dom';
 import { useApi } from '@backstage/core-plugin-api';
 import {
@@ -18,6 +19,7 @@ import RefreshIcon from '@material-ui/icons/Refresh';
 import { butlerApiRef } from '../../api/ButlerApi';
 import type { Cluster } from '../../api/types/clusters';
 import { useButlerResource } from '../../hooks/useButlerResource';
+import { useClusterWatch } from '../../hooks/useClusterWatch';
 import { StatusBadge } from '../StatusBadge/StatusBadge';
 import { useButlerRoutes } from '../../hooks/useButlerRoutes';
 
@@ -72,6 +74,26 @@ type ClusterRow = {
   age: string;
 };
 
+function applyOverlay(
+  base: Cluster[],
+  updated: Map<string, Cluster>,
+  deleted: Set<string>,
+): Cluster[] {
+  const key = (c: Cluster) => `${c.metadata.namespace}/${c.metadata.name}`;
+  const seen = new Set<string>();
+  const merged: Cluster[] = [];
+  for (const c of base) {
+    const k = key(c);
+    if (deleted.has(k)) continue;
+    seen.add(k);
+    merged.push(updated.get(k) ?? c);
+  }
+  for (const [k, c] of updated) {
+    if (!seen.has(k) && !deleted.has(k)) merged.push(c);
+  }
+  return merged;
+}
+
 export const ClustersPage = () => {
   const classes = useStyles();
   const api = useApi(butlerApiRef);
@@ -83,6 +105,38 @@ export const ClustersPage = () => {
       return response.clusters || [];
     },
     { deps: [api, team] },
+  );
+
+  const { subscribe } = useClusterWatch();
+  // Live events are layered over the fetched list: updates replace or
+  // append (only for this team, since the server may broadcast every
+  // cluster) and deletes hide. A refresh replaces the base list and the
+  // overlay is rebuilt from later events.
+  const [overlay, setOverlay] = useState<{
+    updated: Map<string, Cluster>;
+    deleted: Set<string>;
+  }>({ updated: new Map(), deleted: new Set() });
+  useEffect(
+    () =>
+      subscribe(event => {
+        setOverlay(prev => {
+          const updated = new Map(prev.updated);
+          const deleted = new Set(prev.deleted);
+          if (event.type === 'update') {
+            const clusterTeam = event.cluster.spec?.teamRef?.name;
+            if (team && clusterTeam && clusterTeam !== team) return prev;
+            const key = `${event.cluster.metadata.namespace}/${event.cluster.metadata.name}`;
+            updated.set(key, event.cluster);
+            deleted.delete(key);
+          } else {
+            const key = `${event.namespace}/${event.name}`;
+            deleted.add(key);
+            updated.delete(key);
+          }
+          return { updated, deleted };
+        });
+      }),
+    [subscribe, team],
   );
 
   if (state.status === 'loading') {
@@ -99,7 +153,7 @@ export const ClustersPage = () => {
     );
   }
 
-  const clusters = state.data;
+  const clusters = applyOverlay(state.data, overlay.updated, overlay.deleted);
 
   const columns: TableColumn<ClusterRow>[] = [
     {

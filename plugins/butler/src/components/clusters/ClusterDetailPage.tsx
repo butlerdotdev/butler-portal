@@ -25,6 +25,7 @@ import {
   Chip,
 } from '@material-ui/core';
 import { makeStyles } from '@material-ui/core/styles';
+import { Alert } from '@material-ui/lab';
 import GetAppIcon from '@material-ui/icons/GetApp';
 import DeleteIcon from '@material-ui/icons/Delete';
 import ArrowBackIcon from '@material-ui/icons/ArrowBack';
@@ -34,6 +35,7 @@ import { butlerApiRef } from '../../api/ButlerApi';
 import { useButlerResource } from '../../hooks/useButlerResource';
 import type { Cluster, Node, ClusterEvent } from '../../api/types/clusters';
 import { StatusBadge } from '../StatusBadge/StatusBadge';
+import { useClusterWatch } from '../../hooks/useClusterWatch';
 import { AddonsTab } from './AddonsTab';
 import { GitOpsTab } from './GitOpsTab';
 import { CertificatesTab } from './CertificatesTab';
@@ -259,6 +261,29 @@ export const ClusterDetailPage = () => {
     }
   }, [api, alertApi, namespace, name]);
 
+  const { subscribe } = useClusterWatch();
+  const [deletedRemotely, setDeletedRemotely] = useState(false);
+
+  useEffect(
+    () =>
+      subscribe(event => {
+        if (event.type === 'update') {
+          if (
+            event.cluster.metadata.name === name &&
+            event.cluster.metadata.namespace === namespace
+          ) {
+            // A live update overrides the fetched object until the next
+            // fetch replaces the base, same mechanism as the workspace toggle.
+            setClusterOverride({ base: loadedCluster, value: event.cluster });
+            setDeletedRemotely(false);
+          }
+        } else if (event.name === name && event.namespace === namespace) {
+          setDeletedRemotely(true);
+        }
+      }),
+    [subscribe, name, namespace, loadedCluster],
+  );
+
   // Lazy-load tab data
   useEffect(() => {
     if (activeTab === 1 && !nodesLoaded) {
@@ -422,6 +447,11 @@ export const ClusterDetailPage = () => {
       >
         Back to Clusters
       </Button>
+      {deletedRemotely && (
+        <Alert severity="warning" style={{ marginBottom: 16 }}>
+          This cluster was deleted. The details below are the last known state.
+        </Alert>
+      )}
       {/* Header */}
       <div className={classes.header}>
         <div className={classes.headerLeft}>

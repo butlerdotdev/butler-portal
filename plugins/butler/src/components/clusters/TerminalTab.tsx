@@ -3,6 +3,7 @@
 
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { useApi, discoveryApiRef } from '@backstage/core-plugin-api';
+import { buildButlerWsUrl } from '../../api/wsUrl';
 import { Typography, Button, Box } from '@material-ui/core';
 import { makeStyles } from '@material-ui/core/styles';
 import RefreshIcon from '@material-ui/icons/Refresh';
@@ -150,10 +151,10 @@ export const TerminalTab = ({
     // Build WebSocket URL
     try {
       const baseUrl = await discoveryApi.getBaseUrl('butler');
-      const wsUrl = baseUrl
-        .replace(/^http/, 'ws')
-        .replace(/\/api\/butler$/, '');
-      const fullWsUrl = `${wsUrl}/api/butler/ws/terminal/tenant/${clusterNamespace}/${clusterName}`;
+      const fullWsUrl = buildButlerWsUrl(
+        baseUrl,
+        `/ws/terminal/tenant/${clusterNamespace}/${clusterName}`,
+      );
 
       const ws = new WebSocket(fullWsUrl);
       wsRef.current = ws;
