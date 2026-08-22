@@ -3,15 +3,16 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
+import type { DiscoveryApi, FetchApi } from '@backstage/core-plugin-api';
 import { ButlerApiClient } from './ButlerApiClient';
 
 // Minimal fetch double: records the URL and init of every call and
 // answers with a canned JSON body.
 function makeClient(body: unknown = {}) {
   const calls: Array<{ url: string; init: RequestInit | undefined }> = [];
-  const fetchApi = {
-    fetch: jest.fn(async (url: string, init?: RequestInit) => {
-      calls.push({ url, init });
+  const fetchApi: FetchApi = {
+    fetch: jest.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      calls.push({ url: String(input), init });
       return {
         ok: true,
         status: 200,
@@ -19,7 +20,7 @@ function makeClient(body: unknown = {}) {
       } as unknown as Response;
     }),
   };
-  const discoveryApi = {
+  const discoveryApi: DiscoveryApi = {
     getBaseUrl: jest.fn(async () => 'http://portal/api/butler'),
   };
   const client = new ButlerApiClient({ discoveryApi, fetchApi });
