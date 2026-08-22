@@ -3,7 +3,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { useApi } from '@backstage/core-plugin-api';
-import { Link as RouterLink } from 'react-router-dom';
+import { Link as RouterLink, Navigate } from 'react-router-dom';
 import {
   InfoCard,
   Progress,
@@ -154,7 +154,11 @@ export const OverviewPage = () => {
   const classes = useStyles();
   const api = useApi(butlerApiRef);
   const routes = useButlerRoutes();
-  const { teams: userTeams, isAdmin } = useTeamContext();
+  const {
+    teams: userTeams,
+    isAdmin,
+    loading: identityLoading,
+  } = useTeamContext();
 
   const [allTeams, setAllTeams] = useState<TeamInfo[]>([]);
   const [clusters, setClusters] = useState<Cluster[]>([]);
@@ -193,6 +197,12 @@ export const OverviewPage = () => {
       cancelled = true;
     };
   }, [api]);
+
+  // A platform operator without team memberships has nothing to do on the
+  // team landing; the console sends them to the platform overview.
+  if (!identityLoading && isAdmin && userTeams.length === 0) {
+    return <Navigate to={routes.admin()} replace />;
+  }
 
   if (loading) {
     return <Progress />;

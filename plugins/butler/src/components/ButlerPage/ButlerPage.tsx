@@ -5,8 +5,6 @@ import React from 'react';
 import { Routes, Route, useLocation } from 'react-router-dom';
 import { Header, Page, Content, Progress } from '@backstage/core-components';
 import { makeStyles } from '@material-ui/core/styles';
-import { Typography } from '@material-ui/core';
-import SecurityIcon from '@material-ui/icons/Security';
 import { CookieAuthRefreshProvider } from '@backstage/plugin-auth-react';
 import { TeamProvider } from '../../contexts/TeamProvider';
 import { TeamSwitcher } from '../TeamSwitcher/TeamSwitcher';
@@ -29,8 +27,8 @@ import {
   adminCreateIdentityProviderRouteRef,
   adminSettingsRouteRef,
 } from '../../routes';
-import { useIsAdminRoute } from '../../hooks/useButlerRoutes';
 import { butlerTokens } from '../../theme';
+import { ButlerNav, ButlerRoleBanner } from '../ButlerNav';
 import { ButlerErrorBoundary } from '../ErrorBoundary/ErrorBoundary';
 import { ClusterWatchProvider } from '../../contexts/ClusterWatchProvider';
 import { NotificationBell } from '../NotificationBell/NotificationBell';
@@ -124,34 +122,6 @@ const useStyles = makeStyles(theme => ({
     color: butlerTokens(theme).text.primary,
     fontFamily: butlerTokens(theme).fontSans,
   },
-  adminBanner: {
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    padding: '6px 16px',
-    backgroundColor: 'rgba(124, 58, 237, 0.2)',
-    borderBottom: '1px solid rgba(124, 58, 237, 0.3)',
-  },
-  adminBannerIcon: {
-    fontSize: 14,
-    color: '#a78bfa',
-  },
-  adminBannerText: {
-    fontSize: '0.75rem',
-    fontWeight: 600,
-    color: '#c4b5fd',
-    letterSpacing: '0.05em',
-    textTransform: 'uppercase',
-  },
-  adminBannerSeparator: {
-    color: 'rgba(124, 58, 237, 0.4)',
-    fontSize: '0.75rem',
-  },
-  adminBannerSubtext: {
-    fontSize: '0.75rem',
-    color: 'rgba(167, 139, 250, 0.7)',
-  },
   contentWrapper: {
     position: 'relative' as const,
   },
@@ -169,6 +139,13 @@ const useStyles = makeStyles(theme => ({
   contentInner: {
     position: 'relative' as const,
     zIndex: 1,
+    display: 'flex',
+    alignItems: 'stretch',
+    minHeight: 'calc(100vh - 160px)',
+  },
+  main: {
+    flex: 1,
+    minWidth: 0,
     padding: 24,
   },
   headerActions: {
@@ -185,6 +162,8 @@ const ButlerContent = () => {
     <Content className={classes.surface} noPadding>
       <div className={classes.watermark} />
       <div className={classes.contentInner}>
+      <ButlerNav />
+      <div className={classes.main}>
       <React.Suspense fallback={<Progress />}>
         {/* Keyed on the path so navigating away clears a previous error. */}
         <ButlerErrorBoundary key={location.pathname}>
@@ -229,30 +208,17 @@ const ButlerContent = () => {
         </ButlerErrorBoundary>
       </React.Suspense>
       </div>
+      </div>
     </Content>
   );
 };
 
 const ButlerPageInner = () => {
   const classes = useStyles();
-  const isAdminRoute = useIsAdminRoute();
 
   return (
     <>
-      {isAdminRoute && (
-        <div className={classes.adminBanner}>
-          <SecurityIcon className={classes.adminBannerIcon} />
-          <Typography className={classes.adminBannerText}>
-            Admin Mode
-          </Typography>
-          <Typography className={classes.adminBannerSeparator}>
-            &mdash;
-          </Typography>
-          <Typography className={classes.adminBannerSubtext}>
-            Actions affect the entire platform
-          </Typography>
-        </div>
-      )}
+      <ButlerRoleBanner />
       <Page themeId="tool">
         <Header title="Butler" subtitle="Kubernetes-as-a-Service Platform">
           <div className={classes.headerActions}>
