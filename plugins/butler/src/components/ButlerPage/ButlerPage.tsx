@@ -30,6 +30,7 @@ import {
   adminSettingsRouteRef,
 } from '../../routes';
 import { useIsAdminRoute } from '../../hooks/useButlerRoutes';
+import { butlerTokens } from '../../theme';
 import { ButlerErrorBoundary } from '../ErrorBoundary/ErrorBoundary';
 import { ClusterWatchProvider } from '../../contexts/ClusterWatchProvider';
 import { NotificationBell } from '../NotificationBell/NotificationBell';
@@ -115,7 +116,15 @@ const CreateIdentityProviderPage = React.lazy(() =>
     default: m.CreateIdentityProviderPage,
   })),
 );
-const useStyles = makeStyles(() => ({
+const useStyles = makeStyles(theme => ({
+  // Console page surface inside the Backstage shell: neutral-950 ground,
+  // Inter stack, 24px padding (console `main.p-6`).
+  surface: {
+    backgroundColor: butlerTokens(theme).page,
+    color: butlerTokens(theme).text.primary,
+    fontFamily: butlerTokens(theme).fontSans,
+    padding: 24,
+  },
   adminBanner: {
     display: 'flex',
     alignItems: 'center',
@@ -173,7 +182,7 @@ const ButlerContent = () => {
   const classes = useStyles();
   const location = useLocation();
   return (
-    <Content>
+    <Content className={classes.surface}>
       <div className={classes.watermark} />
       <div className={classes.contentInner}>
       <React.Suspense fallback={<Progress />}>
