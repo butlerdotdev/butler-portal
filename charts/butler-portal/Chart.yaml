@@ -2,7 +2,7 @@ apiVersion: v2
 name: butler-portal
 description: Butler Portal, a Backstage-based IDP with registry, governance, and IaC run management
 type: application
-version: 0.7.0
+version: 0.7.1
 appVersion: "0.7.0"
 home: https://github.com/butlerdotdev/butler-portal
 sources:

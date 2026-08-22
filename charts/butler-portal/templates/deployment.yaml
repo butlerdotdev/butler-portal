@@ -179,6 +179,10 @@ spec:
                   name: {{ .Values.butlerAuth.existingSecret }}
                   key: {{ .Values.butlerAuth.passwordKey | default "password" }}
             {{- end }}
+            {{- if .Values.butlerIdentity.emailDomain }}
+            - name: BUTLER_IDENTITY_EMAIL_DOMAIN
+              value: {{ .Values.butlerIdentity.emailDomain | quote }}
+            {{- end }}
             {{- if .Values.butlerSigning.existingSecret }}
             # Stage 2 portal-JWT signer config. When butlerSigning is set,
             # the backend mounts the Ed25519 private key as a file (below)

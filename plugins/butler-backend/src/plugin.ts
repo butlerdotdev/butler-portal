@@ -18,7 +18,9 @@ import {
   coreServices,
   createBackendPlugin,
 } from '@backstage/backend-plugin-api';
+import { catalogServiceRef } from '@backstage/plugin-catalog-node';
 import { AuthManager } from './service/AuthManager';
+import { IdentityResolver } from './service/IdentityResolver';
 import { loadPortalSigner } from './service/PortalSigner';
 import { createRouter } from './router';
 import { validateButlerAuth } from './validation';
@@ -62,8 +64,18 @@ export const butlerPlugin = createBackendPlugin({
         userInfo: coreServices.userInfo,
         auth: coreServices.auth,
         lifecycle: coreServices.lifecycle,
+        catalog: catalogServiceRef,
       },
-      async init({ config, logger, httpRouter, httpAuth, userInfo, auth, lifecycle }) {
+      async init({
+        config,
+        logger,
+        httpRouter,
+        httpAuth,
+        userInfo,
+        auth,
+        lifecycle,
+        catalog,
+      }) {
         // Read butler configuration. getString throws if any key is absent.
         const baseUrl = config.getString('butler.baseUrl');
         const username = config.getString('butler.auth.username');
@@ -115,6 +127,17 @@ export const butlerPlugin = createBackendPlugin({
           logger: logger.child({ service: 'butler-portal-signer' }),
         });
 
+        // Identity mapping from Backstage user to butler-server email. The
+        // catalog User entity's profile email is preferred; the configured
+        // domain covers sign-in resolvers that issue local-part-only refs.
+        const identityResolver = new IdentityResolver({
+          userInfo,
+          auth,
+          catalog,
+          emailDomain: config.getOptionalString('butler.identity.emailDomain'),
+          logger: logger.child({ service: 'butler-identity' }),
+        });
+
         // Create the proxy router
         const router = await createRouter({
           baseUrl,
@@ -124,6 +147,7 @@ export const butlerPlugin = createBackendPlugin({
           auth,
           logger: logger.child({ service: 'butler-router' }),
           portalSigner,
+          identityResolver,
         });
 
         // Router is mounted under Backstage's default-deny auth gate.

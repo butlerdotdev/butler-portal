@@ -100,6 +100,13 @@ butler:
   signing:
     kid: ${BUTLER_SIGNING_KID:-}
     keyPath: ${BUTLER_SIGNING_KEY_PATH:-}
+  # Maps a Backstage user to the butler-server email. A catalog User
+  # entity with spec.profile.email wins; otherwise the entity name plus
+  # this domain. Required when the sign-in resolver issues local-part-only
+  # entity refs (the shipped Google resolver does) and users are not in
+  # the catalog. No default: an unresolvable user is refused.
+  identity:
+    emailDomain: ${BUTLER_IDENTITY_EMAIL_DOMAIN:-}
 
 pipeline:
   vectorBinaryPath: vector
