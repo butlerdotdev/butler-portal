@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import { Request, Response, Router } from 'express';
+import { NextFunction, Request, Response, Router } from 'express';
 import { WebSocketServer, WebSocket } from 'ws';
 import type { IncomingMessage } from 'http';
 import type { Duplex } from 'stream';
@@ -99,6 +99,68 @@ export function applyPortalCarrierSwap(opts: {
     forwardHeaders.Authorization = `Bearer ${portalSigner.sign(subEmail)}`;
     delete forwardHeaders['X-Butler-User-Email'];
   }
+}
+
+/**
+ * Express middleware that refuses a proxied request unless the portal's
+ * permission policy allows the permission mapped to its route. Only user
+ * principals may use the proxy; service principals get an explicit 403.
+ * Any failure while authenticating or authorizing is passed to Express
+ * error handling rather than left as an unhandled rejection.
+ *
+ * Exported for unit testing.
+ */
+export function createRouteAuthorizationMiddleware(opts: {
+  httpAuth: HttpAuthService;
+  permissions: PermissionsService;
+  logger: LoggerService;
+  allowUnmappedRoutes: boolean;
+}): (req: Request, res: Response, next: NextFunction) => void {
+  const { httpAuth, permissions, logger, allowUnmappedRoutes } = opts;
+  return (req, res, next) => {
+    (async () => {
+      const credentials = await httpAuth.credentials(req, {
+        allow: ['user', 'service'],
+      });
+      if (credentials.principal && (credentials.principal as { type?: string }).type !== 'user') {
+        res.status(403).json({
+          error: 'forbidden',
+          reason: 'only user principals may call the Butler proxy',
+        });
+        return;
+      }
+      const decision = await authorizeRoute({
+        permissions,
+        credentials,
+        method: req.method,
+        path: req.path,
+      });
+      if (decision.kind === 'allow') {
+        next();
+        return;
+      }
+      if (decision.kind === 'unmapped') {
+        if (allowUnmappedRoutes) {
+          logger.warn('Forwarding route absent from the authorization table', {
+            method: req.method,
+            path: req.path,
+          });
+          next();
+          return;
+        }
+        logger.error('Refusing route absent from the authorization table', {
+          method: req.method,
+          path: req.path,
+        });
+        res.status(403).json({
+          error: 'forbidden',
+          reason: 'route not classified for authorization',
+        });
+        return;
+      }
+      res.status(403).json({ error: 'forbidden', permission: decision.permission });
+    })().catch(next);
+  };
 }
 
 /**
@@ -391,43 +453,16 @@ export async function createRouter(options: {
   // Authorization gate for every proxied route. Runs after the
   // framework's authentication barrier, before any forward. /_health
   // and /_identity are registered above and never reach this point.
-  router.use(async (req: Request, res: Response, next) => {
-    if (!permissions) {
-      next();
-      return;
-    }
-    const credentials = await httpAuth.credentials(req, { allow: ['user'] });
-    const decision = await authorizeRoute({
-      permissions,
-      credentials,
-      method: req.method,
-      path: req.path,
-    });
-    if (decision.kind === 'allow') {
-      next();
-      return;
-    }
-    if (decision.kind === 'unmapped') {
-      if (allowUnmappedRoutes) {
-        logger.warn('Forwarding route absent from the authorization table', {
-          method: req.method,
-          path: req.path,
-        });
-        next();
-        return;
-      }
-      logger.error('Refusing route absent from the authorization table', {
-        method: req.method,
-        path: req.path,
-      });
-      res.status(403).json({
-        error: 'forbidden',
-        reason: 'route not classified for authorization',
-      });
-      return;
-    }
-    res.status(403).json({ error: 'forbidden', permission: decision.permission });
-  });
+  if (permissions) {
+    router.use(
+      createRouteAuthorizationMiddleware({
+        httpAuth,
+        permissions,
+        logger,
+        allowUnmappedRoutes,
+      }),
+    );
+  }
 
   router.all('/*', async (req: Request, res: Response) => {
     try {
