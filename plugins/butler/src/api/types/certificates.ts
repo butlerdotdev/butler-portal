@@ -12,7 +12,7 @@ export type CertHealthStatus = 'Healthy' | 'Warning' | 'Critical' | 'Expired';
  * Certificate category grouping.
  */
 export type CertificateCategory =
-  | 'api-server'
+  | 'apiserver'
   | 'kubeconfig'
   | 'ca'
   | 'front-proxy'
@@ -29,7 +29,7 @@ export type RotationType = 'all' | 'kubeconfigs' | 'ca';
  * Rotation operation status.
  */
 export type RotationStatus =
-  | 'in-progress'
+  | 'in_progress'
   | 'completed'
   | 'failed'
   | 'unknown';
@@ -157,7 +157,7 @@ export const CERTIFICATE_CATEGORIES: Record<
   CertificateCategory,
   { label: string; description: string; order: number }
 > = {
-  'api-server': {
+  apiserver: {
     label: 'API Server Certificates',
     description: 'TLS certificates for the Kubernetes API server',
     order: 1,

@@ -49,6 +49,7 @@ import type {
   MigrationResult,
   GitOpsStatus,
 } from './types/gitops';
+import type { PlatformConfig } from './types/config';
 import type {
   ClusterCertificates,
   RotationEvent,
@@ -445,7 +446,8 @@ export class ButlerApiClient implements ButlerApi {
   }
 
   async listBranches(owner: string, repo: string): Promise<Branch[]> {
-    return this.get<Branch[]>(`/gitops/repos/${owner}/${repo}/branches`);
+    const repoName = encodeURIComponent(`${owner}/${repo}`);
+    return this.get<Branch[]>(`/gitops/repos/branches?repo=${repoName}`);
   }
 
   async previewManifests(
@@ -662,8 +664,8 @@ export class ButlerApiClient implements ButlerApi {
 
   // ---- Settings ----
 
-  async getSettings(): Promise<any> {
-    return this.get('/admin/settings');
+  async getPlatformConfig(): Promise<PlatformConfig> {
+    return this.get<PlatformConfig>('/admin/config');
   }
 
   // ---- Users ----
