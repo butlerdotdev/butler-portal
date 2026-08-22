@@ -9,6 +9,7 @@ import { Typography } from '@material-ui/core';
 import SecurityIcon from '@material-ui/icons/Security';
 import { TeamProvider } from '../../contexts/TeamProvider';
 import { TeamSwitcher } from '../TeamSwitcher/TeamSwitcher';
+import { ButlerErrorBoundary } from '../ErrorBoundary/ErrorBoundary';
 
 // Lazy-load pages
 const OverviewPage = React.lazy(() =>
@@ -142,11 +143,14 @@ const useStyles = makeStyles(() => ({
 
 const ButlerContent = () => {
   const classes = useStyles();
+  const location = useLocation();
   return (
     <Content>
       <div className={classes.watermark} />
       <div className={classes.contentInner}>
       <React.Suspense fallback={<Progress />}>
+        {/* Keyed on the path so navigating away clears a previous error. */}
+        <ButlerErrorBoundary key={location.pathname}>
         <Routes>
           <Route path="/" element={<OverviewPage />} />
           <Route path="/t/:team" element={<DashboardPage />} />
@@ -185,6 +189,7 @@ const ButlerContent = () => {
           />
           <Route path="/admin/settings" element={<SettingsPage />} />
         </Routes>
+        </ButlerErrorBoundary>
       </React.Suspense>
       </div>
     </Content>

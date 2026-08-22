@@ -3,7 +3,7 @@
 
 import React, { useEffect, useState, useCallback } from 'react';
 import { useParams, useNavigate, Link as RouterLink } from 'react-router-dom';
-import { useApi } from '@backstage/core-plugin-api';
+import { useApi, alertApiRef } from '@backstage/core-plugin-api';
 import {
   Table,
   TableColumn,
@@ -31,6 +31,7 @@ import ArrowBackIcon from '@material-ui/icons/ArrowBack';
 import RefreshIcon from '@material-ui/icons/Refresh';
 import Switch from '@material-ui/core/Switch';
 import { butlerApiRef } from '../../api/ButlerApi';
+import { useButlerResource } from '../../hooks/useButlerResource';
 import type { Cluster, Node, ClusterEvent } from '../../api/types/clusters';
 import { StatusBadge } from '../StatusBadge/StatusBadge';
 import { AddonsTab } from './AddonsTab';
@@ -129,9 +130,34 @@ type EventRow = {
   lastTimestamp: string;
 };
 
+const CLUSTER_POLL_MS = 5000;
+
+// Mirrors the console: keep polling while the cluster is still converging.
+export function clusterPollInterval(
+  cluster: Cluster | undefined,
+): number | null {
+  // Mirrors the console rule: poll only while the status block says the
+  // cluster is still converging. A missing status or missing counters is
+  // not treated as converging.
+  if (!cluster?.status) return null;
+  const { workerNodesReady, workerNodesDesired, phase } = cluster.status;
+  const workersConverging =
+    workerNodesReady !== undefined &&
+    workerNodesDesired !== undefined &&
+    workerNodesReady !== workerNodesDesired;
+  const notReady = Boolean(phase) && phase !== 'Ready';
+  return workersConverging || notReady ? CLUSTER_POLL_MS : null;
+}
+
+function errorMessage(e: unknown, prefix: string): string {
+  const detail = e instanceof Error ? e.message : String(e);
+  return detail ? `${prefix}: ${detail}` : prefix;
+}
+
 export const ClusterDetailPage = () => {
   const classes = useStyles();
   const api = useApi(butlerApiRef);
+  const alertApi = useApi(alertApiRef);
   const navigate = useNavigate();
   const { namespace, name, team } = useParams<{
     namespace: string;
@@ -139,9 +165,6 @@ export const ClusterDetailPage = () => {
     team: string;
   }>();
 
-  const [cluster, setCluster] = useState<Cluster | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<Error | undefined>();
   const [activeTab, setActiveTab] = useState(0);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -158,19 +181,44 @@ export const ClusterDetailPage = () => {
   const [eventsLoading, setEventsLoading] = useState(false);
   const [eventsLoaded, setEventsLoaded] = useState(false);
 
-  const fetchCluster = useCallback(async () => {
-    if (!namespace || !name) return;
-    setLoading(true);
-    setError(undefined);
-    try {
-      const result = await api.getCluster(namespace, name);
-      setCluster(result);
-    } catch (e) {
-      setError(e instanceof Error ? e : new Error(String(e)));
-    } finally {
-      setLoading(false);
+  const clusterState = useButlerResource<Cluster>(
+    () => {
+      if (!namespace || !name) {
+        return Promise.reject(new Error('Cluster namespace and name are required'));
+      }
+      return api.getCluster(namespace, name);
+    },
+    {
+      deps: [api, namespace, name],
+      enabled: Boolean(namespace && name),
+      pollIntervalMs: clusterPollInterval,
+    },
+  );
+  const loadedCluster =
+    clusterState.status === 'loading' ? undefined : clusterState.data;
+  const refreshError =
+    clusterState.status === 'error' && clusterState.data
+      ? clusterState.error
+      : undefined;
+  // A failed poll or refresh keeps the last good cluster on screen, so the
+  // error is surfaced as a toast instead of replacing the page.
+  useEffect(() => {
+    if (refreshError) {
+      alertApi.post({
+        message: errorMessage(refreshError, 'Failed to refresh cluster'),
+        severity: 'error',
+      });
     }
-  }, [api, namespace, name]);
+  }, [alertApi, refreshError]);
+  // The toggle endpoint returns the updated cluster; show it until the next
+  // poll or refresh delivers a fresh server copy (tracked by object identity).
+  const [clusterOverride, setClusterOverride] = useState<
+    { base: Cluster | undefined; value: Cluster } | undefined
+  >();
+  const effectiveCluster =
+    clusterOverride && clusterOverride.base === loadedCluster
+      ? clusterOverride.value
+      : loadedCluster;
 
   const fetchNodes = useCallback(async () => {
     if (!namespace || !name) return;
@@ -178,13 +226,17 @@ export const ClusterDetailPage = () => {
     try {
       const result = await api.getClusterNodes(namespace, name);
       setNodes(result.nodes || []);
-    } catch {
+    } catch (e) {
       setNodes([]);
+      alertApi.post({
+        message: errorMessage(e, 'Failed to load nodes'),
+        severity: 'error',
+      });
     } finally {
       setNodesLoading(false);
       setNodesLoaded(true);
     }
-  }, [api, namespace, name]);
+  }, [api, alertApi, namespace, name]);
 
   const fetchEvents = useCallback(async () => {
     if (!namespace || !name) return;
@@ -192,17 +244,17 @@ export const ClusterDetailPage = () => {
     try {
       const result = await api.getClusterEvents(namespace, name);
       setEvents(result.events || []);
-    } catch {
+    } catch (e) {
       setEvents([]);
+      alertApi.post({
+        message: errorMessage(e, 'Failed to load events'),
+        severity: 'error',
+      });
     } finally {
       setEventsLoading(false);
       setEventsLoaded(true);
     }
-  }, [api, namespace, name]);
-
-  useEffect(() => {
-    fetchCluster();
-  }, [fetchCluster]);
+  }, [api, alertApi, namespace, name]);
 
   // Lazy-load tab data
   useEffect(() => {
@@ -228,8 +280,11 @@ export const ClusterDetailPage = () => {
       anchor.click();
       document.body.removeChild(anchor);
       window.URL.revokeObjectURL(url);
-    } catch {
-      // Error handled silently; could add alerting here
+    } catch (e) {
+      alertApi.post({
+        message: errorMessage(e, 'Failed to download kubeconfig'),
+        severity: 'error',
+      });
     } finally {
       setDownloading(false);
     }
@@ -242,8 +297,11 @@ export const ClusterDetailPage = () => {
       await api.deleteCluster(namespace, name);
       setDeleteOpen(false);
       navigate(`/butler/t/${team}/clusters`);
-    } catch {
-      // Error handled silently
+    } catch (e) {
+      alertApi.post({
+        message: errorMessage(e, 'Failed to delete cluster'),
+        severity: 'error',
+      });
     } finally {
       setDeleting(false);
     }
@@ -258,19 +316,24 @@ export const ClusterDetailPage = () => {
         name,
         enabled,
       );
-      setCluster(updated);
-    } catch {
-      // Silent
+      setClusterOverride({ base: loadedCluster, value: updated });
+    } catch (e) {
+      alertApi.post({
+        message: errorMessage(e, 'Failed to update workspaces setting'),
+        severity: 'error',
+      });
     } finally {
       setTogglingWorkspaces(false);
     }
   };
 
-  if (loading) {
+  if (clusterState.status === 'loading') {
     return <Progress />;
   }
 
-  if (error || !cluster) {
+  if (!effectiveCluster) {
+    const error =
+      clusterState.status === 'error' ? clusterState.error : undefined;
     return (
       <EmptyState
         title="Cluster not found"
@@ -290,6 +353,7 @@ export const ClusterDetailPage = () => {
     );
   }
 
+  const cluster: Cluster = effectiveCluster;
   const phase = cluster.status?.phase || 'Unknown';
   const conditions = cluster.status?.conditions || [];
 
@@ -374,7 +438,7 @@ export const ClusterDetailPage = () => {
               </Typography>
               <StatusBadge status={phase} />
               <Chip
-                label={`v${cluster.spec.kubernetesVersion}`}
+                label={cluster.spec.kubernetesVersion}
                 size="small"
                 variant="outlined"
               />
@@ -386,7 +450,7 @@ export const ClusterDetailPage = () => {
             variant="outlined"
             size="small"
             startIcon={<RefreshIcon />}
-            onClick={fetchCluster}
+            onClick={() => clusterState.refresh()}
           >
             Refresh
           </Button>
@@ -528,22 +592,6 @@ export const ClusterDetailPage = () => {
                   <div className={classes.specRow}>
                     <Typography className={classes.specLabel}>Phase</Typography>
                     <StatusBadge status={phase} />
-                  </div>
-                  <div className={classes.specRow}>
-                    <Typography className={classes.specLabel}>
-                      Control Plane Ready
-                    </Typography>
-                    <Typography className={classes.specValue}>
-                      {cluster.status?.controlPlaneReady ? 'Yes' : 'No'}
-                    </Typography>
-                  </div>
-                  <div className={classes.specRow}>
-                    <Typography className={classes.specLabel}>
-                      Infrastructure Ready
-                    </Typography>
-                    <Typography className={classes.specValue}>
-                      {cluster.status?.infrastructureReady ? 'Yes' : 'No'}
-                    </Typography>
                   </div>
                   {cluster.status?.tenantNamespace && (
                     <div className={classes.specRow}>

@@ -59,8 +59,8 @@ export interface Cluster {
   status?: {
     phase?: string;
     tenantNamespace?: string;
-    controlPlaneReady?: boolean;
-    infrastructureReady?: boolean;
+    workerNodesReady?: number;
+    workerNodesDesired?: number;
     observedState?: {
       addons?: Array<{
         name: string;
