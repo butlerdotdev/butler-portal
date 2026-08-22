@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import React from 'react';
-import { Routes, Route, useLocation } from 'react-router-dom';
+import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { Header, Page, Content, Progress } from '@backstage/core-components';
 import { makeStyles } from '@material-ui/core/styles';
 import { CookieAuthRefreshProvider } from '@backstage/plugin-auth-react';
@@ -29,6 +29,8 @@ import {
 } from '../../routes';
 import { butlerTokens } from '../../theme';
 import { ButlerNav, ButlerRoleBanner } from '../ButlerNav';
+import { useTeamContext } from '../../hooks/useTeamContext';
+import { useButlerRoutes } from '../../hooks/useButlerRoutes';
 import { ButlerErrorBoundary } from '../ErrorBoundary/ErrorBoundary';
 import { ClusterWatchProvider } from '../../contexts/ClusterWatchProvider';
 import { NotificationBell } from '../NotificationBell/NotificationBell';
@@ -155,6 +157,18 @@ const useStyles = makeStyles(theme => ({
   },
 }));
 
+// Console sends non-admins who land on an admin route back to their team
+// dashboard (or the landing page) instead of rendering admin pages that
+// fail later with 403s. Identity must have resolved before deciding.
+const AdminRouteGuard = ({ children }: { children: React.ReactElement }) => {
+  const routes = useButlerRoutes();
+  const { isAdmin, loading, teams } = useTeamContext();
+  if (loading) return <Progress />;
+  if (isAdmin) return children;
+  const team = teams[0]?.name;
+  return <Navigate to={team ? routes.team({ team }) : routes.root()} replace />;
+};
+
 const ButlerContent = () => {
   const classes = useStyles();
   const location = useLocation();
@@ -181,29 +195,29 @@ const ButlerContent = () => {
           />
           <Route path={teamMembersRouteRef.path} element={<TeamMembersPage />} />
           <Route path={teamSettingsRouteRef.path} element={<TeamSettingsPage />} />
-          <Route path={adminRouteRef.path} element={<AdminDashboard />} />
-          <Route path={adminClustersRouteRef.path} element={<AdminClustersPage />} />
-          <Route path={adminManagementRouteRef.path} element={<ManagementPage />} />
-          <Route path={adminTeamsRouteRef.path} element={<AdminTeamsPage />} />
+          <Route path={adminRouteRef.path} element={<AdminRouteGuard><AdminDashboard /></AdminRouteGuard>} />
+          <Route path={adminClustersRouteRef.path} element={<AdminRouteGuard><AdminClustersPage /></AdminRouteGuard>} />
+          <Route path={adminManagementRouteRef.path} element={<AdminRouteGuard><ManagementPage /></AdminRouteGuard>} />
+          <Route path={adminTeamsRouteRef.path} element={<AdminRouteGuard><AdminTeamsPage /></AdminRouteGuard>} />
           <Route
             path={adminTeamDetailRouteRef.path}
-            element={<AdminTeamDetailPage />}
+            element={<AdminRouteGuard><AdminTeamDetailPage /></AdminRouteGuard>}
           />
-          <Route path={adminUsersRouteRef.path} element={<UsersPage />} />
-          <Route path={adminProvidersRouteRef.path} element={<ProvidersPage />} />
+          <Route path={adminUsersRouteRef.path} element={<AdminRouteGuard><UsersPage /></AdminRouteGuard>} />
+          <Route path={adminProvidersRouteRef.path} element={<AdminRouteGuard><ProvidersPage /></AdminRouteGuard>} />
           <Route
             path={adminCreateProviderRouteRef.path}
-            element={<CreateProviderPage />}
+            element={<AdminRouteGuard><CreateProviderPage /></AdminRouteGuard>}
           />
           <Route
             path={adminIdentityProvidersRouteRef.path}
-            element={<IdentityProvidersPage />}
+            element={<AdminRouteGuard><IdentityProvidersPage /></AdminRouteGuard>}
           />
           <Route
             path={adminCreateIdentityProviderRouteRef.path}
-            element={<CreateIdentityProviderPage />}
+            element={<AdminRouteGuard><CreateIdentityProviderPage /></AdminRouteGuard>}
           />
-          <Route path={adminSettingsRouteRef.path} element={<SettingsPage />} />
+          <Route path={adminSettingsRouteRef.path} element={<AdminRouteGuard><SettingsPage /></AdminRouteGuard>} />
         </Routes>
         </ButlerErrorBoundary>
       </React.Suspense>

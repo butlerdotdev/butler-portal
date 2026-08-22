@@ -21,7 +21,12 @@
  */
 
 import type { PlatformConfig } from './types/config';
-import type { MachineRequest, MachineRequestListResponse, LoadBalancerRequest, LoadBalancerRequestListResponse } from './types/machines';
+import type {
+  MachineRequest,
+  MachineRequestListResponse,
+  LoadBalancerRequest,
+  LoadBalancerRequestListResponse,
+} from './types/machines';
 import type { TenantControlPlaneSummary } from './types/steward';
 import type { ButlerApi } from './ButlerApi';
 import type {
@@ -129,7 +134,9 @@ import {
 import type { FixtureTeamMember } from './fixtures/clusters';
 
 export type ButlerApiMethod = {
-  [K in keyof ButlerApi]: ButlerApi[K] extends (...args: any[]) => any ? K : never;
+  [K in keyof ButlerApi]: ButlerApi[K] extends (...args: any[]) => any
+    ? K
+    : never;
 }[keyof ButlerApi];
 
 export interface MockButlerApiOptions {
@@ -139,6 +146,8 @@ export interface MockButlerApiOptions {
   latencyMs?: number;
   /** Override the initial cluster set. Defaults to the fixture clusters. */
   clusters?: Cluster[];
+  /** Override the resolved caller identity. Defaults to the fixture identity. */
+  identity?: Partial<typeof fixtureIdentity>;
 }
 
 function clone<T>(value: T): T {
@@ -153,11 +162,14 @@ function notFound(kind: string, id: string): Error {
 
 export class MockButlerApi implements ButlerApi {
   private clusters: Cluster[];
+  private identity: typeof fixtureIdentity;
   private readonly failures: Partial<Record<ButlerApiMethod, Error>>;
   private readonly latencyMs: number;
   private teamContext: string | null = null;
   private members: FixtureTeamMember[] = clone(fixtureTeamMembers);
-  private installedAddons: Record<string, InstalledAddon[]> = clone(fixtureInstalledAddons);
+  private installedAddons: Record<string, InstalledAddon[]> = clone(
+    fixtureInstalledAddons,
+  );
   private rotations: Record<string, RotationEvent> = {};
   private gitops: Record<string, GitOpsStatus> = clone(fixtureGitOpsStatus);
   private gitProvider: GitProviderConfig = clone(fixtureGitProviderConfig);
@@ -170,6 +182,7 @@ export class MockButlerApi implements ButlerApi {
 
   constructor(options: MockButlerApiOptions = {}) {
     this.clusters = clone(options.clusters ?? fixtureClusters);
+    this.identity = { ...clone(fixtureIdentity), ...options.identity };
     this.failures = options.failures ?? {};
     this.latencyMs = options.latencyMs ?? 0;
   }
@@ -219,7 +232,13 @@ export class MockButlerApi implements ButlerApi {
   ): void {
     cluster.status = cluster.status ?? {};
     const conditions = cluster.status.conditions ?? [];
-    const next = { type, status, reason, message, lastTransitionTime: FIXTURE_NOW };
+    const next = {
+      type,
+      status,
+      reason,
+      message,
+      lastTransitionTime: FIXTURE_NOW,
+    };
     const idx = conditions.findIndex(c => c.type === type);
     if (idx >= 0) {
       conditions[idx] = next;
@@ -253,7 +272,8 @@ export class MockButlerApi implements ButlerApi {
     }
 
     if (this.scaling.has(id)) {
-      const desired = status.workerNodesDesired ?? cluster.spec.workers?.replicas ?? 0;
+      const desired =
+        status.workerNodesDesired ?? cluster.spec.workers?.replicas ?? 0;
       const ready = status.workerNodesReady ?? 0;
       if (ready < desired) {
         status.workerNodesReady = ready + 1;
@@ -266,8 +286,20 @@ export class MockButlerApi implements ButlerApi {
       if (nowReady === desired) {
         this.scaling.delete(id);
         status.phase = 'Ready';
-        this.setCondition(cluster, 'WorkersReady', 'True', 'WorkersReady', `${nowReady} of ${desired} worker nodes ready`);
-        this.setCondition(cluster, 'Ready', 'True', 'ClusterReady', 'Cluster is ready for use');
+        this.setCondition(
+          cluster,
+          'WorkersReady',
+          'True',
+          'WorkersReady',
+          `${nowReady} of ${desired} worker nodes ready`,
+        );
+        this.setCondition(
+          cluster,
+          'Ready',
+          'True',
+          'ClusterReady',
+          'Cluster is ready for use',
+        );
       } else {
         this.setCondition(
           cluster,
@@ -313,7 +345,7 @@ export class MockButlerApi implements ButlerApi {
     isPlatformAdmin: boolean;
     teams: TeamInfo[];
   }> {
-    return this.run('getIdentity', () => clone(fixtureIdentity));
+    return this.run('getIdentity', () => clone(this.identity));
   }
 
   // ---- Clusters ----
@@ -324,7 +356,10 @@ export class MockButlerApi implements ButlerApi {
       const clusters = [...this.clusters]
         .map(c => this.advance(c))
         .filter((c): c is Cluster => !!c)
-        .filter(c => !options?.namespace || c.metadata.namespace === options.namespace)
+        .filter(
+          c =>
+            !options?.namespace || c.metadata.namespace === options.namespace,
+        )
         .filter(c => !team || c.spec.teamRef?.name === team);
       return { clusters: clone(clusters) };
     });
@@ -343,8 +378,15 @@ export class MockButlerApi implements ButlerApi {
   createCluster(data: CreateClusterRequest): Promise<Cluster> {
     return this.run('createCluster', () => {
       const namespace = data.namespace ?? FIXTURE_NAMESPACE;
-      if (this.clusters.some(c => c.metadata.namespace === namespace && c.metadata.name === data.name)) {
-        const err = new Error(`cluster ${this.key(namespace, data.name)} already exists`);
+      if (
+        this.clusters.some(
+          c =>
+            c.metadata.namespace === namespace && c.metadata.name === data.name,
+        )
+      ) {
+        const err = new Error(
+          `cluster ${this.key(namespace, data.name)} already exists`,
+        );
         (err as Error & { status?: number }).status = 409;
         throw err;
       }
@@ -372,7 +414,10 @@ export class MockButlerApi implements ButlerApi {
             },
           },
           networking: {
-            loadBalancerPool: { start: data.loadBalancerStart, end: data.loadBalancerEnd },
+            loadBalancerPool: {
+              start: data.loadBalancerStart,
+              end: data.loadBalancerEnd,
+            },
           },
           workspaces: { enabled: data.workspacesEnabled ?? false },
         },
@@ -385,7 +430,8 @@ export class MockButlerApi implements ButlerApi {
               type: 'Ready',
               status: 'False',
               reason: 'Pending',
-              message: 'Waiting for the TenantCluster controller to pick up the resource',
+              message:
+                'Waiting for the TenantCluster controller to pick up the resource',
               lastTransitionTime: FIXTURE_NOW,
             },
           ],
@@ -401,16 +447,29 @@ export class MockButlerApi implements ButlerApi {
       const cluster = this.findCluster(namespace, name);
       cluster.status = cluster.status ?? {};
       cluster.status.phase = 'Deleting';
-      this.setCondition(cluster, 'Ready', 'False', 'Deleting', 'Deletion requested');
+      this.setCondition(
+        cluster,
+        'Ready',
+        'False',
+        'Deleting',
+        'Deletion requested',
+      );
       this.pendingDelete.set(this.key(namespace, name), 0);
       this.bump(cluster);
     });
   }
 
-  scaleCluster(namespace: string, name: string, replicas: number): Promise<Cluster> {
+  scaleCluster(
+    namespace: string,
+    name: string,
+    replicas: number,
+  ): Promise<Cluster> {
     return this.run('scaleCluster', () => {
       const cluster = this.findCluster(namespace, name);
-      cluster.spec.workers = { ...(cluster.spec.workers ?? { replicas }), replicas };
+      cluster.spec.workers = {
+        ...(cluster.spec.workers ?? { replicas }),
+        replicas,
+      };
       cluster.status = cluster.status ?? {};
       cluster.status.workerNodesDesired = replicas;
       cluster.status.workerNodesReady = cluster.status.workerNodesReady ?? 0;
@@ -421,7 +480,9 @@ export class MockButlerApi implements ButlerApi {
           cluster,
           'WorkersReady',
           'False',
-          cluster.status.workerNodesReady < replicas ? 'WorkersProvisioning' : 'WorkersScalingDown',
+          cluster.status.workerNodesReady < replicas
+            ? 'WorkersProvisioning'
+            : 'WorkersScalingDown',
           `${cluster.status.workerNodesReady} of ${replicas} worker nodes ready`,
         );
       }
@@ -430,10 +491,14 @@ export class MockButlerApi implements ButlerApi {
     });
   }
 
-  getClusterKubeconfig(namespace: string, name: string): Promise<{ kubeconfig: string }> {
+  getClusterKubeconfig(
+    namespace: string,
+    name: string,
+  ): Promise<{ kubeconfig: string }> {
     return this.run('getClusterKubeconfig', () => {
       const cluster = this.findCluster(namespace, name);
-      const server = cluster.status?.controlPlaneEndpoint ?? 'https://127.0.0.1:6443';
+      const server =
+        cluster.status?.controlPlaneEndpoint ?? 'https://127.0.0.1:6443';
       return {
         kubeconfig: [
           'apiVersion: v1',
@@ -465,21 +530,31 @@ export class MockButlerApi implements ButlerApi {
     });
   }
 
-  getClusterAddons(namespace: string, name: string): Promise<{ addons: Addon[] }> {
+  getClusterAddons(
+    namespace: string,
+    name: string,
+  ): Promise<{ addons: Addon[] }> {
     return this.run('getClusterAddons', () => {
       const cluster = this.findCluster(namespace, name);
       return { addons: clone(cluster.status?.observedState?.addons ?? []) };
     });
   }
 
-  getClusterEvents(namespace: string, name: string): Promise<{ events: ClusterEvent[] }> {
+  getClusterEvents(
+    namespace: string,
+    name: string,
+  ): Promise<{ events: ClusterEvent[] }> {
     return this.run('getClusterEvents', () => {
       this.findCluster(namespace, name);
       return { events: clone(fixtureEvents[name] ?? []) };
     });
   }
 
-  toggleClusterWorkspaces(namespace: string, name: string, enabled: boolean): Promise<Cluster> {
+  toggleClusterWorkspaces(
+    namespace: string,
+    name: string,
+    enabled: boolean,
+  ): Promise<Cluster> {
     return this.run('toggleClusterWorkspaces', () => {
       const cluster = this.findCluster(namespace, name);
       cluster.spec.workspaces = { ...(cluster.spec.workspaces ?? {}), enabled };
@@ -498,17 +573,23 @@ export class MockButlerApi implements ButlerApi {
   }
 
   getManagementNodes(): Promise<{ nodes: ManagementNode[] }> {
-    return this.run('getManagementNodes', () => ({ nodes: clone(fixtureManagementNodes) }));
+    return this.run('getManagementNodes', () => ({
+      nodes: clone(fixtureManagementNodes),
+    }));
   }
 
   getManagementPods(namespace: string): Promise<{ pods: ManagementPod[] }> {
-    return this.run('getManagementPods', () => ({ pods: clone(fixtureManagementPods[namespace] ?? []) }));
+    return this.run('getManagementPods', () => ({
+      pods: clone(fixtureManagementPods[namespace] ?? []),
+    }));
   }
 
   // ---- Providers ----
 
   listProviders(): Promise<ProviderListResponse> {
-    return this.run('listProviders', () => ({ providers: clone(fixtureProviders) }));
+    return this.run('listProviders', () => ({
+      providers: clone(fixtureProviders),
+    }));
   }
 
   getProvider(namespace: string, name: string): Promise<Provider> {
@@ -522,22 +603,40 @@ export class MockButlerApi implements ButlerApi {
   }
 
   createProvider(_data: CreateProviderRequest): Promise<Provider> {
-    return this.run('createProvider', () => this.notImplemented('createProvider'));
+    return this.run('createProvider', () =>
+      this.notImplemented('createProvider'),
+    );
   }
 
   deleteProvider(_namespace: string, _name: string): Promise<void> {
-    return this.run('deleteProvider', () => this.notImplemented('deleteProvider'));
+    return this.run('deleteProvider', () =>
+      this.notImplemented('deleteProvider'),
+    );
   }
 
-  validateProvider(_namespace: string, _name: string): Promise<ValidateResponse> {
-    return this.run('validateProvider', () => ({ valid: true, message: 'Provider credentials validated' }));
+  validateProvider(
+    _namespace: string,
+    _name: string,
+  ): Promise<ValidateResponse> {
+    return this.run('validateProvider', () => ({
+      valid: true,
+      message: 'Provider credentials validated',
+    }));
   }
 
-  testProviderConnection(_data: CreateProviderRequest): Promise<ValidateResponse> {
-    return this.run('testProviderConnection', () => ({ valid: true, message: 'Connection succeeded' }));
+  testProviderConnection(
+    _data: CreateProviderRequest,
+  ): Promise<ValidateResponse> {
+    return this.run('testProviderConnection', () => ({
+      valid: true,
+      message: 'Connection succeeded',
+    }));
   }
 
-  listProviderImages(_namespace: string, _name: string): Promise<ImageListResponse> {
+  listProviderImages(
+    _namespace: string,
+    _name: string,
+  ): Promise<ImageListResponse> {
     return this.run('listProviderImages', () => ({
       images: [
         { name: 'talos-1.10.5', id: 'image-talos-1-10-5', os: 'talos' },
@@ -546,9 +645,19 @@ export class MockButlerApi implements ButlerApi {
     }));
   }
 
-  listProviderNetworks(_namespace: string, _name: string): Promise<NetworkListResponse> {
+  listProviderNetworks(
+    _namespace: string,
+    _name: string,
+  ): Promise<NetworkListResponse> {
     return this.run('listProviderNetworks', () => ({
-      networks: [{ name: 'lab-vlan-40', id: 'net-40', vlan: 40, description: 'Lab tenant network' }],
+      networks: [
+        {
+          name: 'lab-vlan-40',
+          id: 'net-40',
+          vlan: 40,
+          description: 'Lab tenant network',
+        },
+      ],
     }));
   }
 
@@ -569,30 +678,48 @@ export class MockButlerApi implements ButlerApi {
     });
   }
 
-  listClusterAddons(namespace: string, clusterName: string): Promise<AddonsListResponse> {
+  listClusterAddons(
+    namespace: string,
+    clusterName: string,
+  ): Promise<AddonsListResponse> {
     return this.run('listClusterAddons', () => {
       this.findCluster(namespace, clusterName);
       const addons = this.installedAddons[clusterName] ?? [];
       // Installing addons converge on the next read.
       for (const addon of addons) {
-        if (addon.status === 'Installing' || addon.status === 'Upgrading' || addon.status === 'Pending') {
+        if (
+          addon.status === 'Installing' ||
+          addon.status === 'Upgrading' ||
+          addon.status === 'Pending'
+        ) {
           addon.status = 'Installed';
           addon.phase = 'Installed';
           addon.installedVersion = addon.version;
           if (addon.helmRelease) addon.helmRelease.status = 'deployed';
         }
       }
-      this.installedAddons[clusterName] = addons.filter(a => a.status !== 'Deleting');
+      this.installedAddons[clusterName] = addons.filter(
+        a => a.status !== 'Deleting',
+      );
       return { addons: clone(this.installedAddons[clusterName]) };
     });
   }
 
-  installAddon(namespace: string, clusterName: string, data: InstallAddonRequest): Promise<unknown> {
+  installAddon(
+    namespace: string,
+    clusterName: string,
+    data: InstallAddonRequest,
+  ): Promise<unknown> {
     return this.run('installAddon', () => {
       this.findCluster(namespace, clusterName);
-      const name = data.addon ?? data.helm?.releaseName ?? data.helm?.chart ?? 'custom-addon';
+      const name =
+        data.addon ??
+        data.helm?.releaseName ??
+        data.helm?.chart ??
+        'custom-addon';
       const def = fixtureAddonCatalog.find(a => a.name === name);
-      const version = data.version ?? data.helm?.version ?? def?.defaultVersion ?? '0.0.0';
+      const version =
+        data.version ?? data.helm?.version ?? def?.defaultVersion ?? '0.0.0';
       const list = this.installedAddons[clusterName] ?? [];
       const existing = list.find(a => a.name === name);
       const entry: InstalledAddon = {
@@ -603,7 +730,12 @@ export class MockButlerApi implements ButlerApi {
         version,
         managedBy: 'butler',
         namespace: data.helm?.namespace ?? def?.defaultNamespace ?? name,
-        helmRelease: { name, namespace: def?.defaultNamespace ?? name, revision: 1, status: 'pending-install' },
+        helmRelease: {
+          name,
+          namespace: def?.defaultNamespace ?? name,
+          revision: 1,
+          status: 'pending-install',
+        },
       };
       if (existing) {
         Object.assign(existing, entry);
@@ -615,19 +747,32 @@ export class MockButlerApi implements ButlerApi {
     });
   }
 
-  getAddonDetails(namespace: string, clusterName: string, addonName: string): Promise<InstalledAddon> {
+  getAddonDetails(
+    namespace: string,
+    clusterName: string,
+    addonName: string,
+  ): Promise<InstalledAddon> {
     return this.run('getAddonDetails', () => {
       this.findCluster(namespace, clusterName);
-      const addon = (this.installedAddons[clusterName] ?? []).find(a => a.name === addonName);
+      const addon = (this.installedAddons[clusterName] ?? []).find(
+        a => a.name === addonName,
+      );
       if (!addon) throw notFound('addon', addonName);
       return clone(addon);
     });
   }
 
-  updateAddon(namespace: string, clusterName: string, addonName: string, data: UpdateAddonRequest): Promise<unknown> {
+  updateAddon(
+    namespace: string,
+    clusterName: string,
+    addonName: string,
+    data: UpdateAddonRequest,
+  ): Promise<unknown> {
     return this.run('updateAddon', () => {
       this.findCluster(namespace, clusterName);
-      const addon = (this.installedAddons[clusterName] ?? []).find(a => a.name === addonName);
+      const addon = (this.installedAddons[clusterName] ?? []).find(
+        a => a.name === addonName,
+      );
       if (!addon) throw notFound('addon', addonName);
       addon.status = 'Upgrading';
       addon.phase = 'Upgrading';
@@ -637,10 +782,16 @@ export class MockButlerApi implements ButlerApi {
     });
   }
 
-  uninstallAddon(namespace: string, clusterName: string, addonName: string): Promise<void> {
+  uninstallAddon(
+    namespace: string,
+    clusterName: string,
+    addonName: string,
+  ): Promise<void> {
     return this.run('uninstallAddon', () => {
       this.findCluster(namespace, clusterName);
-      const addon = (this.installedAddons[clusterName] ?? []).find(a => a.name === addonName);
+      const addon = (this.installedAddons[clusterName] ?? []).find(
+        a => a.name === addonName,
+      );
       if (!addon) throw notFound('addon', addonName);
       addon.status = 'Deleting';
       addon.phase = 'Deleting';
@@ -648,10 +799,14 @@ export class MockButlerApi implements ButlerApi {
   }
 
   getManagementAddons(): Promise<{ addons: ManagementAddon[] }> {
-    return this.run('getManagementAddons', () => ({ addons: clone(this.managementAddons) }));
+    return this.run('getManagementAddons', () => ({
+      addons: clone(this.managementAddons),
+    }));
   }
 
-  installManagementAddon(data: InstallManagementAddonRequest): Promise<ManagementAddon> {
+  installManagementAddon(
+    data: InstallManagementAddonRequest,
+  ): Promise<ManagementAddon> {
     return this.run('installManagementAddon', () => {
       const addon: ManagementAddon = {
         name: data.name,
@@ -660,14 +815,18 @@ export class MockButlerApi implements ButlerApi {
         values: data.values,
         status: { phase: 'Installed', installedVersion: data.version },
       };
-      this.managementAddons = this.managementAddons.filter(a => a.name !== data.name).concat(addon);
+      this.managementAddons = this.managementAddons
+        .filter(a => a.name !== data.name)
+        .concat(addon);
       return clone(addon);
     });
   }
 
   uninstallManagementAddon(name: string): Promise<void> {
     return this.run('uninstallManagementAddon', () => {
-      this.managementAddons = this.managementAddons.filter(a => a.name !== name);
+      this.managementAddons = this.managementAddons.filter(
+        a => a.name !== name,
+      );
     });
   }
 
@@ -677,12 +836,18 @@ export class MockButlerApi implements ButlerApi {
     return this.run('getGitOpsConfig', () => clone(this.gitProvider));
   }
 
-  saveGitOpsConfig(request: SaveGitProviderRequest): Promise<GitProviderConfig> {
+  saveGitOpsConfig(
+    request: SaveGitProviderRequest,
+  ): Promise<GitProviderConfig> {
     return this.run('saveGitOpsConfig', () => {
       this.gitProvider = {
         configured: true,
         type: request.type,
-        url: request.url ?? (request.type === 'github' ? 'https://github.com' : 'https://gitlab.com'),
+        url:
+          request.url ??
+          (request.type === 'github'
+            ? 'https://github.com'
+            : 'https://gitlab.com'),
         username: 'butler-bot',
         organization: request.organization,
       };
@@ -704,10 +869,14 @@ export class MockButlerApi implements ButlerApi {
     return this.run('listBranches', () => clone(fixtureBranches));
   }
 
-  previewManifests(request: PreviewManifestRequest): Promise<PreviewManifestResponse> {
+  previewManifests(
+    request: PreviewManifestRequest,
+  ): Promise<PreviewManifestResponse> {
     return this.run('previewManifests', () => {
       const def = fixtureAddonCatalog.find(a => a.name === request.addonName);
-      const base = `${request.targetPath.replace(/\/$/, '')}/${request.addonName}`;
+      const base = `${request.targetPath.replace(/\/$/, '')}/${
+        request.addonName
+      }`;
       if (request.tool === 'argocd') {
         return {
           [`${base}/application.yaml`]: [
@@ -718,7 +887,9 @@ export class MockButlerApi implements ButlerApi {
             '  namespace: argocd',
             'spec:',
             '  source:',
-            `    repoURL: ${def?.chartRepository ?? 'https://charts.example.com'}`,
+            `    repoURL: ${
+              def?.chartRepository ?? 'https://charts.example.com'
+            }`,
             `    chart: ${def?.chartName ?? request.addonName}`,
             `    targetRevision: ${def?.defaultVersion ?? '0.0.0'}`,
             '',
@@ -756,14 +927,20 @@ export class MockButlerApi implements ButlerApi {
     });
   }
 
-  getClusterGitOpsStatus(namespace: string, name: string): Promise<GitOpsStatus> {
+  getClusterGitOpsStatus(
+    namespace: string,
+    name: string,
+  ): Promise<GitOpsStatus> {
     return this.run('getClusterGitOpsStatus', () => {
       this.findCluster(namespace, name);
       return clone(this.gitops[name] ?? fixtureDisabledGitOps);
     });
   }
 
-  discoverClusterReleases(namespace: string, name: string): Promise<DiscoveryResult> {
+  discoverClusterReleases(
+    namespace: string,
+    name: string,
+  ): Promise<DiscoveryResult> {
     return this.run('discoverClusterReleases', () => {
       this.findCluster(namespace, name);
       const addons = this.installedAddons[name] ?? [];
@@ -798,26 +975,53 @@ export class MockButlerApi implements ButlerApi {
             category: 'apps',
           },
         ],
-        gitopsEngine: this.gitops[name]?.providerStatus ?? { installed: false, ready: false },
+        gitopsEngine: this.gitops[name]?.providerStatus ?? {
+          installed: false,
+          ready: false,
+        },
       };
     });
   }
 
-  exportClusterAddon(_namespace: string, _name: string, request: ExportAddonRequest): Promise<ExportAddonResponse> {
-    return this.run('exportClusterAddon', () => this.fakeExport(request.addonName, request.targetPath, request.createPR));
-  }
-
-  exportClusterRelease(_namespace: string, _name: string, request: any): Promise<ExportAddonResponse> {
-    return this.run('exportClusterRelease', () =>
-      this.fakeExport(request?.name ?? request?.releaseName ?? 'release', request?.targetPath ?? request?.basePath ?? 'clusters', request?.createPR),
+  exportClusterAddon(
+    _namespace: string,
+    _name: string,
+    request: ExportAddonRequest,
+  ): Promise<ExportAddonResponse> {
+    return this.run('exportClusterAddon', () =>
+      this.fakeExport(request.addonName, request.targetPath, request.createPR),
     );
   }
 
-  migrateClusterReleases(_namespace: string, _name: string, request: MigrationRequest): Promise<MigrationResult> {
-    return this.run('migrateClusterReleases', () => this.fakeMigration(request));
+  exportClusterRelease(
+    _namespace: string,
+    _name: string,
+    request: any,
+  ): Promise<ExportAddonResponse> {
+    return this.run('exportClusterRelease', () =>
+      this.fakeExport(
+        request?.name ?? request?.releaseName ?? 'release',
+        request?.targetPath ?? request?.basePath ?? 'clusters',
+        request?.createPR,
+      ),
+    );
   }
 
-  enableClusterGitOps(namespace: string, name: string, config: any): Promise<{ success: boolean; message: string }> {
+  migrateClusterReleases(
+    _namespace: string,
+    _name: string,
+    request: MigrationRequest,
+  ): Promise<MigrationResult> {
+    return this.run('migrateClusterReleases', () =>
+      this.fakeMigration(request),
+    );
+  }
+
+  enableClusterGitOps(
+    namespace: string,
+    name: string,
+    config: any,
+  ): Promise<{ success: boolean; message: string }> {
     return this.run('enableClusterGitOps', () => {
       this.findCluster(namespace, name);
       const provider = config?.provider ?? config?.tool ?? 'flux';
@@ -850,7 +1054,9 @@ export class MockButlerApi implements ButlerApi {
   }
 
   getManagementGitOpsStatus(): Promise<GitOpsStatus> {
-    return this.run('getManagementGitOpsStatus', () => clone(this.gitops.__management ?? fixtureDisabledGitOps));
+    return this.run('getManagementGitOpsStatus', () =>
+      clone(this.gitops.__management ?? fixtureDisabledGitOps),
+    );
   }
 
   discoverManagementReleases(): Promise<DiscoveryResult> {
@@ -867,25 +1073,42 @@ export class MockButlerApi implements ButlerApi {
           category: 'infrastructure',
         },
       ],
-      gitopsEngine: this.gitops.__management?.providerStatus ?? { installed: false, ready: false },
+      gitopsEngine: this.gitops.__management?.providerStatus ?? {
+        installed: false,
+        ready: false,
+      },
     }));
   }
 
-  exportManagementAddon(request: ExportAddonRequest): Promise<ExportAddonResponse> {
-    return this.run('exportManagementAddon', () => this.fakeExport(request.addonName, request.targetPath, request.createPR));
+  exportManagementAddon(
+    request: ExportAddonRequest,
+  ): Promise<ExportAddonResponse> {
+    return this.run('exportManagementAddon', () =>
+      this.fakeExport(request.addonName, request.targetPath, request.createPR),
+    );
   }
 
   exportManagementRelease(request: any): Promise<ExportAddonResponse> {
     return this.run('exportManagementRelease', () =>
-      this.fakeExport(request?.name ?? 'release', request?.targetPath ?? 'management', request?.createPR),
+      this.fakeExport(
+        request?.name ?? 'release',
+        request?.targetPath ?? 'management',
+        request?.createPR,
+      ),
     );
   }
 
-  migrateManagementReleases(request: MigrationRequest): Promise<MigrationResult> {
-    return this.run('migrateManagementReleases', () => this.fakeMigration(request));
+  migrateManagementReleases(
+    request: MigrationRequest,
+  ): Promise<MigrationResult> {
+    return this.run('migrateManagementReleases', () =>
+      this.fakeMigration(request),
+    );
   }
 
-  enableManagementGitOps(config: any): Promise<{ success: boolean; message: string }> {
+  enableManagementGitOps(
+    config: any,
+  ): Promise<{ success: boolean; message: string }> {
     return this.run('enableManagementGitOps', () => {
       const provider = config?.provider ?? config?.tool ?? 'flux';
       this.gitops.__management = {
@@ -907,15 +1130,26 @@ export class MockButlerApi implements ButlerApi {
     });
   }
 
-  private fakeExport(name: string, targetPath: string, createPR?: boolean): ExportAddonResponse {
-    const files = [`${targetPath}/${name}/helmrepository.yaml`, `${targetPath}/${name}/helmrelease.yaml`];
+  private fakeExport(
+    name: string,
+    targetPath: string,
+    createPR?: boolean,
+  ): ExportAddonResponse {
+    const files = [
+      `${targetPath}/${name}/helmrepository.yaml`,
+      `${targetPath}/${name}/helmrelease.yaml`,
+    ];
     return {
       success: true,
-      message: createPR ? `Opened pull request for ${name}` : `Committed ${name} manifests`,
+      message: createPR
+        ? `Opened pull request for ${name}`
+        : `Committed ${name} manifests`,
       files,
       commitSha: 'c0ffee00c0ffee00c0ffee00c0ffee00c0ffee00',
       commitUrl: 'https://github.com/butler-lab/clusters/commit/c0ffee00',
-      prUrl: createPR ? 'https://github.com/butler-lab/clusters/pull/42' : undefined,
+      prUrl: createPR
+        ? 'https://github.com/butler-lab/clusters/pull/42'
+        : undefined,
       prNumber: createPR ? 42 : undefined,
     };
   }
@@ -924,16 +1158,23 @@ export class MockButlerApi implements ButlerApi {
     return {
       success: true,
       message: `Migrated ${request.releases.length} release(s)`,
-      filesCreated: request.releases.map(r => `${request.basePath}/${r.name}/helmrelease.yaml`),
+      filesCreated: request.releases.map(
+        r => `${request.basePath}/${r.name}/helmrelease.yaml`,
+      ),
       commitSha: 'c0ffee00c0ffee00c0ffee00c0ffee00c0ffee00',
-      prUrl: request.createPR ? 'https://github.com/butler-lab/clusters/pull/43' : undefined,
+      prUrl: request.createPR
+        ? 'https://github.com/butler-lab/clusters/pull/43'
+        : undefined,
       prNumber: request.createPR ? 43 : undefined,
     };
   }
 
   // ---- Certificates ----
 
-  getClusterCertificates(namespace: string, name: string): Promise<ClusterCertificates> {
+  getClusterCertificates(
+    namespace: string,
+    name: string,
+  ): Promise<ClusterCertificates> {
     return this.run('getClusterCertificates', () => {
       this.findCluster(namespace, name);
       const certs = makeFixtureCertificates(name);
@@ -950,14 +1191,25 @@ export class MockButlerApi implements ButlerApi {
     namespace: string,
     name: string,
     category: CertificateCategory,
-  ): Promise<{ category: CertificateCategory; certificates: CertificateInfo[] }> {
+  ): Promise<{
+    category: CertificateCategory;
+    certificates: CertificateInfo[];
+  }> {
     return this.run('getCertificatesByCategory', () => {
       this.findCluster(namespace, name);
-      return { category, certificates: makeFixtureCertificates(name).categories[category] };
+      return {
+        category,
+        certificates: makeFixtureCertificates(name).categories[category],
+      };
     });
   }
 
-  rotateCertificates(namespace: string, name: string, type: string, acknowledge?: boolean): Promise<RotationEvent> {
+  rotateCertificates(
+    namespace: string,
+    name: string,
+    type: string,
+    acknowledge?: boolean,
+  ): Promise<RotationEvent> {
     return this.run('rotateCertificates', () => {
       this.findCluster(namespace, name);
       if (type === 'ca' && !acknowledge) {
@@ -968,8 +1220,11 @@ export class MockButlerApi implements ButlerApi {
         type === 'kubeconfigs'
           ? certs.categories.kubeconfig.map(c => c.secretName)
           : type === 'ca'
-            ? certs.categories.ca.map(c => c.secretName)
-            : Object.values(certs.categories).flat().filter(c => !c.isCA).map(c => c.secretName);
+          ? certs.categories.ca.map(c => c.secretName)
+          : Object.values(certs.categories)
+              .flat()
+              .filter(c => !c.isCA)
+              .map(c => c.secretName);
       const event: RotationEvent = {
         type: type as RotationEvent['type'],
         initiatedBy: fixtureIdentity.email ?? 'unknown',
@@ -1002,7 +1257,9 @@ export class MockButlerApi implements ButlerApi {
   // ---- Identity Providers ----
 
   listIdentityProviders(): Promise<IdentityProviderListResponse> {
-    return this.run('listIdentityProviders', () => ({ identityProviders: clone(fixtureIdentityProviders) }));
+    return this.run('listIdentityProviders', () => ({
+      identityProviders: clone(fixtureIdentityProviders),
+    }));
   }
 
   getIdentityProvider(name: string): Promise<IdentityProvider> {
@@ -1013,12 +1270,20 @@ export class MockButlerApi implements ButlerApi {
     });
   }
 
-  createIdentityProvider(_data: CreateIdentityProviderRequest): Promise<IdentityProvider> {
-    return this.run('createIdentityProvider', () => this.notImplemented('createIdentityProvider'));
+  createIdentityProvider(
+    _data: CreateIdentityProviderRequest,
+  ): Promise<IdentityProvider> {
+    return this.run('createIdentityProvider', () =>
+      this.notImplemented('createIdentityProvider'),
+    );
   }
 
-  deleteIdentityProvider(_name: string): Promise<{ status: string; message: string }> {
-    return this.run('deleteIdentityProvider', () => this.notImplemented('deleteIdentityProvider'));
+  deleteIdentityProvider(
+    _name: string,
+  ): Promise<{ status: string; message: string }> {
+    return this.run('deleteIdentityProvider', () =>
+      this.notImplemented('deleteIdentityProvider'),
+    );
   }
 
   testIdPDiscovery(issuerURL: string): Promise<TestDiscoveryResponse> {
@@ -1036,49 +1301,96 @@ export class MockButlerApi implements ButlerApi {
     return this.run('validateIdentityProvider', () => {
       const idp = fixtureIdentityProviders.find(p => p.metadata.name === name);
       if (!idp) throw notFound('identity provider', name);
-      return { valid: true, message: `Discovery succeeded for ${idp.spec.oidc?.issuerURL}` };
+      return {
+        valid: true,
+        message: `Discovery succeeded for ${idp.spec.oidc?.issuerURL}`,
+      };
     });
   }
 
   // ---- Cluster detail read parity ----
 
-  getClusterMachineRequests(namespace: string, name: string): Promise<MachineRequestListResponse> {
+  getClusterMachineRequests(
+    namespace: string,
+    name: string,
+  ): Promise<MachineRequestListResponse> {
     return this.run('getClusterMachineRequests', () => ({
-      machineRequests: (this.clusters.find(c => c.metadata.namespace === namespace && c.metadata.name === name)
+      machineRequests: (this.clusters.find(
+        c => c.metadata.namespace === namespace && c.metadata.name === name,
+      )
         ? [0, 1].map(i => ({
             metadata: { name: `${name}-worker-${i}`, namespace },
-            spec: { clusterName: name, machineName: `${name}-worker-${i}`, role: 'worker' as const, cpu: 2, memoryMB: 4096, diskGB: 20, providerConfigRef: { name: 'harvester' } },
-            status: { phase: i === 0 ? 'Running' : 'Creating', ipAddress: i === 0 ? '10.40.2.10' : '' },
+            spec: {
+              clusterName: name,
+              machineName: `${name}-worker-${i}`,
+              role: 'worker' as const,
+              cpu: 2,
+              memoryMB: 4096,
+              diskGB: 20,
+              providerConfigRef: { name: 'harvester' },
+            },
+            status: {
+              phase: i === 0 ? 'Running' : 'Creating',
+              ipAddress: i === 0 ? '10.40.2.10' : '',
+            },
           }))
         : []) as unknown as MachineRequest[],
     }));
   }
 
-  getClusterLoadBalancerRequests(namespace: string, name: string): Promise<LoadBalancerRequestListResponse> {
+  getClusterLoadBalancerRequests(
+    namespace: string,
+    name: string,
+  ): Promise<LoadBalancerRequestListResponse> {
     return this.run('getClusterLoadBalancerRequests', () => ({
       loadBalancerRequests: [
-        { metadata: { name: `${name}-api`, namespace }, spec: { clusterName: name, port: 6443, providerConfigRef: { name: 'harvester' } }, status: { phase: 'Ready', endpoint: '10.40.2.56' } },
+        {
+          metadata: { name: `${name}-api`, namespace },
+          spec: {
+            clusterName: name,
+            port: 6443,
+            providerConfigRef: { name: 'harvester' },
+          },
+          status: { phase: 'Ready', endpoint: '10.40.2.56' },
+        },
       ] as LoadBalancerRequest[],
     }));
   }
 
-  getClusterTenantControlPlane(namespace: string, name: string): Promise<TenantControlPlaneSummary> {
+  getClusterTenantControlPlane(
+    namespace: string,
+    name: string,
+  ): Promise<TenantControlPlaneSummary> {
     return this.run('getClusterTenantControlPlane', () => {
-      const cluster = this.clusters.find(c => c.metadata.namespace === namespace && c.metadata.name === name);
+      const cluster = this.clusters.find(
+        c => c.metadata.namespace === namespace && c.metadata.name === name,
+      );
       if (!cluster || cluster.status?.phase === 'Pending') {
-        throw new Error('Butler API error (404): TenantControlPlane not found for cluster');
+        throw new Error(
+          'Butler API error (404): TenantControlPlane not found for cluster',
+        );
       }
       return {
         name,
         namespace: cluster.status?.tenantNamespace ?? `${name}-tenant`,
         specVersion: cluster.spec.kubernetesVersion ?? 'v1.33.2',
-        status: { phase: 'Ready', version: cluster.spec.kubernetesVersion ?? 'v1.33.2', controlPlaneEndpoint: '10.40.2.56:6443', replicas: 1, readyReplicas: 1 },
+        status: {
+          phase: 'Ready',
+          version: cluster.spec.kubernetesVersion ?? 'v1.33.2',
+          controlPlaneEndpoint: '10.40.2.56:6443',
+          replicas: 1,
+          readyReplicas: 1,
+        },
       } as TenantControlPlaneSummary;
     });
   }
 
   exportClusterYAML(namespace: string, name: string): Promise<string> {
-    return this.run('exportClusterYAML', () => `apiVersion: butler.butlerlabs.dev/v1alpha1\nkind: TenantCluster\nmetadata:\n  name: ${name}\n  namespace: ${namespace}\n`);
+    return this.run(
+      'exportClusterYAML',
+      () =>
+        `apiVersion: butler.butlerlabs.dev/v1alpha1\nkind: TenantCluster\nmetadata:\n  name: ${name}\n  namespace: ${namespace}\n`,
+    );
   }
 
   // ---- Settings ----
@@ -1093,7 +1405,10 @@ export class MockButlerApi implements ButlerApi {
     return this.run('listUsers', () => ({ users: clone(this.users) }));
   }
 
-  createUser(data: { email: string; name?: string }): Promise<{ user: any; inviteUrl?: string }> {
+  createUser(data: {
+    email: string;
+    name?: string;
+  }): Promise<{ user: any; inviteUrl?: string }> {
     return this.run('createUser', () => {
       const username = data.email.split('@')[0];
       const user = {
@@ -1107,7 +1422,10 @@ export class MockButlerApi implements ButlerApi {
         createdAt: FIXTURE_NOW,
       };
       this.users.push(user);
-      return { user: clone(user), inviteUrl: `https://butler.example.com/invite/${username}` };
+      return {
+        user: clone(user),
+        inviteUrl: `https://butler.example.com/invite/${username}`,
+      };
     });
   }
 
@@ -1138,7 +1456,9 @@ export class MockButlerApi implements ButlerApi {
   }
 
   resendInvite(username: string): Promise<{ inviteUrl: string }> {
-    return this.run('resendInvite', () => ({ inviteUrl: `https://butler.example.com/invite/${username}` }));
+    return this.run('resendInvite', () => ({
+      inviteUrl: `https://butler.example.com/invite/${username}`,
+    }));
   }
 
   // ---- Teams ----
@@ -1158,15 +1478,25 @@ export class MockButlerApi implements ButlerApi {
     });
   }
 
-  createTeam(_data: { name: string; displayName?: string; description?: string }): Promise<any> {
+  createTeam(_data: {
+    name: string;
+    displayName?: string;
+    description?: string;
+  }): Promise<any> {
     return this.run('createTeam', () => this.notImplemented('createTeam'));
   }
 
-  updateTeam(name: string, data: { displayName?: string; description?: string }): Promise<any> {
+  updateTeam(
+    name: string,
+    data: { displayName?: string; description?: string },
+  ): Promise<any> {
     return this.run('updateTeam', () => {
-      if (name !== fixtureTeamDetail.metadata.name) throw notFound('team', name);
-      if (data.displayName !== undefined) fixtureTeamDetail.spec.displayName = data.displayName;
-      if (data.description !== undefined) fixtureTeamDetail.spec.description = data.description;
+      if (name !== fixtureTeamDetail.metadata.name)
+        throw notFound('team', name);
+      if (data.displayName !== undefined)
+        fixtureTeamDetail.spec.displayName = data.displayName;
+      if (data.description !== undefined)
+        fixtureTeamDetail.spec.description = data.description;
       return clone(fixtureTeamDetail);
     });
   }
@@ -1183,14 +1513,23 @@ export class MockButlerApi implements ButlerApi {
 
   getTeamMembers(name: string): Promise<any> {
     return this.run('getTeamMembers', () => {
-      if (!fixtureTeams.some(t => t.name === name)) throw notFound('team', name);
-      return { members: clone(name === fixtureTeamDetail.metadata.name ? this.members : []) };
+      if (!fixtureTeams.some(t => t.name === name))
+        throw notFound('team', name);
+      return {
+        members: clone(
+          name === fixtureTeamDetail.metadata.name ? this.members : [],
+        ),
+      };
     });
   }
 
-  addTeamMember(teamName: string, data: { email: string; role: string }): Promise<void> {
+  addTeamMember(
+    teamName: string,
+    data: { email: string; role: string },
+  ): Promise<void> {
     return this.run('addTeamMember', () => {
-      if (!fixtureTeams.some(t => t.name === teamName)) throw notFound('team', teamName);
+      if (!fixtureTeams.some(t => t.name === teamName))
+        throw notFound('team', teamName);
       if (this.members.some(m => m.email === data.email)) {
         throw new Error(`${data.email} is already a member of ${teamName}`);
       }
@@ -1205,15 +1544,22 @@ export class MockButlerApi implements ButlerApi {
 
   removeTeamMember(teamName: string, email: string): Promise<void> {
     return this.run('removeTeamMember', () => {
-      if (!fixtureTeams.some(t => t.name === teamName)) throw notFound('team', teamName);
-      if (!this.members.some(m => m.email === email)) throw notFound('member', email);
+      if (!fixtureTeams.some(t => t.name === teamName))
+        throw notFound('team', teamName);
+      if (!this.members.some(m => m.email === email))
+        throw notFound('member', email);
       this.members = this.members.filter(m => m.email !== email);
     });
   }
 
-  updateMemberRole(teamName: string, email: string, role: string): Promise<void> {
+  updateMemberRole(
+    teamName: string,
+    email: string,
+    role: string,
+  ): Promise<void> {
     return this.run('updateMemberRole', () => {
-      if (!fixtureTeams.some(t => t.name === teamName)) throw notFound('team', teamName);
+      if (!fixtureTeams.some(t => t.name === teamName))
+        throw notFound('team', teamName);
       const member = this.members.find(m => m.email === email);
       if (!member) throw notFound('member', email);
       member.role = role;
@@ -1221,56 +1567,112 @@ export class MockButlerApi implements ButlerApi {
   }
 
   getTeamGroupSyncs(_name: string): Promise<any> {
-    return this.run('getTeamGroupSyncs', () => ({ groups: clone(fixtureGroupSyncs) }));
+    return this.run('getTeamGroupSyncs', () => ({
+      groups: clone(fixtureGroupSyncs),
+    }));
   }
 
-  addGroupSync(_teamName: string, _data: { group: string; role: string; identityProvider?: string }): Promise<void> {
+  addGroupSync(
+    _teamName: string,
+    _data: { group: string; role: string; identityProvider?: string },
+  ): Promise<void> {
     return this.run('addGroupSync', () => this.notImplemented('addGroupSync'));
   }
 
   removeGroupSync(_teamName: string, _groupName: string): Promise<void> {
-    return this.run('removeGroupSync', () => this.notImplemented('removeGroupSync'));
+    return this.run('removeGroupSync', () =>
+      this.notImplemented('removeGroupSync'),
+    );
   }
 
-  updateGroupSyncRole(_teamName: string, _groupName: string, _role: string): Promise<void> {
-    return this.run('updateGroupSyncRole', () => this.notImplemented('updateGroupSyncRole'));
+  updateGroupSyncRole(
+    _teamName: string,
+    _groupName: string,
+    _role: string,
+  ): Promise<void> {
+    return this.run('updateGroupSyncRole', () =>
+      this.notImplemented('updateGroupSyncRole'),
+    );
   }
 
   // ---- Workspaces ----
 
-  listWorkspaces(namespace: string, clusterName: string): Promise<WorkspaceListResponse> {
+  listWorkspaces(
+    namespace: string,
+    clusterName: string,
+  ): Promise<WorkspaceListResponse> {
     return this.run('listWorkspaces', () => {
       this.findCluster(namespace, clusterName);
       return { workspaces: [] };
     });
   }
 
-  getWorkspace(_namespace: string, _clusterName: string, _workspaceName: string): Promise<Workspace> {
+  getWorkspace(
+    _namespace: string,
+    _clusterName: string,
+    _workspaceName: string,
+  ): Promise<Workspace> {
     return this.run('getWorkspace', () => this.notImplemented('getWorkspace'));
   }
 
-  createWorkspace(_namespace: string, _clusterName: string, _data: CreateWorkspaceRequest): Promise<Workspace> {
-    return this.run('createWorkspace', () => this.notImplemented('createWorkspace'));
+  createWorkspace(
+    _namespace: string,
+    _clusterName: string,
+    _data: CreateWorkspaceRequest,
+  ): Promise<Workspace> {
+    return this.run('createWorkspace', () =>
+      this.notImplemented('createWorkspace'),
+    );
   }
 
-  deleteWorkspace(_namespace: string, _clusterName: string, _workspaceName: string): Promise<void> {
-    return this.run('deleteWorkspace', () => this.notImplemented('deleteWorkspace'));
+  deleteWorkspace(
+    _namespace: string,
+    _clusterName: string,
+    _workspaceName: string,
+  ): Promise<void> {
+    return this.run('deleteWorkspace', () =>
+      this.notImplemented('deleteWorkspace'),
+    );
   }
 
-  connectWorkspace(_namespace: string, _clusterName: string, _workspaceName: string): Promise<Workspace> {
-    return this.run('connectWorkspace', () => this.notImplemented('connectWorkspace'));
+  connectWorkspace(
+    _namespace: string,
+    _clusterName: string,
+    _workspaceName: string,
+  ): Promise<Workspace> {
+    return this.run('connectWorkspace', () =>
+      this.notImplemented('connectWorkspace'),
+    );
   }
 
-  disconnectWorkspace(_namespace: string, _clusterName: string, _workspaceName: string): Promise<Workspace> {
-    return this.run('disconnectWorkspace', () => this.notImplemented('disconnectWorkspace'));
+  disconnectWorkspace(
+    _namespace: string,
+    _clusterName: string,
+    _workspaceName: string,
+  ): Promise<Workspace> {
+    return this.run('disconnectWorkspace', () =>
+      this.notImplemented('disconnectWorkspace'),
+    );
   }
 
-  startWorkspace(_namespace: string, _clusterName: string, _workspaceName: string): Promise<Workspace> {
-    return this.run('startWorkspace', () => this.notImplemented('startWorkspace'));
+  startWorkspace(
+    _namespace: string,
+    _clusterName: string,
+    _workspaceName: string,
+  ): Promise<Workspace> {
+    return this.run('startWorkspace', () =>
+      this.notImplemented('startWorkspace'),
+    );
   }
 
-  getWorkspaceMetrics(_namespace: string, _clusterName: string, _workspaceName: string): Promise<WorkspaceMetrics> {
-    return this.run('getWorkspaceMetrics', () => this.notImplemented('getWorkspaceMetrics'));
+  getWorkspaceMetrics(
+    _namespace: string,
+    _clusterName: string,
+    _workspaceName: string,
+  ): Promise<WorkspaceMetrics> {
+    return this.run('getWorkspaceMetrics', () =>
+      this.notImplemented('getWorkspaceMetrics'),
+    );
   }
 
   syncWorkspaceSSHKeys(
@@ -1278,13 +1680,20 @@ export class MockButlerApi implements ButlerApi {
     _clusterName: string,
     _workspaceName: string,
   ): Promise<{ synced: boolean; keys: number; message: string }> {
-    return this.run('syncWorkspaceSSHKeys', () => this.notImplemented('syncWorkspaceSSHKeys'));
+    return this.run('syncWorkspaceSSHKeys', () =>
+      this.notImplemented('syncWorkspaceSSHKeys'),
+    );
   }
 
   // ---- Cluster Services ----
 
-  listClusterServices(_namespace: string, _clusterName: string): Promise<ClusterServiceListResponse> {
-    return this.run('listClusterServices', () => this.notImplemented('listClusterServices'));
+  listClusterServices(
+    _namespace: string,
+    _clusterName: string,
+  ): Promise<ClusterServiceListResponse> {
+    return this.run('listClusterServices', () =>
+      this.notImplemented('listClusterServices'),
+    );
   }
 
   generateMirrordConfig(
@@ -1293,7 +1702,9 @@ export class MockButlerApi implements ButlerApi {
     _serviceName: string,
     _serviceNamespace: string,
   ): Promise<MirrordConfig> {
-    return this.run('generateMirrordConfig', () => this.notImplemented('generateMirrordConfig'));
+    return this.run('generateMirrordConfig', () =>
+      this.notImplemented('generateMirrordConfig'),
+    );
   }
 
   // ---- Workspace Images and Templates ----
@@ -1306,8 +1717,12 @@ export class MockButlerApi implements ButlerApi {
     return this.run('listWorkspaceTemplates', () => ({ templates: [] }));
   }
 
-  createWorkspaceTemplate(_data: CreateWorkspaceTemplateRequest): Promise<WorkspaceTemplate> {
-    return this.run('createWorkspaceTemplate', () => this.notImplemented('createWorkspaceTemplate'));
+  createWorkspaceTemplate(
+    _data: CreateWorkspaceTemplateRequest,
+  ): Promise<WorkspaceTemplate> {
+    return this.run('createWorkspaceTemplate', () =>
+      this.notImplemented('createWorkspaceTemplate'),
+    );
   }
 
   updateWorkspaceTemplate(
@@ -1315,11 +1730,15 @@ export class MockButlerApi implements ButlerApi {
     _name: string,
     _data: Partial<CreateWorkspaceTemplateRequest>,
   ): Promise<WorkspaceTemplate> {
-    return this.run('updateWorkspaceTemplate', () => this.notImplemented('updateWorkspaceTemplate'));
+    return this.run('updateWorkspaceTemplate', () =>
+      this.notImplemented('updateWorkspaceTemplate'),
+    );
   }
 
   deleteWorkspaceTemplate(_namespace: string, _name: string): Promise<void> {
-    return this.run('deleteWorkspaceTemplate', () => this.notImplemented('deleteWorkspaceTemplate'));
+    return this.run('deleteWorkspaceTemplate', () =>
+      this.notImplemented('deleteWorkspaceTemplate'),
+    );
   }
 
   // ---- SSH Keys ----
