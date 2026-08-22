@@ -18,6 +18,7 @@ import {
   coreServices,
   createBackendPlugin,
 } from '@backstage/backend-plugin-api';
+import { butlerPermissions } from '@internal/plugin-butler-common';
 import { AuthManager } from './service/AuthManager';
 import { loadPortalSigner } from './service/PortalSigner';
 import { createRouter } from './router';
@@ -62,8 +63,25 @@ export const butlerPlugin = createBackendPlugin({
         userInfo: coreServices.userInfo,
         auth: coreServices.auth,
         lifecycle: coreServices.lifecycle,
+        permissions: coreServices.permissions,
+        permissionsRegistry: coreServices.permissionsRegistry,
       },
-      async init({ config, logger, httpRouter, httpAuth, userInfo, auth, lifecycle }) {
+      async init({
+        config,
+        logger,
+        httpRouter,
+        httpAuth,
+        userInfo,
+        auth,
+        lifecycle,
+        permissions,
+        permissionsRegistry,
+      }) {
+        // Registering the permissions publishes them on the plugin's
+        // permission metadata endpoint, which is how RBAC discovers them
+        // and how the pluginsWithPermission audit sees this plugin.
+        permissionsRegistry.addPermissions(butlerPermissions);
+
         // Read butler configuration. getString throws if any key is absent.
         const baseUrl = config.getString('butler.baseUrl');
         const username = config.getString('butler.auth.username');
@@ -124,6 +142,10 @@ export const butlerPlugin = createBackendPlugin({
           auth,
           logger: logger.child({ service: 'butler-router' }),
           portalSigner,
+          permissions,
+          allowUnmappedRoutes:
+            config.getOptionalBoolean('butler.authorization.allowUnmappedRoutes') ??
+            false,
         });
 
         // Router is mounted under Backstage's default-deny auth gate.

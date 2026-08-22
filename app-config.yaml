@@ -100,6 +100,13 @@ butler:
   signing:
     kid: ${BUTLER_SIGNING_KID:-}
     keyPath: ${BUTLER_SIGNING_KEY_PATH:-}
+  # Every proxied butler-server route is gated by a butler.* permission
+  # (plugins/butler-common/PERMISSIONS.md). A route missing from the
+  # table is refused. Set allowUnmappedRoutes: true only while classifying
+  # a new butler-server route; the proxy then forwards it and logs a
+  # warning.
+  authorization:
+    allowUnmappedRoutes: false
 
 pipeline:
   vectorBinaryPath: vector
