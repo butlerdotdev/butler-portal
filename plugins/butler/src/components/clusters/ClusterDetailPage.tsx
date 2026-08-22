@@ -264,10 +264,10 @@ export const ClusterDetailPage = () => {
   }, [api, alertApi, namespace, name]);
 
   useEffect(() => {
-    if (activeTab === 0 && effectiveCluster && !provisioningLoaded) {
+    if (activeTab === 0 && loadedCluster && !provisioningLoaded) {
       fetchProvisioning();
     }
-  }, [activeTab, effectiveCluster, provisioningLoaded, fetchProvisioning]);
+  }, [activeTab, loadedCluster, provisioningLoaded, fetchProvisioning]);
 
   const handleExportYAML = async () => {
     if (!namespace || !name) return;
