@@ -89,4 +89,13 @@ describe('IdentityResolver', () => {
     expect(catalog.getEntityByRef).toHaveBeenCalledTimes(1);
   });
 
+
+  it('does not remember a catalog outage as an unresolvable user', async () => {
+    let fail = true;
+    const catalog = { getEntityByRef: jest.fn(async () => { if (fail) throw new Error('down'); return { spec: { profile: { email: 'dev@corp.example' } } }; }) } as any;
+    const r = new IdentityResolver({ userInfo: userInfoFor('user:default/dev'), auth, catalog, logger });
+    await expect(r.resolveEmail(userCreds)).rejects.not.toBeInstanceOf(UnresolvableIdentityError);
+    fail = false;
+    await expect(r.resolveEmail(userCreds)).resolves.toBe('dev@corp.example');
+  });
 });
