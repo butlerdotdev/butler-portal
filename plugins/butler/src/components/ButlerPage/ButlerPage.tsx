@@ -2,13 +2,33 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import React from 'react';
-import { Routes, Route, useLocation } from 'react-router-dom';
+import { Routes, Route } from 'react-router-dom';
 import { Header, Page, Content, Progress } from '@backstage/core-components';
 import { makeStyles } from '@material-ui/core/styles';
 import { Typography } from '@material-ui/core';
 import SecurityIcon from '@material-ui/icons/Security';
 import { TeamProvider } from '../../contexts/TeamProvider';
 import { TeamSwitcher } from '../TeamSwitcher/TeamSwitcher';
+import {
+  teamRouteRef,
+  clustersRouteRef,
+  createClusterRouteRef,
+  clusterDetailRouteRef,
+  teamMembersRouteRef,
+  teamSettingsRouteRef,
+  adminRouteRef,
+  adminClustersRouteRef,
+  adminManagementRouteRef,
+  adminTeamsRouteRef,
+  adminTeamDetailRouteRef,
+  adminUsersRouteRef,
+  adminProvidersRouteRef,
+  adminCreateProviderRouteRef,
+  adminIdentityProvidersRouteRef,
+  adminCreateIdentityProviderRouteRef,
+  adminSettingsRouteRef,
+} from '../../routes';
+import { useIsAdminRoute } from '../../hooks/useButlerRoutes';
 
 // Lazy-load pages
 const OverviewPage = React.lazy(() =>
@@ -149,41 +169,41 @@ const ButlerContent = () => {
       <React.Suspense fallback={<Progress />}>
         <Routes>
           <Route path="/" element={<OverviewPage />} />
-          <Route path="/t/:team" element={<DashboardPage />} />
-          <Route path="/t/:team/clusters" element={<ClustersPage />} />
+          <Route path={teamRouteRef.path} element={<DashboardPage />} />
+          <Route path={clustersRouteRef.path} element={<ClustersPage />} />
           <Route
-            path="/t/:team/clusters/new"
+            path={createClusterRouteRef.path}
             element={<CreateClusterPage />}
           />
           <Route
-            path="/t/:team/clusters/:namespace/:name"
+            path={clusterDetailRouteRef.path}
             element={<ClusterDetailPage />}
           />
-          <Route path="/t/:team/members" element={<TeamMembersPage />} />
-          <Route path="/t/:team/settings" element={<TeamSettingsPage />} />
-          <Route path="/admin" element={<AdminDashboard />} />
-          <Route path="/admin/clusters" element={<AdminClustersPage />} />
-          <Route path="/admin/management" element={<ManagementPage />} />
-          <Route path="/admin/teams" element={<AdminTeamsPage />} />
+          <Route path={teamMembersRouteRef.path} element={<TeamMembersPage />} />
+          <Route path={teamSettingsRouteRef.path} element={<TeamSettingsPage />} />
+          <Route path={adminRouteRef.path} element={<AdminDashboard />} />
+          <Route path={adminClustersRouteRef.path} element={<AdminClustersPage />} />
+          <Route path={adminManagementRouteRef.path} element={<ManagementPage />} />
+          <Route path={adminTeamsRouteRef.path} element={<AdminTeamsPage />} />
           <Route
-            path="/admin/teams/:teamName"
+            path={adminTeamDetailRouteRef.path}
             element={<AdminTeamDetailPage />}
           />
-          <Route path="/admin/users" element={<UsersPage />} />
-          <Route path="/admin/providers" element={<ProvidersPage />} />
+          <Route path={adminUsersRouteRef.path} element={<UsersPage />} />
+          <Route path={adminProvidersRouteRef.path} element={<ProvidersPage />} />
           <Route
-            path="/admin/providers/create"
+            path={adminCreateProviderRouteRef.path}
             element={<CreateProviderPage />}
           />
           <Route
-            path="/admin/identity-providers"
+            path={adminIdentityProvidersRouteRef.path}
             element={<IdentityProvidersPage />}
           />
           <Route
-            path="/admin/identity-providers/create"
+            path={adminCreateIdentityProviderRouteRef.path}
             element={<CreateIdentityProviderPage />}
           />
-          <Route path="/admin/settings" element={<SettingsPage />} />
+          <Route path={adminSettingsRouteRef.path} element={<SettingsPage />} />
         </Routes>
       </React.Suspense>
       </div>
@@ -193,8 +213,7 @@ const ButlerContent = () => {
 
 const ButlerPageInner = () => {
   const classes = useStyles();
-  const location = useLocation();
-  const isAdminRoute = location.pathname.includes('/butler/admin');
+  const isAdminRoute = useIsAdminRoute();
 
   return (
     <>

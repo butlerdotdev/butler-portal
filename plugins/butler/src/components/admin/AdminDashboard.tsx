@@ -37,6 +37,7 @@ import { butlerApiRef } from '../../api/ButlerApi';
 import type { Cluster } from '../../api/types/clusters';
 import type { TeamInfo } from '../../api/types/teams';
 import { StatusBadge } from '../StatusBadge/StatusBadge';
+import { useButlerRoutes } from '../../hooks/useButlerRoutes';
 
 const useStyles = makeStyles(theme => ({
   statCard: {
@@ -106,6 +107,7 @@ interface DashboardData {
 export const AdminDashboard = () => {
   const classes = useStyles();
   const api = useApi(butlerApiRef);
+  const routes = useButlerRoutes();
   const [data, setData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<Error | undefined>();
@@ -318,7 +320,7 @@ export const AdminDashboard = () => {
                     </Typography>
                   </CardContent>
                   <CardActions>
-                    <Link to="/butler/admin/teams" style={{ textDecoration: 'none' }}>
+                    <Link to={routes.adminTeams()} style={{ textDecoration: 'none' }}>
                       <Button size="small" color="primary">
                         Go to Teams
                       </Button>
@@ -337,7 +339,7 @@ export const AdminDashboard = () => {
                     </Typography>
                   </CardContent>
                   <CardActions>
-                    <Link to="/butler/admin/users" style={{ textDecoration: 'none' }}>
+                    <Link to={routes.adminUsers()} style={{ textDecoration: 'none' }}>
                       <Button size="small" color="primary">
                         Go to Users
                       </Button>
@@ -358,7 +360,7 @@ export const AdminDashboard = () => {
                     </Typography>
                   </CardContent>
                   <CardActions>
-                    <Link to="/butler/admin/providers" style={{ textDecoration: 'none' }}>
+                    <Link to={routes.adminProviders()} style={{ textDecoration: 'none' }}>
                       <Button size="small" color="primary">
                         Go to Providers
                       </Button>

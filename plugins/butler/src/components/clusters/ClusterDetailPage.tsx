@@ -37,6 +37,7 @@ import { AddonsTab } from './AddonsTab';
 import { GitOpsTab } from './GitOpsTab';
 import { CertificatesTab } from './CertificatesTab';
 import { TerminalTab } from './TerminalTab';
+import { useButlerRoutes } from '../../hooks/useButlerRoutes';
 
 const useStyles = makeStyles(theme => ({
   header: {
@@ -132,12 +133,14 @@ type EventRow = {
 export const ClusterDetailPage = () => {
   const classes = useStyles();
   const api = useApi(butlerApiRef);
+  const routes = useButlerRoutes();
   const navigate = useNavigate();
   const { namespace, name, team } = useParams<{
     namespace: string;
     name: string;
     team: string;
   }>();
+  const clustersPath = routes.clusters({ team: team ?? '' });
 
   const [cluster, setCluster] = useState<Cluster | null>(null);
   const [loading, setLoading] = useState(true);
@@ -241,7 +244,7 @@ export const ClusterDetailPage = () => {
     try {
       await api.deleteCluster(namespace, name);
       setDeleteOpen(false);
-      navigate(`/butler/t/${team}/clusters`);
+      navigate(clustersPath);
     } catch {
       // Error handled silently
     } finally {
@@ -279,7 +282,7 @@ export const ClusterDetailPage = () => {
         action={
           <Button
             component={RouterLink}
-            to={`/butler/t/${team}/clusters`}
+            to={clustersPath}
             variant="outlined"
             startIcon={<ArrowBackIcon />}
           >
@@ -350,7 +353,7 @@ export const ClusterDetailPage = () => {
       <Button
         startIcon={<ArrowBackIcon />}
         component={RouterLink}
-        to={`/butler/t/${team}/clusters`}
+        to={clustersPath}
         style={{ textTransform: 'none', marginBottom: 16 }}
       >
         Back to Clusters
@@ -360,7 +363,7 @@ export const ClusterDetailPage = () => {
         <div className={classes.headerLeft}>
           <Button
             component={RouterLink}
-            to={`/butler/t/${team}/clusters`}
+            to={clustersPath}
             size="small"
             startIcon={<ArrowBackIcon />}
           >

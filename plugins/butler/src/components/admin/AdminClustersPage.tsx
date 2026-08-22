@@ -25,6 +25,7 @@ import StorageIcon from '@material-ui/icons/Storage';
 import { butlerApiRef } from '../../api/ButlerApi';
 import type { Cluster, ManagementCluster } from '../../api/types/clusters';
 import { StatusBadge } from '../StatusBadge/StatusBadge';
+import { useButlerRoutes } from '../../hooks/useButlerRoutes';
 
 const useStyles = makeStyles(theme => ({
   header: {
@@ -95,6 +96,7 @@ type ClusterRow = {
 export const AdminClustersPage = () => {
   const classes = useStyles();
   const api = useApi(butlerApiRef);
+  const routes = useButlerRoutes();
   const [clusters, setClusters] = useState<Cluster[]>([]);
   const [management, setManagement] = useState<ManagementCluster | null>(null);
   const [loading, setLoading] = useState(true);
@@ -207,7 +209,7 @@ export const AdminClustersPage = () => {
       <Button
         startIcon={<ArrowBackIcon />}
         component={RouterLink}
-        to="/butler/admin"
+        to={routes.admin()}
         style={{ textTransform: 'none', marginBottom: 16 }}
       >
         Back to Admin
@@ -232,7 +234,7 @@ export const AdminClustersPage = () => {
           <InfoCard
             title="Management Cluster"
             action={
-              <Link to="/butler/admin/management" style={{ textDecoration: 'none' }}>
+              <Link to={routes.adminManagement()} style={{ textDecoration: 'none' }}>
                 <Button size="small" color="primary">
                   View Details
                 </Button>

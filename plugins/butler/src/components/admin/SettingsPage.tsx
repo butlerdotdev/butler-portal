@@ -23,6 +23,7 @@ import RefreshIcon from '@material-ui/icons/Refresh';
 import { butlerApiRef } from '../../api/ButlerApi';
 import type { ManagementCluster } from '../../api/types/clusters';
 import { StatusBadge } from '../StatusBadge/StatusBadge';
+import { useButlerRoutes } from '../../hooks/useButlerRoutes';
 
 const useStyles = makeStyles(theme => ({
   header: {
@@ -71,6 +72,7 @@ interface PlatformConfig {
 export const SettingsPage = () => {
   const classes = useStyles();
   const api = useApi(butlerApiRef);
+  const routes = useButlerRoutes();
   const [management, setManagement] = useState<ManagementCluster | null>(
     null,
   );
@@ -133,7 +135,7 @@ export const SettingsPage = () => {
       <Button
         startIcon={<ArrowBackIcon />}
         component={RouterLink}
-        to="/butler/admin"
+        to={routes.admin()}
         style={{ textTransform: 'none', marginBottom: 16 }}
       >
         Back to Admin

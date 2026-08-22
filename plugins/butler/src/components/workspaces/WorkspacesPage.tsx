@@ -20,6 +20,7 @@ import { makeStyles } from '@material-ui/core/styles';
 import RefreshIcon from '@material-ui/icons/Refresh';
 import { butlerApiRef } from '../../api/ButlerApi';
 import { StatusBadge } from '../StatusBadge/StatusBadge';
+import { useButlerRoutes } from '../../hooks/useButlerRoutes';
 
 const useStyles = makeStyles(theme => ({
   headerRow: {
@@ -73,6 +74,7 @@ function formatAge(timestamp?: string): string {
 export const WorkspacesPage = () => {
   const classes = useStyles();
   const api = useApi(butlerApiRef);
+  const routes = useButlerRoutes();
   const { team } = useParams<{ team: string }>();
 
   const [workspaces, setWorkspaces] = useState<WorkspaceRow[]>([]);
@@ -154,7 +156,11 @@ export const WorkspacesPage = () => {
       field: 'cluster',
       render: (row: WorkspaceRow) => (
         <RouterLink
-          to={`/butler/t/${team}/clusters/${row.clusterNamespace}/${row.cluster}`}
+          to={routes.clusterDetail({
+            team: team ?? '',
+            namespace: row.clusterNamespace,
+            name: row.cluster,
+          })}
           className={classes.clusterLink}
         >
           {row.cluster}
