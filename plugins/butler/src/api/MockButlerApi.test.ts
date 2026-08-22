@@ -213,11 +213,11 @@ describe('MockButlerApi', () => {
     const before = await api.getClusterCertificates(ns, name);
     expect(before.rotationInProgress).toBe(false);
     expect(Object.keys(before.categories).sort()).toEqual(
-      ['api-server', 'ca', 'datastore', 'front-proxy', 'konnectivity', 'kubeconfig', 'service-account'],
+      ['apiserver', 'ca', 'datastore', 'front-proxy', 'konnectivity', 'kubeconfig', 'service-account'],
     );
 
     const started = await api.rotateCertificates(ns, name, 'kubeconfigs');
-    expect(started.status).toBe('in-progress');
+    expect(started.status).toBe('in_progress');
     expect(started.affectedSecrets.length).toBeGreaterThan(0);
     expect((await api.getClusterCertificates(ns, name)).rotationInProgress).toBe(true);
 

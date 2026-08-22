@@ -9,6 +9,7 @@
  * distinct lifecycle state so the UI can be driven without a server.
  */
 
+import type { PlatformConfig } from '../types/config';
 import type {
   Cluster,
   Node,
@@ -129,8 +130,6 @@ export const provisioningCluster: Cluster = makeCluster({
     phase: 'Provisioning',
     tenantNamespace: 'tc-provisioning-bravo',
     controlPlaneEndpoint: 'https://10.40.20.11:6443',
-    controlPlaneReady: true,
-    infrastructureReady: false,
     workerNodesReady: 1,
     workerNodesDesired: 3,
     observedState: {
@@ -180,8 +179,6 @@ export const installingCluster: Cluster = makeCluster({
     phase: 'Installing',
     tenantNamespace: 'tc-installing-charlie',
     controlPlaneEndpoint: 'https://10.40.20.12:6443',
-    controlPlaneReady: true,
-    infrastructureReady: true,
     workerNodesReady: 2,
     workerNodesDesired: 2,
     observedState: {
@@ -227,8 +224,6 @@ export const readyCluster: Cluster = makeCluster({
     phase: 'Ready',
     tenantNamespace: 'tc-ready-delta',
     controlPlaneEndpoint: 'https://10.40.20.13:6443',
-    controlPlaneReady: true,
-    infrastructureReady: true,
     observedGeneration: 4,
     lastTransitionTime: '2026-07-30T08:41:00Z',
     workerNodesReady: 3,
@@ -268,8 +263,6 @@ export const degradedCluster: Cluster = makeCluster({
     phase: 'Ready',
     tenantNamespace: 'tc-degraded-echo',
     controlPlaneEndpoint: 'https://10.40.20.14:6443',
-    controlPlaneReady: true,
-    infrastructureReady: true,
     workerNodesReady: 2,
     workerNodesDesired: 2,
     observedState: {
@@ -312,8 +305,6 @@ export const staleNodesCluster: Cluster = makeCluster({
     phase: 'Ready',
     tenantNamespace: 'tc-scaling-foxtrot',
     controlPlaneEndpoint: 'https://10.40.20.15:6443',
-    controlPlaneReady: true,
-    infrastructureReady: true,
     workerNodesReady: 4,
     workerNodesDesired: 2,
     observedState: {
@@ -354,8 +345,6 @@ export const failedCluster: Cluster = makeCluster({
   status: {
     phase: 'Failed',
     tenantNamespace: 'tc-failed-golf',
-    controlPlaneReady: false,
-    infrastructureReady: false,
     workerNodesReady: 0,
     workerNodesDesired: 3,
     conditions: [
@@ -390,8 +379,6 @@ export const deletingCluster: Cluster = makeCluster({
     phase: 'Deleting',
     tenantNamespace: 'tc-deleting-hotel',
     controlPlaneEndpoint: 'https://10.40.20.16:6443',
-    controlPlaneReady: true,
-    infrastructureReady: true,
     workerNodesReady: 1,
     workerNodesDesired: 1,
     conditions: [
@@ -756,7 +743,7 @@ function cert(
     serialNumber: `0x${secretName.length.toString(16).padStart(4, '0')}`,
     isCA,
     dnsNames: isCA ? undefined : ['kubernetes', 'kubernetes.default.svc'],
-    ipAddresses: category === 'api-server' ? ['10.40.20.13'] : undefined,
+    ipAddresses: category === 'apiserver' ? ['10.40.20.13'] : undefined,
     daysUntilExpiry,
     healthStatus,
     ageInDays,
@@ -765,7 +752,7 @@ function cert(
 
 export function makeFixtureCertificates(clusterName: string): ClusterCertificates {
   const categories: Record<CertificateCategory, CertificateInfo[]> = {
-    'api-server': [cert('api-server', `${clusterName}-api-server-certificate`, 'CN=kube-apiserver', 301)],
+    apiserver: [cert('apiserver', `${clusterName}-api-server-certificate`, 'CN=kube-apiserver', 301)],
     kubeconfig: [
       cert('kubeconfig', `${clusterName}-admin-kubeconfig`, 'CN=kubernetes-admin,O=system:masters', 301),
       cert('kubeconfig', `${clusterName}-controller-manager-kubeconfig`, 'CN=system:kube-controller-manager', 301),
@@ -953,9 +940,18 @@ export const fixtureIdentityProviders: IdentityProvider[] = [
   },
 ];
 
-export const fixtureSettings = {
-  version: 'v0.9.0',
-  buildDate: '2026-08-15T00:00:00Z',
-  managementCluster: fixtureManagement.name,
-  features: { workspaces: true, gitops: true },
+export const fixturePlatformConfig: PlatformConfig = {
+  multiTenancy: { mode: 'Optional' },
+  defaultNamespace: 'butler-tenants',
+  defaultProviderRef: { name: 'harvester' },
+  controlPlaneExposure: {
+    mode: 'LoadBalancer',
+    hostname: '*.k8s.example.test',
+    ingressClassName: 'traefik',
+    controllerType: 'traefik',
+    gatewayRef: 'steward-system/steward-gateway',
+  },
+  defaultTeamLimits: { maxClusters: 10, maxWorkersPerCluster: 20, maxTotalCPU: '200', maxTotalMemory: '800Gi' },
+  imageFactory: { url: 'https://factory.example.test', credentialsRef: '', defaultSchematicID: '', autoSync: true },
+  status: { teamCount: 1, clusterCount: 8, controlPlaneExposureMode: 'LoadBalancer', tcpProxyRequired: false },
 };

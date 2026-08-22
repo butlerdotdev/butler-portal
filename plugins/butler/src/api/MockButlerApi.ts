@@ -13,13 +13,14 @@
  *     next getCluster/listClusters call
  *   - scaleCluster sets the desired replica count and advances
  *     workerNodesReady by one on each subsequent getCluster call
- *   - rotateCertificates reports in-progress, then completed on the next
+ *   - rotateCertificates reports in_progress, then completed on the next
  *     getRotationStatus poll
  *
  * Methods the UI never calls throw "not implemented in MockButlerApi" so
  * gaps are visible rather than silent.
  */
 
+import type { PlatformConfig } from './types/config';
 import type { ButlerApi } from './ButlerApi';
 import type {
   Cluster,
@@ -121,7 +122,7 @@ import {
   fixtureManagementPods,
   fixtureProviders,
   fixtureIdentityProviders,
-  fixtureSettings,
+  fixturePlatformConfig,
 } from './fixtures/clusters';
 import type { FixtureTeamMember } from './fixtures/clusters';
 
@@ -936,7 +937,7 @@ export class MockButlerApi implements ButlerApi {
       const certs = makeFixtureCertificates(name);
       const rotation = this.rotations[name];
       if (rotation) {
-        certs.rotationInProgress = rotation.status === 'in-progress';
+        certs.rotationInProgress = rotation.status === 'in_progress';
         certs.lastRotation = clone(rotation);
       }
       return certs;
@@ -971,7 +972,7 @@ export class MockButlerApi implements ButlerApi {
         type: type as RotationEvent['type'],
         initiatedBy: fixtureIdentity.email ?? 'unknown',
         initiatedAt: FIXTURE_NOW,
-        status: 'in-progress',
+        status: 'in_progress',
         affectedSecrets: affected,
         message: `Rotating ${affected.length} secret(s)`,
       };
@@ -987,7 +988,7 @@ export class MockButlerApi implements ButlerApi {
       if (!rotation) {
         return clone(fixtureCompletedRotation);
       }
-      if (rotation.status === 'in-progress') {
+      if (rotation.status === 'in_progress') {
         rotation.status = 'completed';
         rotation.completedAt = FIXTURE_NOW;
         rotation.message = 'Rotation completed';
@@ -1039,8 +1040,8 @@ export class MockButlerApi implements ButlerApi {
 
   // ---- Settings ----
 
-  getSettings(): Promise<any> {
-    return this.run('getSettings', () => clone(fixtureSettings));
+  getPlatformConfig(): Promise<PlatformConfig> {
+    return this.run('getPlatformConfig', () => clone(fixturePlatformConfig));
   }
 
   // ---- Users ----
