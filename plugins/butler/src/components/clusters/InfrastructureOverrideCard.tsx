@@ -1,68 +1,45 @@
 // Copyright 2026 The Butler Authors.
 // SPDX-License-Identifier: Apache-2.0
 
-import { InfoCard } from '@backstage/core-components';
-import { Typography } from '@material-ui/core';
-import { makeStyles } from '@material-ui/core/styles';
 import type { Cluster } from '../../api/types/clusters';
-
-const useStyles = makeStyles(theme => ({
-  row: {
-    display: 'flex',
-    padding: theme.spacing(1, 0),
-    borderBottom: `1px solid ${theme.palette.divider}`,
-    '&:last-child': {
-      borderBottom: 'none',
-    },
-  },
-  label: {
-    fontWeight: 600,
-    color: theme.palette.text.secondary,
-    minWidth: 160,
-  },
-  value: {
-    color: theme.palette.text.primary,
-    wordBreak: 'break-all',
-  },
-}));
+import { ButlerCard, ButlerKeyValueList, ButlerKeyValueRow } from '../ui';
 
 interface InfrastructureOverrideCardProps {
   override: NonNullable<Cluster['spec']['infrastructureOverride']> | undefined;
 }
 
+/** Console "Infrastructure Override" card; only the set fields render. */
 export const InfrastructureOverrideCard = ({
   override,
 }: InfrastructureOverrideCardProps) => {
-  const classes = useStyles();
   if (!override) {
     return null;
   }
-
   const rows: Array<[string, string | undefined]> = [];
   if (override.harvester) {
     rows.push(['Harvester Namespace', override.harvester.namespace]);
-    rows.push(['Harvester Network', override.harvester.networkName]);
-    rows.push(['Harvester Image', override.harvester.imageName]);
+    rows.push(['Network', override.harvester.networkName]);
+    rows.push(['Image', override.harvester.imageName]);
   }
   if (override.nutanix) {
-    rows.push(['Nutanix Cluster UUID', override.nutanix.clusterUUID]);
-    rows.push(['Nutanix Subnet UUID', override.nutanix.subnetUUID]);
+    rows.push(['Nutanix Cluster', override.nutanix.clusterUUID]);
+    rows.push(['Subnet', override.nutanix.subnetUUID]);
   }
-  const present = rows.filter(([, v]) => Boolean(v));
+  const present = rows.filter((row): row is [string, string] =>
+    Boolean(row[1]),
+  );
   if (present.length === 0) {
     return null;
   }
-
   return (
-    <InfoCard title="Infrastructure Override">
-      <div>
+    <ButlerCard title="Infrastructure Override">
+      <ButlerKeyValueList>
         {present.map(([label, value]) => (
-          <div key={label} className={classes.row}>
-            <Typography className={classes.label}>{label}</Typography>
-            <Typography className={classes.value}>{value}</Typography>
-          </div>
+          <ButlerKeyValueRow key={label} label={label} mono>
+            {value}
+          </ButlerKeyValueRow>
         ))}
-      </div>
-    </InfoCard>
+      </ButlerKeyValueList>
+    </ButlerCard>
   );
 };

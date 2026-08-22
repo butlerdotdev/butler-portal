@@ -1,59 +1,37 @@
 // Copyright 2026 The Butler Authors.
 // SPDX-License-Identifier: Apache-2.0
 
-import { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useParams, Link as RouterLink } from 'react-router-dom';
 import { useApi } from '@backstage/core-plugin-api';
-import {
-  Table,
-  TableColumn,
-  Progress,
-  Link,
-  EmptyState,
-} from '@backstage/core-components';
-import { Button, Typography } from '@material-ui/core';
-import { makeStyles } from '@material-ui/core/styles';
-import AddIcon from '@material-ui/icons/Add';
-import ArrowBackIcon from '@material-ui/icons/ArrowBack';
-import RefreshIcon from '@material-ui/icons/Refresh';
 import { butlerApiRef } from '../../api/ButlerApi';
 import type { Cluster } from '../../api/types/clusters';
 import { useButlerResource } from '../../hooks/useButlerResource';
 import { useClusterWatch } from '../../hooks/useClusterWatch';
-import { StatusBadge } from '../StatusBadge/StatusBadge';
 import { useButlerRoutes } from '../../hooks/useButlerRoutes';
+import { formatAge } from '../../utils/formatAge';
+import {
+  ButlerButton,
+  ButlerEmptyState,
+  ButlerErrorState,
+  ButlerLoading,
+  ButlerPageHeader,
+  ButlerStack,
+  PlusIcon,
+} from '../ui';
+import { ClusterListRow } from './ClusterListRow';
+import { ClusterListToolbar } from './ClusterListToolbar';
 
-const useStyles = makeStyles(theme => ({
-  header: {
-    display: 'flex',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: theme.spacing(2),
-  },
-  actions: {
-    display: 'flex',
-    gap: theme.spacing(1),
-  },
-}));
-
-function formatAge(timestamp: string | undefined): string {
-  if (!timestamp) return 'Unknown';
-  const created = new Date(timestamp);
-  const now = new Date();
-  const diffMs = now.getTime() - created.getTime();
-  const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
-  if (diffDays < 1) {
-    const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
-    if (diffHours < 1) {
-      const diffMinutes = Math.floor(diffMs / (1000 * 60));
-      return `${diffMinutes}m`;
-    }
-    return `${diffHours}h`;
-  }
-  if (diffDays < 30) return `${diffDays}d`;
-  const diffMonths = Math.floor(diffDays / 30);
-  return `${diffMonths}mo`;
-}
+const PHASE_ORDER = [
+  'Ready',
+  'Provisioning',
+  'Pending',
+  'Updating',
+  'Degraded',
+  'Failed',
+  'Deleting',
+  'Unknown',
+];
 
 function getProviderName(cluster: Cluster): string {
   return cluster.spec.providerConfigRef?.name || 'Default';
@@ -62,17 +40,6 @@ function getProviderName(cluster: Cluster): string {
 function getWorkerCount(cluster: Cluster): number {
   return cluster.spec.workers?.replicas ?? 0;
 }
-
-type ClusterRow = {
-  id: string;
-  name: string;
-  namespace: string;
-  provider: string;
-  version: string;
-  workers: number;
-  phase: string;
-  age: string;
-};
 
 function applyOverlay(
   base: Cluster[],
@@ -95,7 +62,6 @@ function applyOverlay(
 }
 
 export const ClustersPage = () => {
-  const classes = useStyles();
   const api = useApi(butlerApiRef);
   const routes = useButlerRoutes();
   const { team } = useParams<{ team: string }>();
@@ -106,6 +72,9 @@ export const ClustersPage = () => {
     },
     { deps: [api, team] },
   );
+
+  const [search, setSearch] = useState('');
+  const [phaseFilter, setPhaseFilter] = useState<Set<string>>(new Set());
 
   const { subscribe } = useClusterWatch();
   // Live events are layered over the fetched list: updates replace or
@@ -139,137 +108,144 @@ export const ClustersPage = () => {
     [subscribe, team],
   );
 
-  if (state.status === 'loading') {
-    return <Progress />;
-  }
+  const base = state.status === 'loading' ? undefined : state.data;
+  const clusters = useMemo(
+    () => applyOverlay(base ?? [], overlay.updated, overlay.deleted),
+    [base, overlay],
+  );
 
-  if (state.status === 'error') {
-    return (
-      <EmptyState
-        title="Failed to load clusters"
-        description={state.error.message}
-        missing="info"
+  const availablePhases = useMemo(() => {
+    const present = new Set(clusters.map(c => c.status?.phase || 'Unknown'));
+    return [
+      ...PHASE_ORDER.filter(p => present.has(p)),
+      ...[...present].filter(p => !PHASE_ORDER.includes(p)).sort(),
+    ];
+  }, [clusters]);
+
+  const visible = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return clusters.filter(c => {
+      const phase = c.status?.phase || 'Unknown';
+      if (phaseFilter.size > 0 && !phaseFilter.has(phase)) return false;
+      if (!q) return true;
+      return (
+        c.metadata.name.toLowerCase().includes(q) ||
+        c.metadata.namespace.toLowerCase().includes(q)
+      );
+    });
+  }, [clusters, search, phaseFilter]);
+
+  const createPath = routes.createCluster({ team: team ?? '' });
+  const createButton = (
+    <ButlerButton
+      component={RouterLink}
+      to={createPath}
+      startIcon={<PlusIcon />}
+    >
+      Create Cluster
+    </ButlerButton>
+  );
+
+  let body: React.ReactNode;
+  if (state.status === 'loading') {
+    body = <ButlerLoading />;
+  } else if (state.status === 'error' && !state.data) {
+    body = (
+      <ButlerErrorState
+        message="Failed to load clusters"
+        detail={state.error.message}
+        onRetry={() => state.refresh()}
       />
+    );
+  } else if (clusters.length === 0) {
+    body = (
+      <ButlerEmptyState
+        title="No clusters yet"
+        description="Create your first tenant cluster to get started."
+        action={createButton}
+      />
+    );
+  } else {
+    const filtered = visible.length !== clusters.length;
+    body = (
+      <ButlerStack>
+        <ClusterListToolbar
+          search={search}
+          onSearchChange={setSearch}
+          phaseFilter={phaseFilter}
+          onPhaseFilterChange={setPhaseFilter}
+          availablePhases={availablePhases}
+          resultsLabel={
+            filtered ? `${visible.length} of ${clusters.length} clusters` : null
+          }
+        />
+        {visible.length === 0 ? (
+          <ButlerEmptyState
+            title="No clusters match the current filters."
+            action={
+              <ButlerButton
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  setSearch('');
+                  setPhaseFilter(new Set());
+                }}
+              >
+                Clear filters
+              </ButlerButton>
+            }
+          />
+        ) : (
+          <ButlerStack gap={16} role="list" aria-label="Clusters">
+            {visible.map(cluster => (
+              <div
+                key={
+                  cluster.metadata.uid ||
+                  `${cluster.metadata.namespace}/${cluster.metadata.name}`
+                }
+                role="listitem"
+              >
+                <ClusterListRow
+                  to={routes.clusterDetail({
+                    team: team ?? '',
+                    namespace: cluster.metadata.namespace,
+                    name: cluster.metadata.name,
+                  })}
+                  name={cluster.metadata.name}
+                  namespace={cluster.metadata.namespace}
+                  phase={cluster.status?.phase || 'Unknown'}
+                  stats={[
+                    { label: 'Provider', value: getProviderName(cluster) },
+                    {
+                      label: 'Version',
+                      value: cluster.spec.kubernetesVersion || 'Unknown',
+                    },
+                    {
+                      label: 'Workers',
+                      value: String(getWorkerCount(cluster)),
+                    },
+                    {
+                      label: 'Age',
+                      value: formatAge(cluster.metadata.creationTimestamp),
+                    },
+                  ]}
+                />
+              </div>
+            ))}
+          </ButlerStack>
+        )}
+      </ButlerStack>
     );
   }
 
-  const clusters = applyOverlay(state.data, overlay.updated, overlay.deleted);
-
-  const columns: TableColumn<ClusterRow>[] = [
-    {
-      title: 'Name',
-      field: 'name',
-      render: (row: ClusterRow) => (
-        <Link to={routes.clusterDetail({
-            team: team ?? '',
-            namespace: row.namespace,
-            name: row.name,
-          })}>
-          {row.name}
-        </Link>
-      ),
-    },
-    {
-      title: 'Namespace',
-      field: 'namespace',
-    },
-    {
-      title: 'Provider',
-      field: 'provider',
-    },
-    {
-      title: 'Version',
-      field: 'version',
-    },
-    {
-      title: 'Workers',
-      field: 'workers',
-      type: 'numeric',
-    },
-    {
-      title: 'Phase',
-      field: 'phase',
-      render: (row: ClusterRow) => <StatusBadge status={row.phase} />,
-    },
-    {
-      title: 'Age',
-      field: 'age',
-    },
-  ];
-
-  const data: ClusterRow[] = clusters.map(cluster => ({
-    id: cluster.metadata.uid || `${cluster.metadata.namespace}/${cluster.metadata.name}`,
-    name: cluster.metadata.name,
-    namespace: cluster.metadata.namespace,
-    provider: getProviderName(cluster),
-    version: cluster.spec.kubernetesVersion,
-    workers: getWorkerCount(cluster),
-    phase: cluster.status?.phase || 'Unknown',
-    age: formatAge(cluster.metadata.creationTimestamp),
-  }));
-
   return (
-    <div>
-      <Button
-        startIcon={<ArrowBackIcon />}
-        component={RouterLink}
-        to={routes.team({ team: team ?? '' })}
-        style={{ textTransform: 'none', marginBottom: 16 }}
-      >
-        Back to Dashboard
-      </Button>
-      <div className={classes.header}>
-        <Typography variant="h4">Clusters</Typography>
-        <div className={classes.actions}>
-          <Button
-            variant="outlined"
-            size="small"
-            startIcon={<RefreshIcon />}
-            onClick={() => state.refresh()}
-          >
-            Refresh
-          </Button>
-          <Button
-            component={RouterLink}
-            to={routes.createCluster({ team: team ?? '' })}
-            variant="contained"
-            color="primary"
-            startIcon={<AddIcon />}
-          >
-            Create Cluster
-          </Button>
-        </div>
-      </div>
-      {clusters.length === 0 ? (
-        <EmptyState
-          title="No clusters found"
-          description="Get started by creating your first tenant cluster."
-          missing="content"
-          action={
-            <Button
-              component={RouterLink}
-              to={routes.createCluster({ team: team ?? '' })}
-              variant="contained"
-              color="primary"
-              startIcon={<AddIcon />}
-            >
-              Create Cluster
-            </Button>
-          }
-        />
-      ) : (
-        <Table<ClusterRow>
-          title={`Tenant Clusters (${clusters.length})`}
-          options={{
-            search: true,
-            paging: clusters.length > 20,
-            pageSize: 20,
-            padding: 'dense',
-          }}
-          columns={columns}
-          data={data}
-        />
-      )}
-    </div>
+    <ButlerStack>
+      <ButlerPageHeader
+        title="Clusters"
+        subtitle="Manage your Kubernetes clusters"
+        actions={createButton}
+      />
+      {body}
+    </ButlerStack>
   );
 };

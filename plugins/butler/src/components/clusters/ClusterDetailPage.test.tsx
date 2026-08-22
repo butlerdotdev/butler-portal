@@ -28,7 +28,8 @@ import { ClusterDetailPage } from './ClusterDetailPage';
 
 const alertApi: AlertApi = {
   post: () => {},
-  alert$: () => ({ subscribe: () => ({ unsubscribe: () => {}, closed: false }) }) as any,
+  alert$: () =>
+    ({ subscribe: () => ({ unsubscribe: () => {}, closed: false }) } as any),
 };
 
 function renderDetail(api: MockButlerApi, clusterName: string) {
@@ -70,7 +71,9 @@ describe('ClusterDetailPage', () => {
       await screen.findByRole('heading', { name: readyCluster.metadata.name }),
     ).toBeInTheDocument();
     expect(screen.getAllByText('Ready').length).toBeGreaterThan(0);
-    expect(screen.getAllByText(readyCluster.spec.kubernetesVersion as string).length).toBeGreaterThan(0);
+    expect(
+      screen.getAllByText(readyCluster.spec.kubernetesVersion as string).length,
+    ).toBeGreaterThan(0);
     expect(screen.getByText('WorkersReady')).toBeInTheDocument();
     expect(screen.getByText('3 of 3 worker nodes ready')).toBeInTheDocument();
     expect(screen.getByText('Cluster is ready for use')).toBeInTheDocument();
@@ -83,8 +86,12 @@ describe('ClusterDetailPage', () => {
       await screen.findByRole('heading', { name: failedCluster.metadata.name }),
     ).toBeInTheDocument();
     expect(screen.getAllByText('Failed').length).toBeGreaterThan(0);
-    const failure = failedCluster.status!.conditions!.find(c => c.type === 'Ready')!;
-    expect(screen.getByText(failure.message!)).toBeInTheDocument();
+    const failure = failedCluster.status!.conditions!.find(
+      c => c.type === 'Ready',
+    )!;
+    // The failure message is shown in the banner and in the Conditions card.
+    expect(screen.getByText('Cluster Failed')).toBeInTheDocument();
+    expect(screen.getAllByText(failure.message!)).toHaveLength(2);
     expect(screen.getByText(failure.reason!)).toBeInTheDocument();
   });
 
@@ -92,14 +99,19 @@ describe('ClusterDetailPage', () => {
     await renderDetail(new MockButlerApi(), degradedCluster.metadata.name);
 
     await screen.findByRole('heading', { name: degradedCluster.metadata.name });
+    // Degraded banner plus the two condition messages that carry the reason.
+    expect(screen.getByText('Cluster Degraded')).toBeInTheDocument();
     expect(
-      screen.getAllByText(/metallb speaker DaemonSet has 1 unavailable pod$/).length,
-    ).toBe(2);
+      screen.getAllByText(/metallb speaker DaemonSet has 1 unavailable pod$/)
+        .length,
+    ).toBe(3);
     expect(screen.getByText('AddonDegraded')).toBeInTheDocument();
   });
 
   it('shows the error state when getCluster fails', async () => {
-    const api = new MockButlerApi({ failures: { getCluster: new Error('boom') } });
+    const api = new MockButlerApi({
+      failures: { getCluster: new Error('boom') },
+    });
     await renderDetail(api, readyCluster.metadata.name);
 
     await waitFor(() => {
