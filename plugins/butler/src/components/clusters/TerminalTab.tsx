@@ -4,66 +4,90 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { useApi, discoveryApiRef } from '@backstage/core-plugin-api';
 import { buildButlerWsUrl } from '../../api/wsUrl';
-import { Typography, Button, Box } from '@material-ui/core';
 import { makeStyles } from '@material-ui/core/styles';
-import RefreshIcon from '@material-ui/icons/Refresh';
+import clsx from 'clsx';
 import { Terminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import '@xterm/xterm/css/xterm.css';
+import { butlerTokens, rgb } from '../../theme';
+import { ButlerCard } from '../ui';
 
 interface TerminalTabProps {
   clusterNamespace: string;
   clusterName: string;
 }
 
-const useStyles = makeStyles(theme => ({
-  container: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: theme.spacing(2),
-  },
-  toolbar: {
-    display: 'flex',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  statusIndicator: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: theme.spacing(1),
-  },
-  dot: {
-    width: 10,
-    height: 10,
-    borderRadius: '50%',
-    display: 'inline-block',
-  },
-  connected: {
-    backgroundColor: theme.palette.success.main,
-  },
-  disconnected: {
-    backgroundColor: theme.palette.error.main,
-  },
-  connecting: {
-    backgroundColor: theme.palette.warning.main,
-  },
-  terminalWrapper: {
-    border: `1px solid ${theme.palette.divider}`,
-    borderRadius: theme.shape.borderRadius,
-    overflow: 'hidden',
-    backgroundColor: '#0a0a0a',
-  },
-  terminalContainer: {
-    height: 500,
-    padding: theme.spacing(1),
-  },
-  errorBox: {
-    padding: theme.spacing(2),
-    border: `1px solid ${theme.palette.error.main}`,
-    borderRadius: theme.shape.borderRadius,
-    backgroundColor: theme.palette.error.main + '10',
-  },
-}));
+// Console ClusterTerminal chrome: 500px card, compact status bar, terminal
+// surface fixed to the console's dark page colour in both themes (the xterm
+// palette below is the console's and is not a UI token).
+const useStyles = makeStyles(theme => {
+  const t = butlerTokens(theme);
+  const p = t.palette;
+  return {
+    card: {
+      height: 500,
+      overflow: 'hidden',
+      display: 'flex',
+      flexDirection: 'column',
+    },
+    bar: {
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      padding: '8px 12px',
+      backgroundColor: t.surface,
+      borderBottom: `1px solid ${t.border}`,
+      flexShrink: 0,
+    },
+    status: { display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 },
+    dot: { width: 8, height: 8, borderRadius: '50%', flexShrink: 0 },
+    connected: { backgroundColor: rgb(p.green[500]) },
+    connecting: {
+      backgroundColor: rgb(p.yellow[500]),
+      animation: '$butlerPulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite',
+    },
+    error: { backgroundColor: rgb(p.red[500]) },
+    disconnected: { backgroundColor: rgb(p.neutral[500]) },
+    '@keyframes butlerPulse': {
+      '50%': { opacity: 0.5 },
+    },
+    label: {
+      fontSize: 14,
+      lineHeight: '20px',
+      color: t.text.muted,
+      whiteSpace: 'nowrap',
+      overflow: 'hidden',
+      textOverflow: 'ellipsis',
+    },
+    separator: { fontSize: 14, color: rgb(p.neutral[600]) },
+    cluster: { fontSize: 14, color: t.text.subtle, fontFamily: t.fontMono },
+    reconnect: {
+      padding: '4px 8px',
+      borderRadius: t.radius.sm,
+      border: 'none',
+      backgroundColor: rgb(p.neutral[800]),
+      color: rgb(p.neutral[300]),
+      fontFamily: t.fontSans,
+      fontSize: 12,
+      lineHeight: '16px',
+      cursor: 'pointer',
+      transition: 'background-color 150ms',
+      '&:hover': { backgroundColor: rgb(p.neutral[700]) },
+      '&:focus-visible': {
+        outline: 'none',
+        boxShadow: `0 0 0 2px ${t.surface}, 0 0 0 4px ${t.accent}`,
+      },
+      '&:disabled': { opacity: 0.5, cursor: 'not-allowed' },
+    },
+    terminal: {
+      flex: 1,
+      minHeight: 0,
+      padding: 8,
+      backgroundColor: '#0a0a0a',
+      '& .xterm': { height: '100%' },
+    },
+  };
+});
 
 type ConnectionStatus = 'disconnected' | 'connecting' | 'connected' | 'error';
 
@@ -105,8 +129,9 @@ export const TerminalTab = ({
       theme: {
         background: '#0a0a0a',
         foreground: '#e4e4e7',
-        cursor: '#e4e4e7',
-        selectionBackground: '#3f3f46',
+        cursor: '#22c55e',
+        cursorAccent: '#0a0a0a',
+        selectionBackground: '#22c55e33',
         black: '#09090b',
         red: '#ef4444',
         green: '#22c55e',
@@ -261,12 +286,14 @@ export const TerminalTab = ({
     };
   }, [connect]);
 
-  const statusClass =
+  const dotClass =
     status === 'connected'
       ? classes.connected
       : status === 'connecting'
         ? classes.connecting
-        : classes.disconnected;
+        : status === 'error'
+          ? classes.error
+          : classes.disconnected;
 
   const statusLabel =
     status === 'connected'
@@ -274,38 +301,34 @@ export const TerminalTab = ({
       : status === 'connecting'
         ? 'Connecting...'
         : status === 'error'
-          ? 'Error'
+          ? errorMsg || 'Error'
           : 'Disconnected';
 
   return (
-    <div className={classes.container}>
-      <div className={classes.toolbar}>
-        <div className={classes.statusIndicator}>
-          <span className={`${classes.dot} ${statusClass}`} />
-          <Typography variant="body2">{statusLabel}</Typography>
+    <ButlerCard flush className={classes.card}>
+      <div className={classes.bar}>
+        <div className={classes.status}>
+          <span className={clsx(classes.dot, dotClass)} aria-hidden />
+          <span className={classes.label} role="status" title={statusLabel}>
+            {statusLabel}
+          </span>
+          <span className={classes.separator} aria-hidden>
+            |
+          </span>
+          <span className={classes.cluster}>{clusterName}</span>
         </div>
-        <Button
-          variant="outlined"
-          size="small"
-          startIcon={<RefreshIcon />}
-          onClick={connect}
-          disabled={status === 'connecting'}
-        >
-          {status === 'connected' ? 'Reconnect' : 'Connect'}
-        </Button>
+        {status !== 'connected' && (
+          <button
+            type="button"
+            className={classes.reconnect}
+            onClick={connect}
+            disabled={status === 'connecting'}
+          >
+            Reconnect
+          </button>
+        )}
       </div>
-
-      {errorMsg && (
-        <Box className={classes.errorBox}>
-          <Typography variant="body2" color="error">
-            {errorMsg}
-          </Typography>
-        </Box>
-      )}
-
-      <div className={classes.terminalWrapper}>
-        <div ref={terminalRef} className={classes.terminalContainer} />
-      </div>
-    </div>
+      <div ref={terminalRef} className={classes.terminal} />
+    </ButlerCard>
   );
 };
