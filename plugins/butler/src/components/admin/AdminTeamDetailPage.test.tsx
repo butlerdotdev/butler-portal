@@ -120,6 +120,21 @@ describe('AdminTeamDetailPage', () => {
     expect(screen.queryByRole('tab')).not.toBeInTheDocument();
   });
 
+  it('counts the team clusters from the cluster list', async () => {
+    // /teams/{name}/clusters answers with an empty list on a live server,
+    // so the page lists clusters the way the console does.
+    await renderPage(new MockButlerApi());
+    await screen.findByRole('heading', {
+      name: fixtureTeamDetail.spec.displayName,
+    });
+
+    const status = screen
+      .getByRole('heading', { name: 'Cluster Status' })
+      .closest('div')!.parentElement!;
+    expect(status).toHaveTextContent(/Total/);
+    expect(status).not.toHaveTextContent(/^0\s*Total/);
+  });
+
   it('blocks team deletion while the team still owns clusters', async () => {
     await renderPage(new MockButlerApi());
     await screen.findByRole('heading', {

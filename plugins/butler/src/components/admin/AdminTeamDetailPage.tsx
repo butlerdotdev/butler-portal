@@ -511,7 +511,7 @@ export const AdminTeamDetailPage = () => {
       const [teamRes, clustersRes, membersRes, groupsRes, idpsRes, userRes] =
         await Promise.allSettled([
           api.getTeam(teamName),
-          api.getTeamClusters(teamName),
+          api.listClusters({ team: teamName }),
           api.getTeamMembers(teamName),
           api.getTeamGroupSyncs(teamName),
           api.listIdentityProviders(),
