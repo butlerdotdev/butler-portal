@@ -2,638 +2,543 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { useState } from 'react';
-import { useNavigate, Link as RouterLink } from 'react-router-dom';
-import { useApi } from '@backstage/core-plugin-api';
-import { InfoCard } from '@backstage/core-components';
-import {
-  Grid,
-  Typography,
-  Button,
-  TextField,
-  Box,
-  Chip,
-  Divider,
-  Paper,
-  makeStyles,
-} from '@material-ui/core';
-import ArrowBackIcon from '@material-ui/icons/ArrowBack';
-import CheckCircleIcon from '@material-ui/icons/CheckCircle';
-import ErrorOutlineIcon from '@material-ui/icons/ErrorOutline';
+import type { FormEvent, ReactNode } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { alertApiRef, useApi } from '@backstage/core-plugin-api';
+import { makeStyles } from '@material-ui/core/styles';
+import clsx from 'clsx';
+
 import { butlerApiRef } from '../../api/ButlerApi';
 import {
   PROVIDER_PRESETS,
+  type CreateIdentityProviderRequest,
   type ProviderPresetKey,
+  type TestDiscoveryResponse,
 } from '../../api/types/identity-providers';
 import { useButlerRoutes } from '../../hooks/useButlerRoutes';
-
-const useStyles = makeStyles(theme => ({
-  header: {
-    display: 'flex',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: theme.spacing(3),
-  },
-  presetGrid: {
-    marginBottom: theme.spacing(3),
-  },
-  presetCard: {
-    padding: theme.spacing(2),
-    cursor: 'pointer',
-    border: `2px solid transparent`,
-    borderRadius: theme.shape.borderRadius,
-    transition: 'border-color 0.2s, box-shadow 0.2s',
-    '&:hover': {
-      boxShadow: theme.shadows[2],
-    },
-  },
-  presetCardSelected: {
-    borderColor: theme.palette.primary.main,
-    boxShadow: theme.shadows[2],
-  },
-  presetName: {
-    fontWeight: 600,
-  },
-  formSection: {
-    marginBottom: theme.spacing(3),
-  },
-  formField: {
-    marginBottom: theme.spacing(2),
-  },
-  discoveryResult: {
-    marginTop: theme.spacing(2),
-    padding: theme.spacing(2),
-    borderRadius: theme.shape.borderRadius,
-  },
-  discoverySuccess: {
-    backgroundColor: 'rgba(76, 175, 80, 0.08)',
-    border: '1px solid rgba(76, 175, 80, 0.3)',
-  },
-  discoveryError: {
-    backgroundColor: 'rgba(244, 67, 54, 0.08)',
-    border: '1px solid rgba(244, 67, 54, 0.3)',
-  },
-  discoveryEndpoint: {
-    display: 'flex',
-    justifyContent: 'space-between',
-    padding: theme.spacing(0.5, 0),
-  },
-  endpointLabel: {
-    fontWeight: 600,
-    color: theme.palette.text.secondary,
-    minWidth: 200,
-  },
-  endpointValue: {
-    wordBreak: 'break-all',
-    textAlign: 'right',
-  },
-  actions: {
-    display: 'flex',
-    justifyContent: 'flex-end',
-    gap: theme.spacing(2),
-    marginTop: theme.spacing(3),
-  },
-}));
+import { useTeamContext } from '../../hooks/useTeamContext';
+import { butlerTokens, rgb } from '../../theme';
+import {
+  ButlerButton,
+  ButlerCard,
+  ButlerEmptyState,
+  ButlerIconButton,
+  ButlerInput,
+  ButlerPageHeader,
+  ButlerStack,
+  ChevronLeftIcon,
+} from '../ui';
+import {
+  ButlerField,
+  ButlerFormFooter,
+  ButlerFormMessage,
+  ButlerFormSection,
+} from '../ui/ButlerFormSection';
+import { ButlerOptionRow } from '../ui/ButlerRadioTile';
+import {
+  GoogleIcon,
+  MicrosoftIcon,
+  OidcKeyIcon,
+  OktaIcon,
+} from './IdentityProviderIcons';
 
 type PresetOption = ProviderPresetKey | 'custom';
 
-interface DiscoveryResult {
-  valid: boolean;
-  message: string;
-  authorizationEndpoint?: string;
-  tokenEndpoint?: string;
-  userInfoEndpoint?: string;
-  jwksURI?: string;
+interface PresetConfig {
+  key: PresetOption;
+  name: string;
+  icon: ReactNode;
+  description: string;
 }
 
-interface FormData {
-  name: string;
-  displayName: string;
-  issuerURL: string;
-  clientID: string;
-  clientSecret: string;
-  redirectURL: string;
-  scopes: string;
-  emailClaim: string;
-  groupsClaim: string;
-}
+// Same four choices as the console's step 1; Auth0 and Keycloak presets
+// in PROVIDER_PRESETS are reachable through Custom OIDC.
+const PRESET_OPTIONS: PresetConfig[] = [
+  {
+    key: 'google',
+    name: 'Google Workspace',
+    icon: <GoogleIcon />,
+    description: 'Sign in with Google accounts',
+  },
+  {
+    key: 'microsoft',
+    name: 'Microsoft Entra ID',
+    icon: <MicrosoftIcon />,
+    description: 'Sign in with Microsoft/Azure AD',
+  },
+  {
+    key: 'okta',
+    name: 'Okta',
+    icon: <OktaIcon />,
+    description: 'Sign in with Okta',
+  },
+  {
+    key: 'custom',
+    name: 'Custom OIDC',
+    icon: <OidcKeyIcon />,
+    description: 'Any OIDC-compliant provider',
+  },
+];
+
+const useStyles = makeStyles(theme => {
+  const t = butlerTokens(theme);
+  const p = t.palette;
+  return {
+    page: { maxWidth: 672, margin: '0 auto' },
+    options: { display: 'grid', gap: 12 },
+    stepHeader: { display: 'flex', alignItems: 'center', gap: 16 },
+    stepIdentity: { display: 'flex', alignItems: 'center', gap: 12 },
+    iconTile: {
+      width: 40,
+      height: 40,
+      borderRadius: t.radius.lg,
+      backgroundColor: rgb(p.neutral[800]),
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      flexShrink: 0,
+    },
+    stepTitle: {
+      margin: 0,
+      fontSize: 20,
+      lineHeight: '28px',
+      fontWeight: 600,
+      color: t.text.primary,
+    },
+    stepSubtitle: {
+      margin: 0,
+      fontSize: 14,
+      lineHeight: '20px',
+      color: t.text.subtle,
+    },
+    card: {
+      padding: 24,
+      display: 'flex',
+      flexDirection: 'column',
+      gap: 24,
+    },
+    discoveryRow: { display: 'flex', alignItems: 'center', gap: 8 },
+    discoveryText: { fontSize: 14, lineHeight: '20px' },
+    discoveryValid: { color: rgb(p.green[400]) },
+    discoveryInvalid: { color: rgb(p.red[400]) },
+  };
+});
 
 export const CreateIdentityProviderPage = () => {
   const classes = useStyles();
   const api = useApi(butlerApiRef);
+  const alertApi = useApi(alertApiRef);
   const routes = useButlerRoutes();
   const navigate = useNavigate();
+  const { isAdmin: canMutate } = useTeamContext();
 
   const [selectedPreset, setSelectedPreset] = useState<PresetOption | null>(
     null,
   );
-  const [formData, setFormData] = useState<FormData>({
-    name: '',
-    displayName: '',
-    issuerURL: '',
-    clientID: '',
-    clientSecret: '',
-    redirectURL: '',
-    scopes: 'openid,email,profile',
-    emailClaim: 'email',
-    groupsClaim: '',
-  });
-  const [formError, setFormError] = useState<string | undefined>();
-  const [submitting, setSubmitting] = useState(false);
-  const [testingDiscovery, setTestingDiscovery] = useState(false);
-  const [discoveryResult, setDiscoveryResult] =
-    useState<DiscoveryResult | null>(null);
+  const [name, setName] = useState('');
+  const [displayName, setDisplayName] = useState('');
+  const [issuerURL, setIssuerURL] = useState('');
+  const [clientID, setClientID] = useState('');
+  const [clientSecret, setClientSecret] = useState('');
+  const [redirectURL, setRedirectURL] = useState('');
+  const [hostedDomain, setHostedDomain] = useState('');
+  const [scopes, setScopes] = useState('');
+  const [groupsClaim, setGroupsClaim] = useState('');
+  const [emailClaim, setEmailClaim] = useState('');
 
-  const presetOptions: Array<{ key: PresetOption; label: string }> = [
-    { key: 'google', label: 'Google Workspace' },
-    { key: 'microsoft', label: 'Microsoft Entra ID' },
-    { key: 'okta', label: 'Okta' },
-    { key: 'auth0', label: 'Auth0' },
-    { key: 'keycloak', label: 'Keycloak' },
-    { key: 'custom', label: 'Custom OIDC' },
-  ];
+  const [testing, setTesting] = useState(false);
+  const [testResult, setTestResult] = useState<TestDiscoveryResponse | null>(
+    null,
+  );
+  const [creating, setCreating] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  const handleSelectPreset = (preset: PresetOption) => {
+  const goBack = () => navigate(routes.adminIdentityProviders());
+
+  const handlePresetSelect = (preset: PresetOption) => {
     setSelectedPreset(preset);
-    setDiscoveryResult(null);
-
-    if (preset === 'custom') {
-      setFormData(prev => ({
-        ...prev,
-        issuerURL: '',
-        scopes: 'openid,email,profile',
-        emailClaim: 'email',
-        groupsClaim: '',
-      }));
-      return;
+    setTestResult(null);
+    setError(null);
+    if (preset !== 'custom' && preset in PROVIDER_PRESETS) {
+      const config = PROVIDER_PRESETS[preset];
+      setDisplayName(config.name);
+      setIssuerURL(config.issuerURL);
+      setScopes(config.scopes.join(', '));
+      setGroupsClaim(config.groupsClaim);
+      setEmailClaim(config.emailClaim);
+    } else {
+      setDisplayName('');
+      setIssuerURL('');
+      setScopes('openid, email, profile');
+      setGroupsClaim('groups');
+      setEmailClaim('email');
     }
-
-    const presetConfig = PROVIDER_PRESETS[preset];
-    if (presetConfig) {
-      setFormData(prev => ({
-        ...prev,
-        displayName: prev.displayName || presetConfig.name,
-        issuerURL: presetConfig.issuerURL,
-        scopes: presetConfig.scopes.join(','),
-        emailClaim: presetConfig.emailClaim,
-        groupsClaim: presetConfig.groupsClaim,
-      }));
-    }
-  };
-
-  const updateField = (field: keyof FormData, value: string) => {
-    setFormData(prev => ({ ...prev, [field]: value }));
-    setFormError(undefined);
   };
 
   const handleTestDiscovery = async () => {
-    if (!formData.issuerURL.trim()) {
-      setFormError('Issuer URL is required to test discovery.');
+    if (!issuerURL) {
+      setError('Issuer URL is required');
       return;
     }
-
-    setTestingDiscovery(true);
-    setDiscoveryResult(null);
+    setTesting(true);
+    setError(null);
+    setTestResult(null);
     try {
-      const result = await api.testIdPDiscovery(formData.issuerURL);
-      setDiscoveryResult(result);
-    } catch (e) {
-      setDiscoveryResult({
-        valid: false,
-        message: e instanceof Error ? e.message : 'Discovery test failed.',
-      });
+      const result = await api.testIdPDiscovery(issuerURL);
+      setTestResult(result);
+      if (!result.valid) setError(result.message);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Discovery failed');
+      setTestResult({ valid: false, message: 'Discovery failed' });
     } finally {
-      setTestingDiscovery(false);
+      setTesting(false);
     }
   };
 
-  const handleSubmit = async () => {
-    // Validation
-    if (!formData.name.trim()) {
-      setFormError('Name is required.');
+  const handleSubmit = async (e: FormEvent) => {
+    e.preventDefault();
+    setError(null);
+    if (!name) {
+      setError('Name is required');
       return;
     }
-
-    const nameRegex = /^[a-z0-9][a-z0-9-]*[a-z0-9]$/;
-    if (formData.name.length > 2 && !nameRegex.test(formData.name)) {
-      setFormError(
-        'Name must be lowercase alphanumeric with hyphens, and cannot start or end with a hyphen.',
+    if (!issuerURL) {
+      setError('Issuer URL is required');
+      return;
+    }
+    if (!clientID) {
+      setError('Client ID is required');
+      return;
+    }
+    if (!clientSecret) {
+      setError('Client Secret is required');
+      return;
+    }
+    if (!redirectURL) {
+      setError('Redirect URL is required');
+      return;
+    }
+    if (!/^[a-z0-9]([a-z0-9-]*[a-z0-9])?$/.test(name)) {
+      setError(
+        'Name must be lowercase alphanumeric with hyphens (e.g., "google-workspace")',
       );
       return;
     }
 
-    if (!formData.issuerURL.trim()) {
-      setFormError('Issuer URL is required.');
-      return;
-    }
-
-    if (!formData.clientID.trim()) {
-      setFormError('Client ID is required.');
-      return;
-    }
-
-    if (!formData.clientSecret.trim()) {
-      setFormError('Client Secret is required.');
-      return;
-    }
-
-    setSubmitting(true);
-    setFormError(undefined);
+    setCreating(true);
     try {
-      const scopesArray = formData.scopes
-        .split(',')
-        .map(s => s.trim())
-        .filter(Boolean);
-
-      await api.createIdentityProvider({
-        name: formData.name,
-        displayName: formData.displayName || undefined,
-        issuerURL: formData.issuerURL,
-        clientID: formData.clientID,
-        clientSecret: formData.clientSecret,
-        redirectURL: formData.redirectURL || '',
-        scopes: scopesArray.length > 0 ? scopesArray : undefined,
-        emailClaim: formData.emailClaim || undefined,
-        groupsClaim: formData.groupsClaim || undefined,
+      const request: CreateIdentityProviderRequest = {
+        name,
+        displayName: displayName || undefined,
+        issuerURL,
+        clientID,
+        clientSecret,
+        redirectURL,
+        hostedDomain: hostedDomain || undefined,
+        scopes: scopes
+          ? scopes
+              .split(',')
+              .map(s => s.trim())
+              .filter(Boolean)
+          : undefined,
+        groupsClaim: groupsClaim || undefined,
+        emailClaim: emailClaim || undefined,
+      };
+      await api.createIdentityProvider(request);
+      alertApi.post({
+        message: `Created identity provider "${displayName || name}"`,
+        severity: 'success',
+        display: 'transient',
       });
-
-      navigate('../identity-providers');
-    } catch (e) {
-      setFormError(
-        e instanceof Error
-          ? e.message
-          : 'Failed to create identity provider.',
-      );
+      goBack();
+    } catch (err) {
+      let message = 'Failed to create identity provider';
+      if (err && typeof err === 'object' && 'message' in err) {
+        message = String((err as Error).message);
+      }
+      if (
+        err &&
+        typeof err === 'object' &&
+        'status' in err &&
+        (err as { status?: number }).status === 409
+      ) {
+        message += ' You can delete it from the Identity Providers list page.';
+      }
+      setError(message);
     } finally {
-      setSubmitting(false);
+      setCreating(false);
     }
   };
+
+  if (!canMutate) {
+    return (
+      <ButlerStack className={classes.page}>
+        <ButlerPageHeader
+          title="Add Identity Provider"
+          subtitle="Configure SSO authentication for Butler Console"
+        />
+        <ButlerEmptyState
+          title="Read-Only Access"
+          description="You do not have permission to create identity providers."
+          action={
+            <ButlerButton variant="secondary" onClick={goBack}>
+              Back to Identity Providers
+            </ButlerButton>
+          }
+        />
+      </ButlerStack>
+    );
+  }
+
+  if (!selectedPreset) {
+    return (
+      <ButlerStack className={classes.page}>
+        <ButlerPageHeader
+          title="Add Identity Provider"
+          subtitle="Select the type of identity provider you want to configure"
+        />
+        <div className={classes.options}>
+          {PRESET_OPTIONS.map(preset => (
+            <ButlerOptionRow
+              key={preset.key}
+              icon={preset.icon}
+              title={preset.name}
+              description={preset.description}
+              onClick={() => handlePresetSelect(preset.key)}
+            />
+          ))}
+        </div>
+        <div>
+          <ButlerButton variant="secondary" onClick={goBack}>
+            Cancel
+          </ButlerButton>
+        </div>
+      </ButlerStack>
+    );
+  }
+
+  const presetConfig = PRESET_OPTIONS.find(p => p.key === selectedPreset);
+  const issuerHelp =
+    selectedPreset === 'microsoft'
+      ? 'Replace {tenant} with your Azure tenant ID'
+      : selectedPreset === 'okta'
+      ? 'Replace {domain} with your Okta domain'
+      : 'The OIDC issuer URL (must support .well-known/openid-configuration)';
 
   return (
-    <div>
-      <Button
-        startIcon={<ArrowBackIcon />}
-        component={RouterLink}
-        to={routes.adminIdentityProviders()}
-        style={{ textTransform: 'none', marginBottom: 16 }}
-      >
-        Back to Identity Providers
-      </Button>
-      <div className={classes.header}>
-        <Typography variant="h4">Add Identity Provider</Typography>
+    <ButlerStack className={classes.page}>
+      <div className={classes.stepHeader}>
+        <ButlerIconButton
+          aria-label="Back to provider types"
+          onClick={() => setSelectedPreset(null)}
+        >
+          <ChevronLeftIcon />
+        </ButlerIconButton>
+        <div className={classes.stepIdentity}>
+          <div className={classes.iconTile}>{presetConfig?.icon}</div>
+          <div>
+            <h1 className={classes.stepTitle}>
+              Configure {presetConfig?.name}
+            </h1>
+            <p className={classes.stepSubtitle}>
+              Enter your OIDC configuration details
+            </p>
+          </div>
+        </div>
       </div>
 
-      {/* Preset Selection */}
-      <InfoCard title="Choose Provider Type">
-        <Grid container spacing={2} className={classes.presetGrid}>
-          {presetOptions.map(option => (
-            <Grid item xs={6} sm={4} md={2} key={option.key}>
-              <Paper
-                className={`${classes.presetCard} ${
-                  selectedPreset === option.key
-                    ? classes.presetCardSelected
-                    : ''
-                }`}
-                onClick={() => handleSelectPreset(option.key)}
-                elevation={selectedPreset === option.key ? 2 : 0}
-                variant={
-                  selectedPreset === option.key ? 'elevation' : 'outlined'
+      {error && <ButlerFormMessage>{error}</ButlerFormMessage>}
+
+      <form onSubmit={handleSubmit} noValidate>
+        <ButlerCard flush className={classes.card}>
+          <ButlerFormSection title="Basic Information" uppercase>
+            <ButlerField
+              label="Name"
+              required
+              htmlFor="idp-name"
+              help="Unique identifier (lowercase, alphanumeric, hyphens only)"
+            >
+              <ButlerInput
+                id="idp-name"
+                value={name}
+                onChange={e =>
+                  setName(
+                    e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ''),
+                  )
                 }
+                placeholder="google-workspace"
+              />
+            </ButlerField>
+            <ButlerField
+              label="Display Name"
+              htmlFor="idp-display-name"
+              help="Shown on the login button"
+            >
+              <ButlerInput
+                id="idp-display-name"
+                value={displayName}
+                onChange={e => setDisplayName(e.target.value)}
+                placeholder="Google Workspace"
+              />
+            </ButlerField>
+          </ButlerFormSection>
+
+          <ButlerFormSection title="OIDC Configuration" uppercase>
+            <ButlerField
+              label="Issuer URL"
+              required
+              htmlFor="idp-issuer"
+              help={issuerHelp}
+            >
+              <ButlerInput
+                id="idp-issuer"
+                value={issuerURL}
+                onChange={e => {
+                  setIssuerURL(e.target.value);
+                  setTestResult(null);
+                }}
+                placeholder="https://accounts.google.com"
+              />
+            </ButlerField>
+            <div className={classes.discoveryRow}>
+              <ButlerButton
+                variant="secondary"
+                size="sm"
+                onClick={handleTestDiscovery}
+                disabled={!issuerURL || testing}
               >
-                <Typography
-                  className={classes.presetName}
-                  variant="body2"
-                  align="center"
-                >
-                  {option.label}
-                </Typography>
-              </Paper>
-            </Grid>
-          ))}
-        </Grid>
-      </InfoCard>
-
-      {/* Configuration Form */}
-      {selectedPreset && (
-        <Box mt={3}>
-          <InfoCard title="Provider Configuration">
-            {formError && (
-              <Typography color="error" variant="body2" gutterBottom>
-                {formError}
-              </Typography>
-            )}
-
-            <Grid container spacing={3}>
-              <Grid item xs={12} md={6}>
-                <div className={classes.formSection}>
-                  <Typography variant="subtitle2" gutterBottom>
-                    Basic Information
-                  </Typography>
-                  <TextField
-                    className={classes.formField}
-                    label="Name"
-                    helperText="Unique identifier for this provider (lowercase, hyphens allowed)."
-                    value={formData.name}
-                    onChange={e => updateField('name', e.target.value)}
-                    fullWidth
-                    required
-                    margin="dense"
-                  />
-                  <TextField
-                    className={classes.formField}
-                    label="Display Name"
-                    helperText="Human-readable name shown to users."
-                    value={formData.displayName}
-                    onChange={e =>
-                      updateField('displayName', e.target.value)
-                    }
-                    fullWidth
-                    margin="dense"
-                  />
-                </div>
-
-                <Divider />
-
-                <div className={classes.formSection}>
-                  <Box mt={2}>
-                    <Typography variant="subtitle2" gutterBottom>
-                      OIDC Configuration
-                    </Typography>
-                  </Box>
-                  <TextField
-                    className={classes.formField}
-                    label="Issuer URL"
-                    helperText={
-                      selectedPreset !== 'custom'
-                        ? 'Pre-filled from preset. Replace placeholder values like {tenant} or {domain}.'
-                        : 'The OIDC issuer URL for your identity provider.'
-                    }
-                    value={formData.issuerURL}
-                    onChange={e =>
-                      updateField('issuerURL', e.target.value)
-                    }
-                    fullWidth
-                    required
-                    margin="dense"
-                  />
-                  <Box display="flex" style={{ gap: 8 }} mb={2}>
-                    <Button
-                      variant="outlined"
-                      size="small"
-                      onClick={handleTestDiscovery}
-                      disabled={
-                        testingDiscovery || !formData.issuerURL.trim()
-                      }
-                    >
-                      {testingDiscovery
-                        ? 'Testing...'
-                        : 'Test Discovery'}
-                    </Button>
-                  </Box>
-
-                  {/* Discovery Result */}
-                  {discoveryResult && (
-                    <div
-                      className={`${classes.discoveryResult} ${
-                        discoveryResult.valid
-                          ? classes.discoverySuccess
-                          : classes.discoveryError
-                      }`}
-                    >
-                      <Box
-                        display="flex"
-                        alignItems="center"
-                        gridGap={8}
-                        mb={1}
-                      >
-                        {discoveryResult.valid ? (
-                          <CheckCircleIcon
-                            fontSize="small"
-                            style={{ color: '#4caf50' }}
-                          />
-                        ) : (
-                          <ErrorOutlineIcon
-                            fontSize="small"
-                            color="error"
-                          />
-                        )}
-                        <Typography variant="subtitle2">
-                          {discoveryResult.valid
-                            ? 'Discovery Successful'
-                            : 'Discovery Failed'}
-                        </Typography>
-                      </Box>
-                      <Typography variant="body2">
-                        {discoveryResult.message}
-                      </Typography>
-
-                      {discoveryResult.valid && (
-                        <Box mt={1}>
-                          {discoveryResult.authorizationEndpoint && (
-                            <div
-                              className={classes.discoveryEndpoint}
-                            >
-                              <Typography
-                                variant="caption"
-                                className={classes.endpointLabel}
-                              >
-                                Authorization Endpoint
-                              </Typography>
-                              <Typography
-                                variant="caption"
-                                className={classes.endpointValue}
-                              >
-                                {
-                                  discoveryResult.authorizationEndpoint
-                                }
-                              </Typography>
-                            </div>
-                          )}
-                          {discoveryResult.tokenEndpoint && (
-                            <div
-                              className={classes.discoveryEndpoint}
-                            >
-                              <Typography
-                                variant="caption"
-                                className={classes.endpointLabel}
-                              >
-                                Token Endpoint
-                              </Typography>
-                              <Typography
-                                variant="caption"
-                                className={classes.endpointValue}
-                              >
-                                {discoveryResult.tokenEndpoint}
-                              </Typography>
-                            </div>
-                          )}
-                          {discoveryResult.userInfoEndpoint && (
-                            <div
-                              className={classes.discoveryEndpoint}
-                            >
-                              <Typography
-                                variant="caption"
-                                className={classes.endpointLabel}
-                              >
-                                UserInfo Endpoint
-                              </Typography>
-                              <Typography
-                                variant="caption"
-                                className={classes.endpointValue}
-                              >
-                                {discoveryResult.userInfoEndpoint}
-                              </Typography>
-                            </div>
-                          )}
-                          {discoveryResult.jwksURI && (
-                            <div
-                              className={classes.discoveryEndpoint}
-                            >
-                              <Typography
-                                variant="caption"
-                                className={classes.endpointLabel}
-                              >
-                                JWKS URI
-                              </Typography>
-                              <Typography
-                                variant="caption"
-                                className={classes.endpointValue}
-                              >
-                                {discoveryResult.jwksURI}
-                              </Typography>
-                            </div>
-                          )}
-                        </Box>
-                      )}
-                    </div>
+                {testing ? 'Testing...' : 'Test Discovery'}
+              </ButlerButton>
+              {testResult && (
+                <span
+                  className={clsx(
+                    classes.discoveryText,
+                    testResult.valid
+                      ? classes.discoveryValid
+                      : classes.discoveryInvalid,
                   )}
-
-                  <TextField
-                    className={classes.formField}
-                    label="Client ID"
-                    helperText="The OAuth 2.0 client ID."
-                    value={formData.clientID}
-                    onChange={e =>
-                      updateField('clientID', e.target.value)
-                    }
-                    fullWidth
-                    required
-                    margin="dense"
-                  />
-                  <TextField
-                    className={classes.formField}
-                    label="Client Secret"
-                    type="password"
-                    helperText="The OAuth 2.0 client secret. Stored securely in a Kubernetes Secret."
-                    value={formData.clientSecret}
-                    onChange={e =>
-                      updateField('clientSecret', e.target.value)
-                    }
-                    fullWidth
-                    required
-                    margin="dense"
-                  />
-                </div>
-              </Grid>
-
-              <Grid item xs={12} md={6}>
-                <div className={classes.formSection}>
-                  <Typography variant="subtitle2" gutterBottom>
-                    Scopes and Claims
-                  </Typography>
-                  <TextField
-                    className={classes.formField}
-                    label="Scopes"
-                    helperText="Comma-separated list of OIDC scopes to request."
-                    value={formData.scopes}
-                    onChange={e =>
-                      updateField('scopes', e.target.value)
-                    }
-                    fullWidth
-                    margin="dense"
-                  />
-                  <Box mb={2}>
-                    {formData.scopes
-                      .split(',')
-                      .map(s => s.trim())
-                      .filter(Boolean)
-                      .map(scope => (
-                        <Chip
-                          key={scope}
-                          label={scope}
-                          size="small"
-                          variant="outlined"
-                          style={{ marginRight: 4, marginBottom: 4 }}
-                        />
-                      ))}
-                  </Box>
-                  <TextField
-                    className={classes.formField}
-                    label="Email Claim"
-                    helperText="The JWT claim that contains the user's email address."
-                    value={formData.emailClaim}
-                    onChange={e =>
-                      updateField('emailClaim', e.target.value)
-                    }
-                    fullWidth
-                    margin="dense"
-                  />
-                  <TextField
-                    className={classes.formField}
-                    label="Groups Claim"
-                    helperText="The JWT claim that contains the user's group memberships. Leave empty if not applicable."
-                    value={formData.groupsClaim}
-                    onChange={e =>
-                      updateField('groupsClaim', e.target.value)
-                    }
-                    fullWidth
-                    margin="dense"
-                  />
-                </div>
-
-                <Divider />
-
-                <div className={classes.formSection}>
-                  <Box mt={2}>
-                    <Typography variant="subtitle2" gutterBottom>
-                      Advanced
-                    </Typography>
-                  </Box>
-                  <TextField
-                    className={classes.formField}
-                    label="Redirect URL"
-                    helperText="The OAuth 2.0 redirect URI. If left empty, the platform default will be used."
-                    value={formData.redirectURL}
-                    onChange={e =>
-                      updateField('redirectURL', e.target.value)
-                    }
-                    fullWidth
-                    margin="dense"
-                  />
-                </div>
-              </Grid>
-            </Grid>
-
-            <Divider />
-
-            <div className={classes.actions}>
-              <Button
-                onClick={() => navigate('../identity-providers')}
-                disabled={submitting}
-              >
-                Cancel
-              </Button>
-              <Button
-                onClick={handleSubmit}
-                color="primary"
-                variant="contained"
-                disabled={submitting}
-              >
-                {submitting ? 'Creating...' : 'Create Identity Provider'}
-              </Button>
+                  role="status"
+                >
+                  {testResult.valid
+                    ? 'Discovery successful'
+                    : 'Discovery failed'}
+                </span>
+              )}
             </div>
-          </InfoCard>
-        </Box>
-      )}
-    </div>
+            <ButlerField
+              label="Client ID"
+              required
+              htmlFor="idp-client-id"
+              help="OAuth2 Client ID from your identity provider"
+            >
+              <ButlerInput
+                id="idp-client-id"
+                value={clientID}
+                onChange={e => setClientID(e.target.value)}
+                placeholder="your-client-id"
+              />
+            </ButlerField>
+            <ButlerField
+              label="Client Secret"
+              required
+              htmlFor="idp-client-secret"
+              help="OAuth2 Client Secret (stored securely as a Kubernetes Secret)"
+            >
+              <ButlerInput
+                id="idp-client-secret"
+                type="password"
+                value={clientSecret}
+                onChange={e => setClientSecret(e.target.value)}
+                placeholder="••••••••••••••••"
+              />
+            </ButlerField>
+            <ButlerField
+              label="Redirect URL"
+              required
+              htmlFor="idp-redirect"
+              help="Must match the redirect URI in your identity provider settings"
+            >
+              <ButlerInput
+                id="idp-redirect"
+                value={redirectURL}
+                onChange={e => setRedirectURL(e.target.value)}
+                placeholder="https://butler.example.com/api/auth/callback"
+              />
+            </ButlerField>
+            {selectedPreset === 'google' && (
+              <ButlerField
+                label="Hosted Domain (Optional)"
+                htmlFor="idp-hosted-domain"
+                help="Restrict login to a specific Google Workspace domain"
+              >
+                <ButlerInput
+                  id="idp-hosted-domain"
+                  value={hostedDomain}
+                  onChange={e => setHostedDomain(e.target.value)}
+                  placeholder="example.com"
+                />
+              </ButlerField>
+            )}
+          </ButlerFormSection>
+
+          <ButlerFormSection
+            title="Advanced Options"
+            uppercase
+            collapsible
+            bordered
+          >
+            <ButlerField
+              label="Scopes"
+              htmlFor="idp-scopes"
+              help="Comma-separated OAuth2 scopes to request"
+            >
+              <ButlerInput
+                id="idp-scopes"
+                value={scopes}
+                onChange={e => setScopes(e.target.value)}
+                placeholder="openid, email, profile"
+              />
+            </ButlerField>
+            <ButlerField
+              label="Groups Claim"
+              htmlFor="idp-groups-claim"
+              help="JWT claim containing group memberships (leave empty to disable)"
+            >
+              <ButlerInput
+                id="idp-groups-claim"
+                value={groupsClaim}
+                onChange={e => setGroupsClaim(e.target.value)}
+                placeholder="groups"
+              />
+            </ButlerField>
+            <ButlerField
+              label="Email Claim"
+              htmlFor="idp-email-claim"
+              help="JWT claim containing the user's email"
+            >
+              <ButlerInput
+                id="idp-email-claim"
+                value={emailClaim}
+                onChange={e => setEmailClaim(e.target.value)}
+                placeholder="email"
+              />
+            </ButlerField>
+          </ButlerFormSection>
+
+          <ButlerFormFooter>
+            <ButlerButton
+              variant="secondary"
+              onClick={goBack}
+              disabled={creating}
+            >
+              Cancel
+            </ButlerButton>
+            <ButlerButton type="submit" disabled={creating}>
+              {creating ? 'Creating...' : 'Create Provider'}
+            </ButlerButton>
+          </ButlerFormFooter>
+        </ButlerCard>
+      </form>
+    </ButlerStack>
   );
 };

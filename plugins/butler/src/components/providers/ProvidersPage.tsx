@@ -1,142 +1,339 @@
 // Copyright 2026 The Butler Authors.
 // SPDX-License-Identifier: Apache-2.0
 
-import { useEffect, useState, useCallback } from 'react';
+import { useCallback, useEffect, useState } from 'react';
+import type { MouseEvent } from 'react';
 import { Link as RouterLink } from 'react-router-dom';
-import { useApi } from '@backstage/core-plugin-api';
-import {
-  Table,
-  TableColumn,
-  Progress,
-  EmptyState,
-} from '@backstage/core-components';
-import {
-  Grid,
-  Typography,
-  Button,
-  Box,
-  Chip,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
-  List,
-  ListItem,
-  ListItemText,
-  Divider,
-  makeStyles,
-} from '@material-ui/core';
-import AddIcon from '@material-ui/icons/Add';
-import RefreshIcon from '@material-ui/icons/Refresh';
+import { alertApiRef, useApi } from '@backstage/core-plugin-api';
+import { makeStyles } from '@material-ui/core/styles';
+import clsx from 'clsx';
 
 import { butlerApiRef } from '../../api/ButlerApi';
-import { StatusBadge } from '../StatusBadge/StatusBadge';
-import type { Provider } from '../../api/types/providers';
+import type {
+  NetworkInfo,
+  Provider,
+  ValidateResponse,
+} from '../../api/types/providers';
 import { useButlerRoutes } from '../../hooks/useButlerRoutes';
+import { useTeamContext } from '../../hooks/useTeamContext';
+import { butlerTokens, rgb, rgba } from '../../theme';
+import {
+  ButlerButton,
+  ButlerCard,
+  ButlerChip,
+  ButlerDialog,
+  ButlerErrorState,
+  ButlerLoading,
+  ButlerPageHeader,
+  ButlerSpinner,
+  ButlerStack,
+  PlusIcon,
+} from '../ui';
+import { ButlerInsetPanel } from '../ui/ButlerFormSection';
+import { ArchiveIcon, TrashIcon } from '../ui/formIcons';
+import { ProviderIcon } from './ProviderIcon';
 
-const useStyles = makeStyles(theme => ({
-  headerActions: {
-    display: 'flex',
-    gap: theme.spacing(1),
-    marginBottom: theme.spacing(2),
-  },
-  providerLink: {
-    textDecoration: 'none',
-    color: 'inherit',
-    fontWeight: 600,
-    cursor: 'pointer',
-    '&:hover': {
-      textDecoration: 'underline',
+const useStyles = makeStyles(theme => {
+  const t = butlerTokens(theme);
+  const p = t.palette;
+  return {
+    list: {
+      display: 'grid',
+      gap: 16,
+      margin: 0,
+      padding: 0,
+      listStyle: 'none',
     },
-  },
-  typeChip: {
-    textTransform: 'capitalize',
-  },
-  dialogField: {
-    padding: theme.spacing(0.5, 0),
-  },
-  dialogLabel: {
-    color: theme.palette.text.secondary,
-    fontWeight: 500,
-  },
-  dialogValue: {
-    fontWeight: 400,
-  },
-  validatedBadge: {
-    color: '#4caf50',
-  },
-  notValidatedBadge: {
-    color: theme.palette.text.secondary,
-  },
-}));
+    card: {
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      gap: 16,
+      flexWrap: 'wrap',
+    },
+    identity: {
+      display: 'flex',
+      alignItems: 'center',
+      gap: 16,
+      minWidth: 0,
+    },
+    nameRow: {
+      display: 'flex',
+      alignItems: 'center',
+      gap: 8,
+      flexWrap: 'wrap',
+    },
+    name: {
+      margin: 0,
+      fontSize: 16,
+      lineHeight: '24px',
+      fontWeight: 500,
+      color: t.text.primary,
+    },
+    namespace: {
+      margin: 0,
+      fontSize: 14,
+      lineHeight: '20px',
+      color: t.text.muted,
+    },
+    // Console renders the type chip in untokenized Tailwind purple; the
+    // violet token is the closest themed equivalent.
+    typeChip: {
+      backgroundColor: rgba(p.violet[500], 0.1),
+      color: rgb(p.violet[400]),
+      textTransform: 'capitalize',
+      padding: '2px 8px',
+    },
+    stats: {
+      display: 'flex',
+      alignItems: 'center',
+      gap: 24,
+      flexWrap: 'wrap',
+    },
+    stat: { textAlign: 'right' },
+    statLabel: {
+      margin: 0,
+      fontSize: 12,
+      lineHeight: '16px',
+      letterSpacing: '0.025em',
+      textTransform: 'uppercase',
+      color: t.text.subtle,
+    },
+    statValue: {
+      margin: 0,
+      fontSize: 14,
+      lineHeight: '20px',
+      color: t.text.secondary,
+    },
+    mono: {
+      fontFamily: t.fontMono,
+      maxWidth: 200,
+      overflow: 'hidden',
+      textOverflow: 'ellipsis',
+      whiteSpace: 'nowrap',
+    },
+    valid: { color: rgb(p.green[400]) },
+    invalid: { color: rgb(p.red[400]) },
+    actions: {
+      display: 'flex',
+      alignItems: 'center',
+      gap: 8,
+    },
+    deleteButton: {
+      color: t.text.subtle,
+      '&:hover': {
+        color: rgb(p.red[400]),
+        backgroundColor: rgba(p.red[500], 0.1),
+      },
+    },
+    emptyIcon: {
+      width: 48,
+      height: 48,
+      borderRadius: '50%',
+      backgroundColor: rgb(p.neutral[800]),
+      color: t.text.subtle,
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      margin: '0 auto 16px',
+    },
+    emptyCard: { textAlign: 'center', padding: 32 },
+    emptyTitle: {
+      margin: '0 0 8px',
+      fontSize: 18,
+      lineHeight: '28px',
+      fontWeight: 500,
+      color: t.text.secondary,
+    },
+    emptyText: {
+      margin: '0 0 16px',
+      fontSize: 16,
+      lineHeight: '24px',
+      color: t.text.muted,
+    },
+    detail: {
+      display: 'flex',
+      flexDirection: 'column',
+      gap: 24,
+    },
+    sectionTitle: {
+      margin: '0 0 12px',
+      fontSize: 14,
+      lineHeight: '20px',
+      fontWeight: 500,
+      color: t.text.muted,
+    },
+    infoGrid: {
+      display: 'grid',
+      gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
+      gap: 16,
+    },
+    infoLabel: {
+      margin: 0,
+      fontSize: 12,
+      lineHeight: '16px',
+      color: t.text.subtle,
+    },
+    infoValue: {
+      margin: 0,
+      fontSize: 14,
+      lineHeight: '20px',
+      fontFamily: t.fontMono,
+      color: t.text.secondary,
+      overflowWrap: 'anywhere',
+    },
+    subtle: {
+      margin: 0,
+      fontSize: 14,
+      lineHeight: '20px',
+      color: t.text.subtle,
+    },
+    conditions: { display: 'flex', flexDirection: 'column', gap: 8 },
+    condition: {
+      padding: 12,
+      borderRadius: t.radius.lg,
+      border: `1px solid ${t.borderStrong}`,
+      backgroundColor: t.inset,
+    },
+    conditionTrue: {
+      borderColor: rgba(p.green[500], 0.2),
+      backgroundColor: rgba(p.green[500], 0.05),
+    },
+    conditionFalse: {
+      borderColor: rgba(p.red[500], 0.2),
+      backgroundColor: rgba(p.red[500], 0.05),
+    },
+    conditionRow: {
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      gap: 8,
+    },
+    conditionHead: { display: 'flex', alignItems: 'center', gap: 8 },
+    conditionType: {
+      fontSize: 14,
+      lineHeight: '20px',
+      fontWeight: 500,
+      color: t.text.secondary,
+    },
+    conditionReason: {
+      fontSize: 12,
+      lineHeight: '16px',
+      color: t.text.subtle,
+    },
+    conditionMessage: {
+      margin: '4px 0 0',
+      fontSize: 12,
+      lineHeight: '16px',
+      color: t.text.muted,
+    },
+    networks: { display: 'flex', flexDirection: 'column', gap: 8 },
+    network: {
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      gap: 12,
+      padding: 12,
+      borderRadius: t.radius.lg,
+      border: `1px solid ${t.borderStrong}`,
+      backgroundColor: t.inset,
+    },
+    networkName: {
+      margin: 0,
+      fontSize: 14,
+      lineHeight: '20px',
+      fontFamily: t.fontMono,
+      color: t.text.secondary,
+    },
+    networkDescription: {
+      margin: 0,
+      fontSize: 12,
+      lineHeight: '16px',
+      color: t.text.subtle,
+    },
+    vlan: {
+      backgroundColor: rgb(p.neutral[700]),
+      color: rgb(p.neutral[300]),
+      padding: '2px 8px',
+    },
+    loadingRow: {
+      display: 'flex',
+      alignItems: 'center',
+      gap: 8,
+      fontSize: 14,
+      color: t.text.subtle,
+    },
+    deleteText: {
+      margin: 0,
+      fontSize: 16,
+      lineHeight: '24px',
+      color: rgb(p.neutral[300]),
+    },
+    deleteName: {
+      fontFamily: t.fontMono,
+      fontWeight: 600,
+      color: rgb(p.red[400]),
+    },
+    deleteHint: {
+      margin: 0,
+      fontSize: 14,
+      lineHeight: '20px',
+      color: t.text.subtle,
+    },
+  };
+});
 
-function getProviderTypeColor(
-  provider: string,
-): 'primary' | 'secondary' | 'default' {
-  switch (provider?.toLowerCase()) {
-    case 'harvester':
-      return 'primary';
-    case 'nutanix':
-      return 'secondary';
-    case 'proxmox':
-      return 'default';
-    default:
-      return 'default';
-  }
+const providerKey = (p: Provider) =>
+  `${p.metadata.namespace}/${p.metadata.name}`;
+
+function formatAge(createdAt?: string): string {
+  if (!createdAt) return 'Unknown';
+  const diffMs = Date.now() - new Date(createdAt).getTime();
+  const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+  if (diffDays > 0) return `${diffDays}d ago`;
+  const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
+  if (diffHours > 0) return `${diffHours}h ago`;
+  return 'Just now';
 }
 
-function getProviderStatus(provider: Provider): string {
-  if (provider.status?.validated === true) {
-    return 'Ready';
+function getEndpoint(provider: Provider): string {
+  if (provider.spec.credentialsRef?.name) {
+    return `Secret: ${provider.spec.credentialsRef.name}`;
   }
-  if (provider.status?.validated === false) {
-    return 'Failed';
+  if (provider.spec.nutanix?.endpoint) {
+    const port = provider.spec.nutanix.port || 9440;
+    return `${provider.spec.nutanix.endpoint}:${port}`;
   }
-  // Check conditions
-  const readyCondition = provider.status?.conditions?.find(
-    c => c.type === 'Ready',
-  );
-  if (readyCondition) {
-    return readyCondition.status === 'True' ? 'Ready' : 'Failed';
-  }
-  return 'Unknown';
-}
-
-interface ProviderRow {
-  id: string;
-  name: string;
-  namespace: string;
-  type: string;
-  status: string;
-  validated: boolean | undefined;
-  lastValidation: string;
-  provider: Provider;
+  if (provider.spec.proxmox?.endpoint) return provider.spec.proxmox.endpoint;
+  return 'N/A';
 }
 
 export const ProvidersPage = () => {
   const classes = useStyles();
   const api = useApi(butlerApiRef);
+  const alertApi = useApi(alertApiRef);
   const routes = useButlerRoutes();
+  const { isAdmin: canMutate } = useTeamContext();
 
   const [providers, setProviders] = useState<Provider[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-
-  // Detail dialog state
-  const [detailProvider, setDetailProvider] = useState<Provider | null>(null);
-  const [detailOpen, setDetailOpen] = useState(false);
+  const [validating, setValidating] = useState<string | null>(null);
+  const [validationResults, setValidationResults] = useState<
+    Record<string, ValidateResponse>
+  >({});
+  const [selected, setSelected] = useState<Provider | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<Provider | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   const loadProviders = useCallback(async () => {
     setLoading(true);
     setError(null);
-
     try {
       const response = await api.listProviders();
       setProviders(response.providers ?? []);
     } catch (err) {
-      setError(
-        err instanceof Error ? err.message : 'Failed to load providers',
-      );
+      setError(err instanceof Error ? err.message : 'Failed to load providers');
     } finally {
       setLoading(false);
     }
@@ -146,426 +343,565 @@ export const ProvidersPage = () => {
     loadProviders();
   }, [loadProviders]);
 
-  const handleOpenDetail = (provider: Provider) => {
-    setDetailProvider(provider);
-    setDetailOpen(true);
+  const handleValidate = async (provider: Provider, e?: MouseEvent) => {
+    e?.stopPropagation();
+    const key = providerKey(provider);
+    setValidating(key);
+    try {
+      const result = await api.validateProvider(
+        provider.metadata.namespace,
+        provider.metadata.name,
+      );
+      setValidationResults(prev => ({ ...prev, [key]: result }));
+      alertApi.post({
+        message: result.valid
+          ? `Connection Valid: ${result.message}`
+          : `Connection Failed: ${result.message}`,
+        severity: result.valid ? 'success' : 'error',
+        display: 'transient',
+      });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Validation failed';
+      setValidationResults(prev => ({
+        ...prev,
+        [key]: { valid: false, message },
+      }));
+      alertApi.post({
+        message: `Validation Error: ${message}`,
+        severity: 'error',
+        display: 'transient',
+      });
+    } finally {
+      setValidating(null);
+    }
   };
 
-  const handleCloseDetail = () => {
-    setDetailOpen(false);
-    setDetailProvider(null);
+  const handleDelete = async () => {
+    if (!deleteTarget) return;
+    setDeleting(true);
+    try {
+      await api.deleteProvider(
+        deleteTarget.metadata.namespace,
+        deleteTarget.metadata.name,
+      );
+      alertApi.post({
+        message: `Provider Deleted: ${deleteTarget.metadata.name} has been deleted`,
+        severity: 'success',
+        display: 'transient',
+      });
+      setProviders(prev =>
+        prev.filter(p => providerKey(p) !== providerKey(deleteTarget)),
+      );
+      setDeleteTarget(null);
+    } catch (err) {
+      alertApi.post({
+        message: `Delete Failed: ${
+          err instanceof Error ? err.message : 'Failed to delete provider'
+        }`,
+        severity: 'error',
+        display: 'transient',
+      });
+    } finally {
+      setDeleting(false);
+    }
   };
 
-  const columns: TableColumn<ProviderRow>[] = [
-    {
-      title: 'Name',
-      field: 'name',
-      render: (row: ProviderRow) => (
-        <Typography
-          variant="body2"
-          className={classes.providerLink}
-          onClick={() => handleOpenDetail(row.provider)}
-        >
-          {row.name}
-        </Typography>
-      ),
-    },
-    {
-      title: 'Namespace',
-      field: 'namespace',
-    },
-    {
-      title: 'Type',
-      field: 'type',
-      render: (row: ProviderRow) => (
-        <Chip
-          size="small"
-          label={row.type}
-          color={getProviderTypeColor(row.type)}
-          className={classes.typeChip}
-        />
-      ),
-    },
-    {
-      title: 'Status',
-      field: 'status',
-      render: (row: ProviderRow) => <StatusBadge status={row.status} />,
-    },
-    {
-      title: 'Last Validated',
-      field: 'lastValidation',
-      render: (row: ProviderRow) => (
-        <Typography variant="body2">
-          {row.lastValidation || '-'}
-        </Typography>
-      ),
-    },
-  ];
-
-  const tableData: ProviderRow[] = providers.map(p => ({
-    id: `${p.metadata.namespace}/${p.metadata.name}`,
-    name: p.metadata.name,
-    namespace: p.metadata.namespace,
-    type: p.spec.provider,
-    status: getProviderStatus(p),
-    validated: p.status?.validated,
-    lastValidation: p.status?.lastValidationTime
-      ? new Date(p.status.lastValidationTime).toLocaleString()
-      : '',
-    provider: p,
-  }));
-
-  if (loading) {
-    return <Progress />;
-  }
+  if (loading) return <ButlerLoading />;
 
   if (error) {
-    return (
-      <Box p={2}>
-        <Typography color="error" variant="h6">
-          Failed to load providers
-        </Typography>
-        <Typography variant="body2" color="error">
-          {error}
-        </Typography>
-      </Box>
-    );
+    return <ButlerErrorState message={error} onRetry={loadProviders} />;
   }
+
+  const addButton = (
+    <ButlerButton
+      component={RouterLink}
+      to={routes.adminCreateProvider()}
+      startIcon={<PlusIcon />}
+    >
+      Add Provider
+    </ButlerButton>
+  );
 
   return (
     <>
-      <Grid container spacing={3}>
-        {/* Actions */}
-        <Grid item xs={12}>
-          <Box className={classes.headerActions}>
-            <Button
-              variant="contained"
-              color="primary"
-              startIcon={<AddIcon />}
-              component={RouterLink}
-              to={routes.adminCreateProvider()}
-            >
-              Create Provider
-            </Button>
-            <Button
-              variant="outlined"
-              startIcon={<RefreshIcon />}
-              onClick={loadProviders}
-            >
-              Refresh
-            </Button>
-          </Box>
-        </Grid>
+      <ButlerStack>
+        <ButlerPageHeader
+          title="Providers"
+          subtitle="Infrastructure provider configurations for cluster provisioning"
+          actions={canMutate ? addButton : undefined}
+        />
 
-        {/* Providers Table */}
-        <Grid item xs={12}>
-          {providers.length === 0 ? (
-            <EmptyState
-              title="No providers configured"
-              description="Configure an infrastructure provider to start provisioning clusters."
-              missing="content"
-              action={
-                <Button
-                  variant="contained"
-                  color="primary"
-                  startIcon={<AddIcon />}
-                  component={RouterLink}
-                  to={routes.adminCreateProvider()}
-                >
-                  Create Provider
-                </Button>
-              }
-            />
-          ) : (
-            <Table
-              columns={columns}
-              data={tableData}
-              title={`Providers (${providers.length})`}
-              options={{
-                paging: tableData.length > 20,
-                pageSize: 20,
-                search: tableData.length > 5,
-                padding: 'dense',
-              }}
-            />
-          )}
-        </Grid>
-      </Grid>
+        {providers.length === 0 ? (
+          <ButlerCard flush className={classes.emptyCard}>
+            <div className={classes.emptyIcon}>
+              <ArchiveIcon />
+            </div>
+            <h3 className={classes.emptyTitle}>No Providers</h3>
+            <p className={classes.emptyText}>
+              Get started by adding your first infrastructure provider.
+            </p>
+            {canMutate && (
+              <ButlerButton
+                component={RouterLink}
+                to={routes.adminCreateProvider()}
+              >
+                Add Provider
+              </ButlerButton>
+            )}
+          </ButlerCard>
+        ) : (
+          <ul className={classes.list} aria-label="Providers">
+            {providers.map(provider => {
+              const key = providerKey(provider);
+              return (
+                <li key={provider.metadata.uid ?? key}>
+                  <ProviderCard
+                    provider={provider}
+                    canMutate={canMutate}
+                    isValidating={validating === key}
+                    validationResult={validationResults[key]}
+                    onClick={() => setSelected(provider)}
+                    onValidate={e => handleValidate(provider, e)}
+                    onDelete={e => {
+                      e.stopPropagation();
+                      setDeleteTarget(provider);
+                    }}
+                  />
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </ButlerStack>
 
-      {/* Provider Detail Dialog */}
-      <Dialog
-          open={detailOpen}
-          onClose={handleCloseDetail}
-          maxWidth="sm"
-          fullWidth
-        >
-          {detailProvider && (
+      <ButlerDialog
+        open={!!selected}
+        onClose={() => setSelected(null)}
+        width={512}
+        title={selected?.metadata.name ?? ''}
+        subtitle={selected?.metadata.namespace}
+        icon={
+          selected ? (
+            <ProviderIcon type={selected.spec.provider} tile />
+          ) : undefined
+        }
+        footer={
+          <>
+            <ButlerButton variant="secondary" onClick={() => setSelected(null)}>
+              Close
+            </ButlerButton>
+            {canMutate && selected && (
+              <ButlerButton
+                variant="danger"
+                onClick={() => {
+                  setDeleteTarget(selected);
+                  setSelected(null);
+                }}
+              >
+                Delete
+              </ButlerButton>
+            )}
+          </>
+        }
+      >
+        {selected && (
+          <ProviderDetail
+            provider={selected}
+            canMutate={canMutate}
+            isValidating={validating === providerKey(selected)}
+            validationResult={validationResults[providerKey(selected)]}
+            onValidate={() => handleValidate(selected)}
+          />
+        )}
+      </ButlerDialog>
+
+      {canMutate && (
+        <ButlerDialog
+          open={!!deleteTarget}
+          onClose={() => setDeleteTarget(null)}
+          busy={deleting}
+          title="Delete Provider"
+          subtitle="This action cannot be undone"
+          icon={<TrashIcon />}
+          iconTone="danger"
+          footer={
             <>
-              <DialogTitle>
-                {detailProvider.metadata.name}
-              </DialogTitle>
-              <DialogContent>
-                <List disablePadding>
-                  <ListItem disableGutters className={classes.dialogField}>
-                    <ListItemText
-                      primary={
-                        <Typography
-                          variant="caption"
-                          className={classes.dialogLabel}
-                        >
-                          Name
-                        </Typography>
-                      }
-                      secondary={
-                        <Typography
-                          variant="body1"
-                          className={classes.dialogValue}
-                        >
-                          {detailProvider.metadata.name}
-                        </Typography>
-                      }
-                    />
-                  </ListItem>
-                  <Divider />
-                  <ListItem disableGutters className={classes.dialogField}>
-                    <ListItemText
-                      primary={
-                        <Typography
-                          variant="caption"
-                          className={classes.dialogLabel}
-                        >
-                          Namespace
-                        </Typography>
-                      }
-                      secondary={
-                        <Typography
-                          variant="body1"
-                          className={classes.dialogValue}
-                        >
-                          {detailProvider.metadata.namespace}
-                        </Typography>
-                      }
-                    />
-                  </ListItem>
-                  <Divider />
-                  <ListItem disableGutters className={classes.dialogField}>
-                    <ListItemText
-                      primary={
-                        <Typography
-                          variant="caption"
-                          className={classes.dialogLabel}
-                        >
-                          Provider Type
-                        </Typography>
-                      }
-                      secondary={
-                        <Chip
-                          size="small"
-                          label={detailProvider.spec.provider}
-                          color={getProviderTypeColor(
-                            detailProvider.spec.provider,
-                          )}
-                          className={classes.typeChip}
-                        />
-                      }
-                    />
-                  </ListItem>
-                  <Divider />
-                  <ListItem disableGutters className={classes.dialogField}>
-                    <ListItemText
-                      primary={
-                        <Typography
-                          variant="caption"
-                          className={classes.dialogLabel}
-                        >
-                          Validated
-                        </Typography>
-                      }
-                      secondary={
-                        <StatusBadge
-                          status={getProviderStatus(detailProvider)}
-                        />
-                      }
-                    />
-                  </ListItem>
-                  {detailProvider.status?.lastValidationTime && (
-                    <>
-                      <Divider />
-                      <ListItem
-                        disableGutters
-                        className={classes.dialogField}
-                      >
-                        <ListItemText
-                          primary={
-                            <Typography
-                              variant="caption"
-                              className={classes.dialogLabel}
-                            >
-                              Last Validated
-                            </Typography>
-                          }
-                          secondary={
-                            <Typography
-                              variant="body1"
-                              className={classes.dialogValue}
-                            >
-                              {new Date(
-                                detailProvider.status.lastValidationTime,
-                              ).toLocaleString()}
-                            </Typography>
-                          }
-                        />
-                      </ListItem>
-                    </>
-                  )}
-                  {detailProvider.spec.credentialsRef && (
-                    <>
-                      <Divider />
-                      <ListItem
-                        disableGutters
-                        className={classes.dialogField}
-                      >
-                        <ListItemText
-                          primary={
-                            <Typography
-                              variant="caption"
-                              className={classes.dialogLabel}
-                            >
-                              Credentials Secret
-                            </Typography>
-                          }
-                          secondary={
-                            <Typography
-                              variant="body1"
-                              className={classes.dialogValue}
-                            >
-                              {detailProvider.spec.credentialsRef.namespace
-                                ? `${detailProvider.spec.credentialsRef.namespace}/`
-                                : ''}
-                              {detailProvider.spec.credentialsRef.name}
-                            </Typography>
-                          }
-                        />
-                      </ListItem>
-                    </>
-                  )}
-                  {/* Nutanix-specific */}
-                  {detailProvider.spec.nutanix?.endpoint && (
-                    <>
-                      <Divider />
-                      <ListItem
-                        disableGutters
-                        className={classes.dialogField}
-                      >
-                        <ListItemText
-                          primary={
-                            <Typography
-                              variant="caption"
-                              className={classes.dialogLabel}
-                            >
-                              Nutanix Endpoint
-                            </Typography>
-                          }
-                          secondary={
-                            <Typography
-                              variant="body1"
-                              className={classes.dialogValue}
-                            >
-                              {detailProvider.spec.nutanix.endpoint}
-                              {detailProvider.spec.nutanix.port
-                                ? `:${detailProvider.spec.nutanix.port}`
-                                : ''}
-                            </Typography>
-                          }
-                        />
-                      </ListItem>
-                    </>
-                  )}
-                  {/* Proxmox-specific */}
-                  {detailProvider.spec.proxmox?.endpoint && (
-                    <>
-                      <Divider />
-                      <ListItem
-                        disableGutters
-                        className={classes.dialogField}
-                      >
-                        <ListItemText
-                          primary={
-                            <Typography
-                              variant="caption"
-                              className={classes.dialogLabel}
-                            >
-                              Proxmox Endpoint
-                            </Typography>
-                          }
-                          secondary={
-                            <Typography
-                              variant="body1"
-                              className={classes.dialogValue}
-                            >
-                              {detailProvider.spec.proxmox.endpoint}
-                            </Typography>
-                          }
-                        />
-                      </ListItem>
-                    </>
-                  )}
-                  {/* Conditions */}
-                  {detailProvider.status?.conditions &&
-                    detailProvider.status.conditions.length > 0 && (
-                      <>
-                        <Divider />
-                        <ListItem
-                          disableGutters
-                          className={classes.dialogField}
-                        >
-                          <ListItemText
-                            primary={
-                              <Typography
-                                variant="caption"
-                                className={classes.dialogLabel}
-                              >
-                                Conditions
-                              </Typography>
-                            }
-                            secondary={
-                              <Box mt={0.5}>
-                                {detailProvider.status.conditions.map(
-                                  (cond, idx) => (
-                                    <Box key={idx} mb={0.5}>
-                                      <StatusBadge
-                                        status={
-                                          cond.status === 'True'
-                                            ? 'Ready'
-                                            : 'Failed'
-                                        }
-                                      />
-                                      {cond.message && (
-                                        <Typography
-                                          variant="caption"
-                                          display="block"
-                                          color="textSecondary"
-                                        >
-                                          {cond.message}
-                                        </Typography>
-                                      )}
-                                    </Box>
-                                  ),
-                                )}
-                              </Box>
-                            }
-                          />
-                        </ListItem>
-                      </>
-                    )}
-                </List>
-              </DialogContent>
-              <DialogActions>
-                <Button onClick={handleCloseDetail}>Close</Button>
-              </DialogActions>
+              <ButlerButton
+                variant="secondary"
+                onClick={() => setDeleteTarget(null)}
+                disabled={deleting}
+              >
+                Cancel
+              </ButlerButton>
+              <ButlerButton
+                variant="danger"
+                onClick={handleDelete}
+                disabled={deleting}
+              >
+                {deleting ? 'Deleting...' : 'Delete Provider'}
+              </ButlerButton>
             </>
-          )}
-      </Dialog>
+          }
+        >
+          <p className={classes.deleteText}>
+            Are you sure you want to delete provider{' '}
+            <span className={classes.deleteName}>
+              {deleteTarget?.metadata.name}
+            </span>
+            ?
+          </p>
+          <p className={classes.deleteHint}>
+            This will also delete the associated credentials secret. Any
+            clusters using this provider will not be affected.
+          </p>
+        </ButlerDialog>
+      )}
     </>
+  );
+};
+
+interface ProviderCardProps {
+  provider: Provider;
+  canMutate: boolean;
+  isValidating: boolean;
+  validationResult?: ValidateResponse;
+  onClick: () => void;
+  onValidate: (e: MouseEvent) => void;
+  onDelete: (e: MouseEvent) => void;
+}
+
+const ProviderCard = ({
+  provider,
+  canMutate,
+  isValidating,
+  validationResult,
+  onClick,
+  onValidate,
+  onDelete,
+}: ProviderCardProps) => {
+  const classes = useStyles();
+  const type = provider.spec.provider || 'unknown';
+  return (
+    <ButlerCard
+      hoverable
+      className={classes.card}
+      role="button"
+      tabIndex={0}
+      aria-label={`${provider.metadata.name} details`}
+      onClick={onClick}
+      onKeyDown={e => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          onClick();
+        }
+      }}
+    >
+      <div className={classes.identity}>
+        <ProviderIcon type={type} tile />
+        <div>
+          <div className={classes.nameRow}>
+            <p className={classes.name}>{provider.metadata.name}</p>
+            <ButlerChip className={classes.typeChip}>{type}</ButlerChip>
+          </div>
+          <p className={classes.namespace}>{provider.metadata.namespace}</p>
+        </div>
+      </div>
+
+      <div className={classes.stats}>
+        <div className={classes.stat}>
+          <p className={classes.statLabel}>Endpoint</p>
+          <p
+            className={clsx(classes.statValue, classes.mono)}
+            title={getEndpoint(provider)}
+          >
+            {getEndpoint(provider)}
+          </p>
+        </div>
+        <div className={classes.stat}>
+          <p className={classes.statLabel}>Age</p>
+          <p className={classes.statValue}>
+            {formatAge(provider.metadata.creationTimestamp)}
+          </p>
+        </div>
+        {validationResult && (
+          <div className={classes.stat}>
+            <p className={classes.statLabel}>Status</p>
+            <p
+              className={clsx(
+                classes.statValue,
+                validationResult.valid ? classes.valid : classes.invalid,
+              )}
+            >
+              {validationResult.valid ? 'Valid' : 'Invalid'}
+            </p>
+          </div>
+        )}
+        {canMutate && (
+          <div className={classes.actions}>
+            <ButlerButton
+              variant="secondary"
+              onClick={onValidate}
+              disabled={isValidating}
+            >
+              {isValidating ? 'Testing...' : 'Test'}
+            </ButlerButton>
+            <ButlerButton
+              variant="ghost"
+              className={classes.deleteButton}
+              onClick={onDelete}
+              title="Delete provider"
+              aria-label={`Delete provider ${provider.metadata.name}`}
+              style={{ padding: 8 }}
+            >
+              <TrashIcon />
+            </ButlerButton>
+          </div>
+        )}
+      </div>
+    </ButlerCard>
+  );
+};
+
+const InfoRow = ({ label, value }: { label: string; value: string }) => {
+  const classes = useStyles();
+  return (
+    <div>
+      <p className={classes.infoLabel}>{label}</p>
+      <p className={classes.infoValue}>{value}</p>
+    </div>
+  );
+};
+
+interface ProviderDetailProps {
+  provider: Provider;
+  canMutate: boolean;
+  isValidating: boolean;
+  validationResult?: ValidateResponse;
+  onValidate: () => void;
+}
+
+const ProviderDetail = ({
+  provider,
+  canMutate,
+  isValidating,
+  validationResult,
+  onValidate,
+}: ProviderDetailProps) => {
+  const classes = useStyles();
+  const api = useApi(butlerApiRef);
+  const type = provider.spec.provider;
+  const [networks, setNetworks] = useState<NetworkInfo[]>([]);
+  const [networksLoading, setNetworksLoading] = useState(false);
+  const [networksError, setNetworksError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    setNetworksLoading(true);
+    setNetworksError(null);
+    api
+      .listProviderNetworks(provider.metadata.namespace, provider.metadata.name)
+      .then(res => {
+        if (!cancelled) setNetworks(res.networks ?? []);
+      })
+      .catch(err => {
+        if (!cancelled) {
+          setNetworksError(
+            err instanceof Error ? err.message : 'Failed to load networks',
+          );
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setNetworksLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [api, provider.metadata.namespace, provider.metadata.name]);
+
+  const lastValidated = provider.status?.lastValidationTime
+    ? new Date(provider.status.lastValidationTime).toLocaleString()
+    : undefined;
+
+  return (
+    <div className={classes.detail}>
+      <ButlerInsetPanel
+        title="Connection Status"
+        description={
+          validationResult ? (
+            <span
+              className={
+                validationResult.valid ? classes.valid : classes.invalid
+              }
+            >
+              {validationResult.message}
+            </span>
+          ) : (
+            'Not tested'
+          )
+        }
+        action={
+          canMutate ? (
+            <ButlerButton
+              variant="secondary"
+              onClick={onValidate}
+              disabled={isValidating}
+            >
+              {isValidating ? 'Testing...' : 'Test Connection'}
+            </ButlerButton>
+          ) : undefined
+        }
+      />
+
+      <div>
+        <h4 className={classes.sectionTitle}>Provider Details</h4>
+        <div className={classes.infoGrid}>
+          <InfoRow label="Type" value={type} />
+          <InfoRow label="Namespace" value={provider.metadata.namespace} />
+          <InfoRow
+            label="Created"
+            value={
+              provider.metadata.creationTimestamp
+                ? new Date(provider.metadata.creationTimestamp).toLocaleString()
+                : 'Unknown'
+            }
+          />
+          <InfoRow
+            label="Credentials"
+            value={provider.spec.credentialsRef?.name || 'None'}
+          />
+          {provider.status?.validated !== undefined && (
+            <InfoRow
+              label="Validated"
+              value={provider.status.validated ? 'Yes' : 'No'}
+            />
+          )}
+          {lastValidated && (
+            <InfoRow label="Last Validated" value={lastValidated} />
+          )}
+        </div>
+      </div>
+
+      {type === 'nutanix' && provider.spec.nutanix && (
+        <div>
+          <h4 className={classes.sectionTitle}>Nutanix Configuration</h4>
+          <div className={classes.infoGrid}>
+            <InfoRow
+              label="Endpoint"
+              value={provider.spec.nutanix.endpoint || 'N/A'}
+            />
+            <InfoRow
+              label="Port"
+              value={String(provider.spec.nutanix.port || 9440)}
+            />
+            <InfoRow
+              label="Insecure TLS"
+              value={provider.spec.nutanix.insecure ? 'Yes' : 'No'}
+            />
+          </div>
+        </div>
+      )}
+
+      {type === 'proxmox' && provider.spec.proxmox && (
+        <div>
+          <h4 className={classes.sectionTitle}>Proxmox Configuration</h4>
+          <div className={classes.infoGrid}>
+            <InfoRow
+              label="Endpoint"
+              value={provider.spec.proxmox.endpoint || 'N/A'}
+            />
+            <InfoRow
+              label="Insecure TLS"
+              value={provider.spec.proxmox.insecure ? 'Yes' : 'No'}
+            />
+          </div>
+        </div>
+      )}
+
+      {type === 'harvester' && (
+        <div>
+          <h4 className={classes.sectionTitle}>Harvester Configuration</h4>
+          <p className={classes.subtle}>Connection via kubeconfig</p>
+        </div>
+      )}
+
+      {provider.status?.conditions && provider.status.conditions.length > 0 && (
+        <div>
+          <h4 className={classes.sectionTitle}>Conditions</h4>
+          <div className={classes.conditions}>
+            {provider.status.conditions.map(condition => {
+              const tone =
+                condition.status === 'True'
+                  ? 'green'
+                  : condition.status === 'False'
+                  ? 'red'
+                  : 'neutral';
+              return (
+                <div
+                  key={condition.type}
+                  className={clsx(
+                    classes.condition,
+                    tone === 'green' && classes.conditionTrue,
+                    tone === 'red' && classes.conditionFalse,
+                  )}
+                >
+                  <div className={classes.conditionRow}>
+                    <div className={classes.conditionHead}>
+                      <ButlerChip tone={tone}>{condition.status}</ButlerChip>
+                      <span className={classes.conditionType}>
+                        {condition.type}
+                      </span>
+                    </div>
+                    {condition.reason && (
+                      <span className={classes.conditionReason}>
+                        {condition.reason}
+                      </span>
+                    )}
+                  </div>
+                  {condition.message && (
+                    <p className={classes.conditionMessage}>
+                      {condition.message}
+                    </p>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      <div>
+        <h4 className={classes.sectionTitle}>Provider Networks</h4>
+        {networksLoading ? (
+          <div className={classes.loadingRow}>
+            <ButlerSpinner small />
+            <span>Loading networks...</span>
+          </div>
+        ) : networksError ? (
+          <p className={classes.subtle}>{networksError}</p>
+        ) : networks.length === 0 ? (
+          <p className={classes.subtle}>No networks found</p>
+        ) : (
+          <div className={classes.networks}>
+            {networks.map(network => (
+              <div key={network.id || network.name} className={classes.network}>
+                <div>
+                  <p className={classes.networkName}>{network.name}</p>
+                  {network.description && (
+                    <p className={classes.networkDescription}>
+                      {network.description}
+                    </p>
+                  )}
+                </div>
+                {network.vlan !== undefined && (
+                  <ButlerChip className={classes.vlan}>
+                    VLAN {network.vlan}
+                  </ButlerChip>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
   );
 };

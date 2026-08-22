@@ -2,549 +2,562 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { useState } from 'react';
+import type { FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useApi } from '@backstage/core-plugin-api';
-import {
-  InfoCard,
-} from '@backstage/core-components';
-import {
-  Grid,
-  Typography,
-  Button,
-  TextField,
-  MenuItem,
-  Select,
-  FormControl,
-  InputLabel,
-  Box,
-  Chip,
-  makeStyles,
-  FormControlLabel,
-  Switch,
-} from '@material-ui/core';
-import CheckCircleIcon from '@material-ui/icons/CheckCircle';
-import ErrorIcon from '@material-ui/icons/Error';
-import NetworkCheckIcon from '@material-ui/icons/NetworkCheck';
-import SaveIcon from '@material-ui/icons/Save';
-import ArrowBackIcon from '@material-ui/icons/ArrowBack';
+import { alertApiRef, useApi } from '@backstage/core-plugin-api';
+import { makeStyles } from '@material-ui/core/styles';
 
 import { butlerApiRef } from '../../api/ButlerApi';
-import type { CreateProviderRequest } from '../../api/types/providers';
+import type {
+  CreateProviderRequest,
+  ValidateResponse,
+} from '../../api/types/providers';
+import { useButlerRoutes } from '../../hooks/useButlerRoutes';
+import { useTeamContext } from '../../hooks/useTeamContext';
+import { butlerTokens, rgb } from '../../theme';
+import {
+  ButlerButton,
+  ButlerCard,
+  ButlerEmptyState,
+  ButlerInput,
+  ButlerPageHeader,
+  ButlerSpinner,
+  ButlerStack,
+} from '../ui';
+import {
+  ButlerField,
+  ButlerFormFooter,
+  ButlerFormMessage,
+  ButlerFormSection,
+  ButlerInsetPanel,
+} from '../ui/ButlerFormSection';
+import {
+  ButlerCheckbox,
+  ButlerFileButton,
+  ButlerSegmented,
+  ButlerTextarea,
+} from '../ui/ButlerFormControls';
+import { ButlerRadioTile, ButlerRadioTileGroup } from '../ui/ButlerRadioTile';
+import { CheckIcon, XIcon } from '../ui/formIcons';
+import { ProviderIcon } from './ProviderIcon';
 
-type ProviderType = 'harvester' | 'nutanix' | 'proxmox';
+type ProviderType = CreateProviderRequest['provider'];
+type ProxmoxAuthType = 'password' | 'token';
 
-const useStyles = makeStyles(theme => ({
-  form: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: theme.spacing(2.5),
-  },
-  sectionTitle: {
-    marginTop: theme.spacing(2),
-    marginBottom: theme.spacing(1),
-    fontWeight: 600,
-  },
-  actions: {
-    display: 'flex',
-    gap: theme.spacing(1.5),
-    marginTop: theme.spacing(3),
-  },
-  backButton: {
-    textTransform: 'none',
-  },
-  testResultBox: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: theme.spacing(1),
-    padding: theme.spacing(1.5, 2),
-    borderRadius: theme.shape.borderRadius,
-    marginTop: theme.spacing(1),
-  },
-  testSuccess: {
-    backgroundColor: 'rgba(76, 175, 80, 0.08)',
-    border: '1px solid rgba(76, 175, 80, 0.3)',
-  },
-  testFailure: {
-    backgroundColor: 'rgba(244, 67, 54, 0.08)',
-    border: '1px solid rgba(244, 67, 54, 0.3)',
-  },
-  testIcon: {
-    fontSize: '1.25rem',
-  },
-  testSuccessIcon: {
-    color: '#4caf50',
-  },
-  testErrorIcon: {
-    color: '#f44336',
-  },
-  submitError: {
-    color: theme.palette.error.main,
-    marginTop: theme.spacing(1),
-  },
-  kubeconfigField: {
-    fontFamily: 'monospace',
-    fontSize: '0.8rem',
-  },
-}));
+const ON_PREM_TYPES: ProviderType[] = ['harvester', 'nutanix', 'proxmox'];
 
-interface TestResult {
-  success: boolean;
-  message: string;
-}
+const useStyles = makeStyles(theme => {
+  const t = butlerTokens(theme);
+  const p = t.palette;
+  return {
+    page: {
+      maxWidth: 576,
+      margin: '0 auto',
+    },
+    card: {
+      padding: 24,
+      display: 'flex',
+      flexDirection: 'column',
+      gap: 24,
+    },
+    groupLabel: {
+      display: 'block',
+      marginBottom: 8,
+      fontSize: 14,
+      lineHeight: '20px',
+      fontWeight: 500,
+      color: t.text.muted,
+    },
+    tileLabel: { textTransform: 'capitalize' },
+    grid2: {
+      display: 'grid',
+      gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
+      gap: 16,
+    },
+    grid3: {
+      display: 'grid',
+      gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
+      gap: 16,
+    },
+    span2: { gridColumn: 'span 2' },
+    result: { marginTop: 12 },
+    resultValid: { color: rgb(p.green[400]) },
+    resultInvalid: { color: rgb(p.red[400]) },
+    testingLabel: { display: 'inline-flex', alignItems: 'center', gap: 8 },
+  };
+});
 
 export const CreateProviderPage = () => {
   const classes = useStyles();
   const api = useApi(butlerApiRef);
+  const alertApi = useApi(alertApiRef);
   const navigate = useNavigate();
+  const routes = useButlerRoutes();
+  const { isAdmin: canMutate } = useTeamContext();
 
-  // Form state
+  const [providerType, setProviderType] = useState<ProviderType>('harvester');
   const [name, setName] = useState('');
   const [namespace, setNamespace] = useState('butler-system');
-  const [providerType, setProviderType] = useState<ProviderType>('harvester');
 
-  // Harvester fields
-  const [harvesterKubeconfig, setHarvesterKubeconfig] = useState('');
+  const [kubeconfig, setKubeconfig] = useState('');
 
-  // Nutanix fields
   const [nutanixEndpoint, setNutanixEndpoint] = useState('');
-  const [nutanixPort, setNutanixPort] = useState<number | ''>(9440);
+  const [nutanixPort, setNutanixPort] = useState(9440);
   const [nutanixUsername, setNutanixUsername] = useState('');
   const [nutanixPassword, setNutanixPassword] = useState('');
   const [nutanixInsecure, setNutanixInsecure] = useState(false);
 
-  // Proxmox fields
   const [proxmoxEndpoint, setProxmoxEndpoint] = useState('');
+  const [proxmoxAuthType, setProxmoxAuthType] =
+    useState<ProxmoxAuthType>('password');
+  const [proxmoxUsername, setProxmoxUsername] = useState('');
+  const [proxmoxPassword, setProxmoxPassword] = useState('');
   const [proxmoxTokenId, setProxmoxTokenId] = useState('');
   const [proxmoxTokenSecret, setProxmoxTokenSecret] = useState('');
   const [proxmoxInsecure, setProxmoxInsecure] = useState(false);
 
-  // Test connection state
   const [testing, setTesting] = useState(false);
-  const [testResult, setTestResult] = useState<TestResult | null>(null);
-
-  // Submit state
+  const [testResult, setTestResult] = useState<ValidateResponse | null>(null);
   const [submitting, setSubmitting] = useState(false);
-  const [submitError, setSubmitError] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
-  const buildRequest = (): CreateProviderRequest => {
+  const goBack = () => navigate(routes.adminProviders());
+
+  // Credential edits invalidate a previous test result, as in the console.
+  const credential =
+    <T,>(setter: (v: T) => void) =>
+    (v: T) => {
+      setter(v);
+      setTestResult(null);
+    };
+
+  const buildRequest = (): CreateProviderRequest | null => {
+    if (!name) {
+      setError('Provider name is required');
+      return null;
+    }
+    if (providerType === 'harvester' && !kubeconfig) {
+      setError('Kubeconfig is required for Harvester');
+      return null;
+    }
+    if (providerType === 'nutanix') {
+      if (!nutanixEndpoint) {
+        setError('Endpoint is required');
+        return null;
+      }
+      if (!nutanixUsername || !nutanixPassword) {
+        setError('Username and password are required');
+        return null;
+      }
+    }
+    if (providerType === 'proxmox') {
+      if (!proxmoxEndpoint) {
+        setError('Endpoint is required');
+        return null;
+      }
+      if (
+        proxmoxAuthType === 'password' &&
+        (!proxmoxUsername || !proxmoxPassword)
+      ) {
+        setError('Username and password are required');
+        return null;
+      }
+      if (
+        proxmoxAuthType === 'token' &&
+        (!proxmoxTokenId || !proxmoxTokenSecret)
+      ) {
+        setError('Token ID and secret are required');
+        return null;
+      }
+    }
+
     const request: CreateProviderRequest = {
       name: name.trim(),
       namespace: namespace.trim() || undefined,
       provider: providerType,
     };
-
-    switch (providerType) {
-      case 'harvester':
-        request.harvesterKubeconfig = harvesterKubeconfig.trim();
-        break;
-      case 'nutanix':
-        request.nutanixEndpoint = nutanixEndpoint.trim();
-        request.nutanixPort = nutanixPort !== '' ? nutanixPort : undefined;
-        request.nutanixUsername = nutanixUsername.trim();
-        request.nutanixPassword = nutanixPassword;
-        request.nutanixInsecure = nutanixInsecure;
-        break;
-      case 'proxmox':
-        request.proxmoxEndpoint = proxmoxEndpoint.trim();
+    if (providerType === 'harvester') {
+      request.harvesterKubeconfig = kubeconfig;
+    } else if (providerType === 'nutanix') {
+      request.nutanixEndpoint = nutanixEndpoint.trim();
+      request.nutanixPort = nutanixPort;
+      request.nutanixUsername = nutanixUsername.trim();
+      request.nutanixPassword = nutanixPassword;
+      request.nutanixInsecure = nutanixInsecure;
+    } else if (providerType === 'proxmox') {
+      request.proxmoxEndpoint = proxmoxEndpoint.trim();
+      request.proxmoxInsecure = proxmoxInsecure;
+      if (proxmoxAuthType === 'password') {
+        request.proxmoxUsername = proxmoxUsername.trim();
+        request.proxmoxPassword = proxmoxPassword;
+      } else {
         request.proxmoxTokenId = proxmoxTokenId.trim();
         request.proxmoxTokenSecret = proxmoxTokenSecret;
-        request.proxmoxInsecure = proxmoxInsecure;
-        break;
+      }
     }
-
     return request;
   };
 
-  const isFormValid = (): boolean => {
-    if (!name.trim()) return false;
-
-    switch (providerType) {
-      case 'harvester':
-        return !!harvesterKubeconfig.trim();
-      case 'nutanix':
-        return (
-          !!nutanixEndpoint.trim() &&
-          !!nutanixUsername.trim() &&
-          !!nutanixPassword
-        );
-      case 'proxmox':
-        return (
-          !!proxmoxEndpoint.trim() &&
-          !!proxmoxTokenId.trim() &&
-          !!proxmoxTokenSecret
-        );
-      default:
-        return false;
+  const canTest = () => {
+    if (providerType === 'harvester') return !!kubeconfig;
+    if (providerType === 'nutanix') {
+      return !!(nutanixEndpoint && nutanixUsername && nutanixPassword);
     }
+    if (!proxmoxEndpoint) return false;
+    if (proxmoxAuthType === 'password') {
+      return !!(proxmoxUsername && proxmoxPassword);
+    }
+    return !!(proxmoxTokenId && proxmoxTokenSecret);
   };
 
   const handleTestConnection = async () => {
-    setTesting(true);
+    setError(null);
     setTestResult(null);
-
+    const request = buildRequest();
+    if (!request) return;
+    setTesting(true);
     try {
-      const request = buildRequest();
       const result = await api.testProviderConnection(request);
-      setTestResult({
-        success: result.valid,
-        message: result.message,
+      setTestResult(result);
+      alertApi.post({
+        message: result.valid
+          ? `Connection Successful: ${result.message}`
+          : `Connection Failed: ${result.message}`,
+        severity: result.valid ? 'success' : 'error',
+        display: 'transient',
       });
     } catch (err) {
-      setTestResult({
-        success: false,
-        message:
-          err instanceof Error ? err.message : 'Connection test failed',
+      const message =
+        err instanceof Error ? err.message : 'Connection test failed';
+      setTestResult({ valid: false, message });
+      alertApi.post({
+        message: `Test Failed: ${message}`,
+        severity: 'error',
+        display: 'transient',
       });
     } finally {
       setTesting(false);
     }
   };
 
-  const handleSubmit = async () => {
+  const handleSubmit = async (e: FormEvent) => {
+    e.preventDefault();
+    setError(null);
+    const request = buildRequest();
+    if (!request) return;
     setSubmitting(true);
-    setSubmitError(null);
-
     try {
-      const request = buildRequest();
       await api.createProvider(request);
-      navigate('..');
+      alertApi.post({
+        message: `Provider Created: ${request.name} has been created`,
+        severity: 'success',
+        display: 'transient',
+      });
+      goBack();
     } catch (err) {
-      setSubmitError(
-        err instanceof Error ? err.message : 'Failed to create provider',
-      );
+      const message =
+        err instanceof Error ? err.message : 'Failed to create provider';
+      setError(message);
+      alertApi.post({
+        message: `Creation Failed: ${message}`,
+        severity: 'error',
+        display: 'transient',
+      });
     } finally {
       setSubmitting(false);
     }
   };
 
-  const renderProviderFields = () => {
-    switch (providerType) {
-      case 'harvester':
-        return (
-          <>
-            <Typography variant="subtitle1" className={classes.sectionTitle}>
-              Harvester Configuration
-            </Typography>
-            <TextField
-              label="Kubeconfig"
-              variant="outlined"
-              size="small"
-              multiline
-              rows={10}
-              fullWidth
-              required
-              value={harvesterKubeconfig}
-              onChange={e => setHarvesterKubeconfig(e.target.value)}
-              placeholder="Paste Harvester kubeconfig YAML here..."
-              InputProps={{
-                className: classes.kubeconfigField,
-              }}
-              helperText="The kubeconfig for connecting to the Harvester cluster"
-            />
-          </>
-        );
-
-      case 'nutanix':
-        return (
-          <>
-            <Typography variant="subtitle1" className={classes.sectionTitle}>
-              Nutanix Configuration
-            </Typography>
-            <TextField
-              label="Endpoint"
-              variant="outlined"
-              size="small"
-              fullWidth
-              required
-              value={nutanixEndpoint}
-              onChange={e => setNutanixEndpoint(e.target.value)}
-              placeholder="prism-central.example.com"
-              helperText="Nutanix Prism Central hostname or IP"
-            />
-            <TextField
-              label="Port"
-              variant="outlined"
-              size="small"
-              type="number"
-              fullWidth
-              value={nutanixPort}
-              onChange={e =>
-                setNutanixPort(
-                  e.target.value === '' ? '' : parseInt(e.target.value, 10),
-                )
-              }
-              helperText="Prism Central API port (default 9440)"
-            />
-            <TextField
-              label="Username"
-              variant="outlined"
-              size="small"
-              fullWidth
-              required
-              value={nutanixUsername}
-              onChange={e => setNutanixUsername(e.target.value)}
-              placeholder="admin"
-            />
-            <TextField
-              label="Password"
-              variant="outlined"
-              size="small"
-              type="password"
-              fullWidth
-              required
-              value={nutanixPassword}
-              onChange={e => setNutanixPassword(e.target.value)}
-            />
-            <FormControlLabel
-              control={
-                <Switch
-                  checked={nutanixInsecure}
-                  onChange={e => setNutanixInsecure(e.target.checked)}
-                  color="primary"
-                />
-              }
-              label="Allow insecure TLS (skip certificate verification)"
-            />
-          </>
-        );
-
-      case 'proxmox':
-        return (
-          <>
-            <Typography variant="subtitle1" className={classes.sectionTitle}>
-              Proxmox Configuration
-            </Typography>
-            <TextField
-              label="Endpoint"
-              variant="outlined"
-              size="small"
-              fullWidth
-              required
-              value={proxmoxEndpoint}
-              onChange={e => setProxmoxEndpoint(e.target.value)}
-              placeholder="https://proxmox.example.com:8006"
-              helperText="Proxmox VE API endpoint URL"
-            />
-            <TextField
-              label="Token ID"
-              variant="outlined"
-              size="small"
-              fullWidth
-              required
-              value={proxmoxTokenId}
-              onChange={e => setProxmoxTokenId(e.target.value)}
-              placeholder="user@pam!token-name"
-              helperText="API token ID (e.g., user@pam!token-name)"
-            />
-            <TextField
-              label="Token Secret"
-              variant="outlined"
-              size="small"
-              type="password"
-              fullWidth
-              required
-              value={proxmoxTokenSecret}
-              onChange={e => setProxmoxTokenSecret(e.target.value)}
-              helperText="API token secret value"
-            />
-            <FormControlLabel
-              control={
-                <Switch
-                  checked={proxmoxInsecure}
-                  onChange={e => setProxmoxInsecure(e.target.checked)}
-                  color="primary"
-                />
-              }
-              label="Allow insecure TLS (skip certificate verification)"
-            />
-          </>
-        );
-
-      default:
-        return null;
-    }
-  };
+  if (!canMutate) {
+    return (
+      <ButlerStack className={classes.page}>
+        <ButlerPageHeader
+          title="Add Provider"
+          subtitle="Configure connection to an infrastructure provider"
+        />
+        <ButlerEmptyState
+          title="Read-Only Access"
+          description="You do not have permission to create providers."
+          action={
+            <ButlerButton variant="secondary" onClick={goBack}>
+              Back to Providers
+            </ButlerButton>
+          }
+        />
+      </ButlerStack>
+    );
+  }
 
   return (
-    <Grid container spacing={3}>
-          <Grid item xs={12}>
-            <Button
-              className={classes.backButton}
-              startIcon={<ArrowBackIcon />}
-              onClick={() => navigate('..')}
-            >
-              Back to Providers
-            </Button>
-          </Grid>
+    <ButlerStack className={classes.page}>
+      <ButlerPageHeader
+        title="Add Provider"
+        subtitle="Configure connection to an infrastructure provider"
+      />
 
-          <Grid item xs={12} md={8}>
-            <InfoCard title="Provider Configuration">
-              <Box className={classes.form}>
-                {/* Common fields */}
-                <TextField
-                  label="Name"
-                  variant="outlined"
-                  size="small"
-                  fullWidth
+      <form onSubmit={handleSubmit} noValidate>
+        <ButlerCard flush className={classes.card}>
+          <div>
+            <span className={classes.groupLabel} id="provider-type-label">
+              On-Premises
+            </span>
+            <ButlerRadioTileGroup aria-labelledby="provider-type-label">
+              {ON_PREM_TYPES.map(type => (
+                <ButlerRadioTile
+                  key={type}
+                  selected={providerType === type}
+                  onSelect={() => {
+                    setProviderType(type);
+                    setTestResult(null);
+                    setError(null);
+                  }}
+                  icon={<ProviderIcon type={type} />}
+                  label={<span className={classes.tileLabel}>{type}</span>}
+                />
+              ))}
+            </ButlerRadioTileGroup>
+          </div>
+
+          <div className={classes.grid2}>
+            <ButlerField label="Provider Name" required htmlFor="provider-name">
+              <ButlerInput
+                id="provider-name"
+                value={name}
+                onChange={e => setName(e.target.value)}
+                placeholder={`my-${providerType}`}
+              />
+            </ButlerField>
+            <ButlerField label="Namespace" htmlFor="provider-namespace">
+              <ButlerInput
+                id="provider-namespace"
+                value={namespace}
+                onChange={e => setNamespace(e.target.value)}
+              />
+            </ButlerField>
+          </div>
+
+          {providerType === 'harvester' && (
+            <ButlerFormSection title="Harvester Credentials">
+              <ButlerField
+                label="Kubeconfig"
+                required
+                htmlFor="harvester-kubeconfig"
+                help="Upload your Harvester cluster kubeconfig file or paste the contents below"
+                helpAbove
+              >
+                <ButlerFileButton onText={credential(setKubeconfig)}>
+                  Upload kubeconfig file
+                </ButlerFileButton>
+                <ButlerTextarea
+                  id="harvester-kubeconfig"
+                  mono
+                  rows={8}
+                  value={kubeconfig}
+                  onChange={e => credential(setKubeconfig)(e.target.value)}
+                  placeholder="Paste kubeconfig contents here..."
+                />
+              </ButlerField>
+            </ButlerFormSection>
+          )}
+
+          {providerType === 'nutanix' && (
+            <ButlerFormSection title="Nutanix Connection">
+              <div className={classes.grid3}>
+                <ButlerField
+                  label="Prism Central Endpoint"
                   required
-                  value={name}
-                  onChange={e => setName(e.target.value)}
-                  placeholder="my-provider"
-                  helperText="A unique name for this provider configuration"
+                  htmlFor="nutanix-endpoint"
+                  className={classes.span2}
+                >
+                  <ButlerInput
+                    id="nutanix-endpoint"
+                    value={nutanixEndpoint}
+                    onChange={e =>
+                      credential(setNutanixEndpoint)(e.target.value)
+                    }
+                    placeholder="https://prism.example.com"
+                  />
+                </ButlerField>
+                <ButlerField label="Port" htmlFor="nutanix-port">
+                  <ButlerInput
+                    id="nutanix-port"
+                    type="number"
+                    value={nutanixPort}
+                    onChange={e =>
+                      setNutanixPort(parseInt(e.target.value, 10) || 9440)
+                    }
+                  />
+                </ButlerField>
+              </div>
+              <div className={classes.grid2}>
+                <ButlerField label="Username" required htmlFor="nutanix-user">
+                  <ButlerInput
+                    id="nutanix-user"
+                    value={nutanixUsername}
+                    onChange={e =>
+                      credential(setNutanixUsername)(e.target.value)
+                    }
+                    placeholder="admin@example.com"
+                  />
+                </ButlerField>
+                <ButlerField label="Password" required htmlFor="nutanix-pass">
+                  <ButlerInput
+                    id="nutanix-pass"
+                    type="password"
+                    value={nutanixPassword}
+                    onChange={e =>
+                      credential(setNutanixPassword)(e.target.value)
+                    }
+                    placeholder="••••••••"
+                  />
+                </ButlerField>
+              </div>
+              <ButlerCheckbox
+                label="Allow insecure TLS (skip certificate verification)"
+                checked={nutanixInsecure}
+                onChange={e => setNutanixInsecure(e.target.checked)}
+              />
+            </ButlerFormSection>
+          )}
+
+          {providerType === 'proxmox' && (
+            <ButlerFormSection title="Proxmox Connection">
+              <ButlerField
+                label="Proxmox Endpoint"
+                required
+                htmlFor="proxmox-endpoint"
+              >
+                <ButlerInput
+                  id="proxmox-endpoint"
+                  value={proxmoxEndpoint}
+                  onChange={e => credential(setProxmoxEndpoint)(e.target.value)}
+                  placeholder="https://pve.example.com:8006"
                 />
-
-                <TextField
-                  label="Namespace"
-                  variant="outlined"
-                  size="small"
-                  fullWidth
-                  value={namespace}
-                  onChange={e => setNamespace(e.target.value)}
-                  helperText="Kubernetes namespace for the provider resource (default: butler-system)"
+              </ButlerField>
+              <ButlerField label="Authentication Method">
+                <ButlerSegmented<ProxmoxAuthType>
+                  aria-label="Authentication Method"
+                  value={proxmoxAuthType}
+                  onChange={setProxmoxAuthType}
+                  options={[
+                    { value: 'password', label: 'Username/Password' },
+                    { value: 'token', label: 'API Token' },
+                  ]}
                 />
-
-                <FormControl variant="outlined" size="small" fullWidth>
-                  <InputLabel id="provider-type-label">
-                    Provider Type
-                  </InputLabel>
-                  <Select
-                    labelId="provider-type-label"
-                    value={providerType}
-                    onChange={e => {
-                      setProviderType(e.target.value as ProviderType);
-                      setTestResult(null);
-                    }}
-                    label="Provider Type"
+              </ButlerField>
+              {proxmoxAuthType === 'password' ? (
+                <div className={classes.grid2}>
+                  <ButlerField label="Username" required htmlFor="proxmox-user">
+                    <ButlerInput
+                      id="proxmox-user"
+                      value={proxmoxUsername}
+                      onChange={e =>
+                        credential(setProxmoxUsername)(e.target.value)
+                      }
+                      placeholder="root@pam"
+                    />
+                  </ButlerField>
+                  <ButlerField label="Password" required htmlFor="proxmox-pass">
+                    <ButlerInput
+                      id="proxmox-pass"
+                      type="password"
+                      value={proxmoxPassword}
+                      onChange={e =>
+                        credential(setProxmoxPassword)(e.target.value)
+                      }
+                      placeholder="••••••••"
+                    />
+                  </ButlerField>
+                </div>
+              ) : (
+                <div className={classes.grid2}>
+                  <ButlerField
+                    label="Token ID"
+                    required
+                    htmlFor="proxmox-token"
                   >
-                    <MenuItem value="harvester">
-                      <Box display="flex" alignItems="center" gridGap={8}>
-                        Harvester
-                        <Chip size="small" label="HCI" variant="outlined" />
-                      </Box>
-                    </MenuItem>
-                    <MenuItem value="nutanix">
-                      <Box display="flex" alignItems="center" gridGap={8}>
-                        Nutanix
-                        <Chip size="small" label="HCI" variant="outlined" />
-                      </Box>
-                    </MenuItem>
-                    <MenuItem value="proxmox">
-                      <Box display="flex" alignItems="center" gridGap={8}>
-                        Proxmox
-                        <Chip
-                          size="small"
-                          label="Hypervisor"
-                          variant="outlined"
-                        />
-                      </Box>
-                    </MenuItem>
-                  </Select>
-                </FormControl>
-
-                {/* Provider-specific fields */}
-                {renderProviderFields()}
-
-                {/* Test Connection */}
-                <Box>
-                  <Button
-                    variant="outlined"
-                    startIcon={<NetworkCheckIcon />}
-                    onClick={handleTestConnection}
-                    disabled={testing || !isFormValid()}
+                    <ButlerInput
+                      id="proxmox-token"
+                      value={proxmoxTokenId}
+                      onChange={e =>
+                        credential(setProxmoxTokenId)(e.target.value)
+                      }
+                      placeholder="user@pam!tokenname"
+                    />
+                  </ButlerField>
+                  <ButlerField
+                    label="Token Secret"
+                    required
+                    htmlFor="proxmox-secret"
                   >
-                    {testing ? 'Testing...' : 'Test Connection'}
-                  </Button>
+                    <ButlerInput
+                      id="proxmox-secret"
+                      type="password"
+                      value={proxmoxTokenSecret}
+                      onChange={e =>
+                        credential(setProxmoxTokenSecret)(e.target.value)
+                      }
+                      placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+                    />
+                  </ButlerField>
+                </div>
+              )}
+              <ButlerCheckbox
+                label="Allow insecure TLS (skip certificate verification)"
+                checked={proxmoxInsecure}
+                onChange={e => setProxmoxInsecure(e.target.checked)}
+              />
+            </ButlerFormSection>
+          )}
 
-                  {testResult && (
-                    <Box
-                      className={`${classes.testResultBox} ${
-                        testResult.success
-                          ? classes.testSuccess
-                          : classes.testFailure
-                      }`}
-                    >
-                      {testResult.success ? (
-                        <CheckCircleIcon
-                          className={`${classes.testIcon} ${classes.testSuccessIcon}`}
-                        />
-                      ) : (
-                        <ErrorIcon
-                          className={`${classes.testIcon} ${classes.testErrorIcon}`}
-                        />
-                      )}
-                      <Typography variant="body2">
-                        {testResult.message}
-                      </Typography>
-                    </Box>
-                  )}
-                </Box>
-
-                {/* Submit */}
-                <Box className={classes.actions}>
-                  <Button
-                    variant="contained"
-                    color="primary"
-                    startIcon={<SaveIcon />}
-                    onClick={handleSubmit}
-                    disabled={submitting || !isFormValid()}
-                  >
-                    {submitting ? 'Creating...' : 'Create Provider'}
-                  </Button>
-                  <Button
-                    variant="outlined"
-                    onClick={() => navigate('..')}
-                    disabled={submitting}
-                  >
-                    Cancel
-                  </Button>
-                </Box>
-
-                {submitError && (
-                  <Typography variant="body2" className={classes.submitError}>
-                    {submitError}
-                  </Typography>
+          <ButlerInsetPanel
+            title="Test Connection"
+            description="Verify credentials before saving"
+            action={
+              <ButlerButton
+                variant="secondary"
+                onClick={handleTestConnection}
+                disabled={!canTest() || testing}
+              >
+                {testing ? (
+                  <span className={classes.testingLabel}>
+                    <ButlerSpinner small />
+                    Testing...
+                  </span>
+                ) : (
+                  'Test Connection'
                 )}
-              </Box>
-            </InfoCard>
-          </Grid>
+              </ButlerButton>
+            }
+          >
+            {testResult && (
+              <ButlerFormMessage
+                tone={testResult.valid ? 'success' : 'danger'}
+                icon={testResult.valid ? <CheckIcon /> : <XIcon />}
+              >
+                {testResult.message}
+              </ButlerFormMessage>
+            )}
+          </ButlerInsetPanel>
 
-          {/* Sidebar hints */}
-          <Grid item xs={12} md={4}>
-            <InfoCard title="Provider Types">
-              <Box display="flex" flexDirection="column" gridGap={16}>
-                <Box>
-                  <Typography variant="subtitle2" gutterBottom>
-                    Harvester
-                  </Typography>
-                  <Typography variant="body2" color="textSecondary">
-                    SUSE Harvester is a hyper-converged infrastructure (HCI)
-                    solution built on Kubernetes. Butler connects using a
-                    kubeconfig to the Harvester management cluster.
-                  </Typography>
-                </Box>
-                <Box>
-                  <Typography variant="subtitle2" gutterBottom>
-                    Nutanix
-                  </Typography>
-                  <Typography variant="body2" color="textSecondary">
-                    Nutanix AHV via Prism Central API. Butler uses username and
-                    password authentication to provision VMs for tenant cluster
-                    worker nodes.
-                  </Typography>
-                </Box>
-                <Box>
-                  <Typography variant="subtitle2" gutterBottom>
-                    Proxmox
-                  </Typography>
-                  <Typography variant="body2" color="textSecondary">
-                    Proxmox VE hypervisor using API token authentication. Butler
-                    manages VMs via the Proxmox REST API for tenant cluster
-                    worker nodes.
-                  </Typography>
-                </Box>
-              </Box>
-            </InfoCard>
-          </Grid>
-    </Grid>
+          <ButlerFormMessage tone="info">
+            <strong>Note:</strong> Infrastructure settings like subnets, images,
+            and storage are configured per-cluster when you create a
+            TenantCluster.
+          </ButlerFormMessage>
+
+          {error && <ButlerFormMessage>{error}</ButlerFormMessage>}
+
+          <ButlerFormFooter>
+            <ButlerButton variant="secondary" onClick={goBack}>
+              Cancel
+            </ButlerButton>
+            <ButlerButton type="submit" disabled={submitting}>
+              {submitting ? 'Creating...' : 'Create Provider'}
+            </ButlerButton>
+          </ButlerFormFooter>
+        </ButlerCard>
+      </form>
+    </ButlerStack>
   );
 };

@@ -1,106 +1,239 @@
 // Copyright 2026 The Butler Authors.
 // SPDX-License-Identifier: Apache-2.0
 
-import { useEffect, useState, useCallback } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Link as RouterLink } from 'react-router-dom';
-import { useApi } from '@backstage/core-plugin-api';
-import {
-  Table,
-  TableColumn,
-  Progress,
-  EmptyState,
-  Link,
-} from '@backstage/core-components';
-import {
-  Typography,
-  Button,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
-  Chip,
-  Box,
-  makeStyles,
-} from '@material-ui/core';
-import AddIcon from '@material-ui/icons/Add';
-import ArrowBackIcon from '@material-ui/icons/ArrowBack';
-import RefreshIcon from '@material-ui/icons/Refresh';
-import DeleteIcon from '@material-ui/icons/Delete';
-import CheckCircleIcon from '@material-ui/icons/CheckCircle';
+import { alertApiRef, useApi } from '@backstage/core-plugin-api';
+import { makeStyles } from '@material-ui/core/styles';
+import clsx from 'clsx';
+
 import { butlerApiRef } from '../../api/ButlerApi';
 import type { IdentityProvider } from '../../api/types/identity-providers';
-import { StatusBadge } from '../StatusBadge/StatusBadge';
 import { useButlerRoutes } from '../../hooks/useButlerRoutes';
+import { useTeamContext } from '../../hooks/useTeamContext';
+import { butlerTokens, rgb, rgba } from '../../theme';
+import {
+  ButlerButton,
+  ButlerCard,
+  ButlerChip,
+  ButlerDialog,
+  ButlerLoading,
+  ButlerPageHeader,
+  ButlerStack,
+  ButlerStatusBadge,
+  PlusIcon,
+} from '../ui';
+import { KeyIcon, TrashIcon } from '../ui/formIcons';
+import {
+  IdentityProviderIcon,
+  formatIdentityProviderAge,
+  getIdentityProviderType,
+} from './IdentityProviderIcons';
 
-const useStyles = makeStyles(theme => ({
-  header: {
-    display: 'flex',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: theme.spacing(2),
-  },
-  actions: {
-    display: 'flex',
-    gap: theme.spacing(1),
-  },
-  rowActions: {
-    display: 'flex',
-    gap: theme.spacing(1),
-  },
-  validationResult: {
-    marginTop: theme.spacing(2),
-    padding: theme.spacing(2),
-    borderRadius: theme.shape.borderRadius,
-  },
-  validSuccess: {
-    backgroundColor: 'rgba(76, 175, 80, 0.08)',
-    border: '1px solid rgba(76, 175, 80, 0.3)',
-  },
-  validError: {
-    backgroundColor: 'rgba(244, 67, 54, 0.08)',
-    border: '1px solid rgba(244, 67, 54, 0.3)',
-  },
-}));
-
-type IdPRow = {
-  id: string;
-  name: string;
-  displayName: string;
-  type: string;
-  issuerURL: string;
-  phase: string;
-};
+const useStyles = makeStyles(theme => {
+  const t = butlerTokens(theme);
+  const p = t.palette;
+  return {
+    list: {
+      display: 'grid',
+      gap: 16,
+      margin: 0,
+      padding: 0,
+      listStyle: 'none',
+    },
+    card: {
+      padding: 16,
+      display: 'flex',
+      alignItems: 'center',
+      gap: 16,
+    },
+    iconTile: {
+      width: 48,
+      height: 48,
+      borderRadius: t.radius.lg,
+      backgroundColor: rgb(p.neutral[800]),
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      flexShrink: 0,
+    },
+    iconTileSm: { width: 40, height: 40 },
+    info: { flex: 1, minWidth: 0 },
+    nameRow: { display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 },
+    name: {
+      margin: 0,
+      fontSize: 18,
+      lineHeight: '28px',
+      fontWeight: 500,
+      color: t.text.strong,
+      overflow: 'hidden',
+      textOverflow: 'ellipsis',
+      whiteSpace: 'nowrap',
+    },
+    typeChip: { padding: '2px 8px', fontWeight: 400 },
+    issuer: {
+      margin: 0,
+      fontSize: 14,
+      lineHeight: '20px',
+      color: t.text.subtle,
+      overflow: 'hidden',
+      textOverflow: 'ellipsis',
+      whiteSpace: 'nowrap',
+    },
+    age: {
+      flexShrink: 0,
+      width: 96,
+      textAlign: 'right',
+      fontSize: 14,
+      lineHeight: '20px',
+      color: t.text.subtle,
+    },
+    actions: { display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 },
+    errorCard: {
+      padding: 16,
+      borderColor: rgba(p.red[500], 0.2),
+      backgroundColor: rgba(p.red[500], 0.1),
+    },
+    errorText: {
+      margin: '0 0 8px',
+      fontSize: 16,
+      lineHeight: '24px',
+      color: rgb(p.red[400]),
+    },
+    emptyCard: { textAlign: 'center', padding: 32 },
+    emptyIcon: {
+      width: 64,
+      height: 64,
+      borderRadius: '50%',
+      backgroundColor: rgb(p.neutral[800]),
+      color: t.text.subtle,
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      margin: '0 auto 16px',
+    },
+    emptyTitle: {
+      margin: '0 0 8px',
+      fontSize: 18,
+      lineHeight: '28px',
+      fontWeight: 500,
+      color: t.text.secondary,
+    },
+    emptyText: {
+      margin: '0 auto 16px',
+      maxWidth: 448,
+      fontSize: 16,
+      lineHeight: '24px',
+      color: t.text.subtle,
+    },
+    detail: { display: 'flex', flexDirection: 'column', gap: 16 },
+    badgeSlot: { marginLeft: 'auto' },
+    block: {
+      padding: 16,
+      borderRadius: t.radius.lg,
+      backgroundColor: t.inset,
+      display: 'flex',
+      flexDirection: 'column',
+      gap: 12,
+    },
+    blockTitle: {
+      margin: 0,
+      fontSize: 14,
+      lineHeight: '20px',
+      fontWeight: 500,
+      letterSpacing: '0.025em',
+      textTransform: 'uppercase',
+      color: t.text.muted,
+    },
+    grid2: {
+      display: 'grid',
+      gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
+      gap: 12,
+    },
+    kvLabel: {
+      margin: 0,
+      fontSize: 14,
+      lineHeight: '20px',
+      color: t.text.subtle,
+    },
+    kvValue: {
+      margin: 0,
+      fontSize: 14,
+      lineHeight: '20px',
+      color: t.text.secondary,
+    },
+    kvSmall: { fontSize: 12, lineHeight: '16px' },
+    kvMono: {
+      fontFamily: t.fontMono,
+      overflowWrap: 'anywhere',
+      color: rgb(p.neutral[300]),
+    },
+    scopes: { display: 'flex', flexWrap: 'wrap', gap: 4, marginTop: 4 },
+    scope: {
+      backgroundColor: rgb(p.neutral[700]),
+      color: rgb(p.neutral[300]),
+      padding: '2px 8px',
+      fontWeight: 400,
+    },
+    message: {
+      margin: 0,
+      padding: 12,
+      borderRadius: t.radius.lg,
+      backgroundColor: t.inset,
+      fontSize: 14,
+      lineHeight: '20px',
+      color: t.text.muted,
+    },
+    messageFailed: {
+      backgroundColor: rgba(p.red[500], 0.1),
+      border: `1px solid ${rgba(p.red[500], 0.2)}`,
+      color: rgb(p.red[400]),
+    },
+    deleteText: {
+      margin: 0,
+      fontSize: 16,
+      lineHeight: '24px',
+      color: rgb(p.neutral[300]),
+    },
+    deleteName: { fontWeight: 600, color: t.text.strong },
+    deleteHint: {
+      margin: 0,
+      fontSize: 14,
+      lineHeight: '20px',
+      color: t.text.subtle,
+    },
+  };
+});
 
 export const IdentityProvidersPage = () => {
   const classes = useStyles();
   const api = useApi(butlerApiRef);
+  const alertApi = useApi(alertApiRef);
   const routes = useButlerRoutes();
+  const { isAdmin: canMutate } = useTeamContext();
+
   const [providers, setProviders] = useState<IdentityProvider[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<Error | undefined>();
-
-  // Delete dialog state
+  const [error, setError] = useState<string | null>(null);
+  const [selected, setSelected] = useState<IdentityProvider | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<IdentityProvider | null>(
     null,
   );
+  const [validating, setValidating] = useState(false);
   const [deleting, setDeleting] = useState(false);
-
-  // Validate state
-  const [validating, setValidating] = useState<string | null>(null);
-  const [validationResult, setValidationResult] = useState<{
-    name: string;
-    valid: boolean;
-    message: string;
-  } | null>(null);
 
   const fetchProviders = useCallback(async () => {
     setLoading(true);
-    setError(undefined);
+    setError(null);
     try {
       const response = await api.listIdentityProviders();
-      setProviders(response.identityProviders || []);
-    } catch (e) {
-      setError(e instanceof Error ? e : new Error(String(e)));
+      setProviders(response.identityProviders ?? []);
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : 'Failed to load identity providers',
+      );
     } finally {
       setLoading(false);
     }
@@ -110,257 +243,367 @@ export const IdentityProvidersPage = () => {
     fetchProviders();
   }, [fetchProviders]);
 
+  const handleValidate = async (name: string) => {
+    setValidating(true);
+    try {
+      const result = await api.validateIdentityProvider(name);
+      alertApi.post({
+        message: result.valid
+          ? 'OIDC discovery successful'
+          : result.message || 'Validation failed',
+        severity: result.valid ? 'success' : 'error',
+        display: 'transient',
+      });
+    } catch (err) {
+      alertApi.post({
+        message: err instanceof Error ? err.message : 'Validation failed',
+        severity: 'error',
+        display: 'transient',
+      });
+    } finally {
+      setValidating(false);
+    }
+  };
+
   const handleDelete = async () => {
     if (!deleteTarget) return;
     setDeleting(true);
+    const label = deleteTarget.spec.displayName || deleteTarget.metadata.name;
     try {
-      await api.deleteIdentityProvider(deleteTarget.metadata.name);
+      const result = await api.deleteIdentityProvider(
+        deleteTarget.metadata.name,
+      );
+      alertApi.post({
+        message:
+          result?.status === 'cleaned'
+            ? result.message || `Cleaned up orphaned resources for ${label}`
+            : `Deleted ${label}`,
+        severity: 'success',
+        display: 'transient',
+      });
       setDeleteTarget(null);
+      setSelected(null);
       fetchProviders();
-    } catch (e) {
-      // Could show error in dialog
-      setDeleting(false);
+    } catch (err) {
+      alertApi.post({
+        message:
+          err instanceof Error ? err.message : 'Failed to delete provider',
+        severity: 'error',
+        display: 'transient',
+      });
     } finally {
       setDeleting(false);
     }
   };
 
-  const handleValidate = async (name: string) => {
-    setValidating(name);
-    setValidationResult(null);
-    try {
-      const result = await api.validateIdentityProvider(name);
-      setValidationResult({
-        name,
-        valid: result.valid,
-        message: result.message,
-      });
-    } catch (e) {
-      setValidationResult({
-        name,
-        valid: false,
-        message: e instanceof Error ? e.message : 'Validation failed.',
-      });
-    } finally {
-      setValidating(null);
-    }
-  };
+  if (loading) return <ButlerLoading />;
 
-  if (loading) {
-    return <Progress />;
-  }
-
-  if (error) {
-    return (
-      <EmptyState
-        title="Failed to load identity providers"
-        description={error.message}
-        missing="info"
-      />
-    );
-  }
-
-  const columns: TableColumn<IdPRow>[] = [
-    {
-      title: 'Name',
-      field: 'name',
-    },
-    {
-      title: 'Display Name',
-      field: 'displayName',
-    },
-    {
-      title: 'Type',
-      field: 'type',
-      render: (row: IdPRow) => (
-        <Chip
-          label={row.type.toUpperCase()}
-          size="small"
-          variant="outlined"
-        />
-      ),
-    },
-    {
-      title: 'Issuer URL',
-      field: 'issuerURL',
-      render: (row: IdPRow) => (
-        <Typography variant="body2" noWrap style={{ maxWidth: 300 }}>
-          {row.issuerURL}
-        </Typography>
-      ),
-    },
-    {
-      title: 'Status',
-      field: 'phase',
-      render: (row: IdPRow) => <StatusBadge status={row.phase} />,
-    },
-    {
-      title: 'Actions',
-      field: 'id',
-      render: (row: IdPRow) => {
-        const provider = providers.find(
-          p => p.metadata.name === row.name,
-        );
-        return (
-          <div className={classes.rowActions}>
-            <Button
-              size="small"
-              color="primary"
-              startIcon={<CheckCircleIcon />}
-              onClick={() => handleValidate(row.name)}
-              disabled={validating === row.name}
-            >
-              {validating === row.name ? 'Validating...' : 'Validate'}
-            </Button>
-            <Button
-              size="small"
-              color="secondary"
-              startIcon={<DeleteIcon />}
-              onClick={() => provider && setDeleteTarget(provider)}
-            >
-              Delete
-            </Button>
-          </div>
-        );
-      },
-    },
-  ];
-
-  const data: IdPRow[] = providers.map(provider => ({
-    id: provider.metadata.name,
-    name: provider.metadata.name,
-    displayName: provider.spec.displayName || provider.metadata.name,
-    type: provider.spec.type,
-    issuerURL: provider.spec.oidc?.issuerURL || 'N/A',
-    phase: provider.status?.phase || 'Unknown',
-  }));
+  const createPath = routes.adminCreateIdentityProvider();
 
   return (
-    <div>
-      <Button
-        startIcon={<ArrowBackIcon />}
-        component={RouterLink}
-        to={routes.admin()}
-        style={{ textTransform: 'none', marginBottom: 16 }}
-      >
-        Back to Admin
-      </Button>
-      <div className={classes.header}>
-        <Typography variant="h4">Identity Providers</Typography>
-        <div className={classes.actions}>
-          <Button
-            variant="outlined"
-            size="small"
-            startIcon={<RefreshIcon />}
-            onClick={fetchProviders}
-          >
-            Refresh
-          </Button>
-          <Link to="./create" style={{ textDecoration: 'none' }}>
-            <Button
-              variant="contained"
-              color="primary"
-              startIcon={<AddIcon />}
-            >
-              Add Provider
-            </Button>
-          </Link>
-        </div>
-      </div>
-
-      {/* Validation Result Banner */}
-      {validationResult && (
-        <Box
-          className={`${classes.validationResult} ${
-            validationResult.valid
-              ? classes.validSuccess
-              : classes.validError
-          }`}
-          mb={2}
-        >
-          <Typography
-            variant="subtitle2"
-            color={validationResult.valid ? 'primary' : 'error'}
-          >
-            Validation Result for "{validationResult.name}"
-          </Typography>
-          <Typography variant="body2">{validationResult.message}</Typography>
-        </Box>
-      )}
-
-      {providers.length === 0 ? (
-        <EmptyState
-          title="No identity providers configured"
-          description="Add an identity provider to enable SSO authentication for your platform."
-          missing="content"
-          action={
-            <Link to="./create" style={{ textDecoration: 'none' }}>
-              <Button
-                variant="contained"
-                color="primary"
-                startIcon={<AddIcon />}
+    <>
+      <ButlerStack>
+        <ButlerPageHeader
+          title="Identity Providers"
+          subtitle="Configure SSO authentication providers for Butler Console"
+          actions={
+            canMutate ? (
+              <ButlerButton
+                component={RouterLink}
+                to={createPath}
+                startIcon={<PlusIcon />}
               >
                 Add Provider
-              </Button>
-            </Link>
+              </ButlerButton>
+            ) : undefined
           }
         />
-      ) : (
-        <Table<IdPRow>
-          title={`Identity Providers (${providers.length})`}
-          options={{
-            search: true,
-            paging: providers.length > 20,
-            pageSize: 20,
-            padding: 'dense',
-          }}
-          columns={columns}
-          data={data}
-        />
-      )}
 
-      {/* Delete Confirmation Dialog */}
-      <Dialog
-        open={!!deleteTarget}
-        onClose={() => setDeleteTarget(null)}
-        maxWidth="sm"
-        fullWidth
+        {error && (
+          <ButlerCard flush className={classes.errorCard} role="alert">
+            <p className={classes.errorText}>{error}</p>
+            <ButlerButton
+              variant="secondary"
+              size="sm"
+              onClick={fetchProviders}
+            >
+              Retry
+            </ButlerButton>
+          </ButlerCard>
+        )}
+
+        {!error && providers.length === 0 && (
+          <ButlerCard flush className={classes.emptyCard}>
+            <div className={classes.emptyIcon}>
+              <KeyIcon size={32} />
+            </div>
+            <h3 className={classes.emptyTitle}>No Identity Providers</h3>
+            <p className={classes.emptyText}>
+              Add an OIDC identity provider to enable SSO authentication for
+              your users. Butler supports Google Workspace, Microsoft Entra ID,
+              Okta, and other OIDC providers.
+            </p>
+            {canMutate && (
+              <ButlerButton component={RouterLink} to={createPath}>
+                Add Your First Provider
+              </ButlerButton>
+            )}
+          </ButlerCard>
+        )}
+
+        {providers.length > 0 && (
+          <ul className={classes.list} aria-label="Identity providers">
+            {providers.map(provider => {
+              const issuerURL = provider.spec.oidc?.issuerURL || '';
+              const displayName =
+                provider.spec.displayName || provider.metadata.name;
+              const phase = provider.status?.phase || 'Active';
+              return (
+                <li key={provider.metadata.name}>
+                  <ButlerCard flush className={classes.card}>
+                    <div className={classes.iconTile}>
+                      <IdentityProviderIcon issuerURL={issuerURL} />
+                    </div>
+                    <div className={classes.info}>
+                      <div className={classes.nameRow}>
+                        <h3 className={classes.name}>{displayName}</h3>
+                        <ButlerChip className={classes.typeChip}>
+                          {getIdentityProviderType(issuerURL)}
+                        </ButlerChip>
+                      </div>
+                      <p className={classes.issuer} title={issuerURL}>
+                        {issuerURL}
+                      </p>
+                    </div>
+                    <ButlerStatusBadge status={phase} />
+                    <div className={classes.age}>
+                      {formatIdentityProviderAge(
+                        provider.metadata.creationTimestamp,
+                      )}
+                    </div>
+                    <div className={classes.actions}>
+                      <ButlerButton
+                        variant="secondary"
+                        size="sm"
+                        onClick={() => setSelected(provider)}
+                        aria-label={`View ${displayName}`}
+                      >
+                        View
+                      </ButlerButton>
+                      {canMutate && (
+                        <ButlerButton
+                          variant="danger"
+                          size="sm"
+                          onClick={() => setDeleteTarget(provider)}
+                          aria-label={`Delete ${displayName}`}
+                        >
+                          Delete
+                        </ButlerButton>
+                      )}
+                    </div>
+                  </ButlerCard>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </ButlerStack>
+
+      <ButlerDialog
+        open={!!selected}
+        onClose={() => setSelected(null)}
+        width={512}
+        title={selected?.spec.displayName || selected?.metadata.name || ''}
+        subtitle={selected ? `@${selected.metadata.name}` : undefined}
+        icon={
+          selected ? (
+            <div className={clsx(classes.iconTile, classes.iconTileSm)}>
+              <IdentityProviderIcon issuerURL={selected.spec.oidc?.issuerURL} />
+            </div>
+          ) : undefined
+        }
+        footer={
+          selected && (
+            <>
+              <ButlerButton
+                variant="secondary"
+                onClick={() => setSelected(null)}
+              >
+                Close
+              </ButlerButton>
+              <ButlerButton
+                onClick={() => handleValidate(selected.metadata.name)}
+                disabled={validating}
+              >
+                {validating ? 'Validating...' : 'Test Connection'}
+              </ButlerButton>
+            </>
+          )
+        }
       >
-        <DialogTitle>Delete Identity Provider</DialogTitle>
-        <DialogContent>
-          <Typography>
+        {selected && <IdentityProviderDetail provider={selected} />}
+      </ButlerDialog>
+
+      {canMutate && (
+        <ButlerDialog
+          open={!!deleteTarget}
+          onClose={() => setDeleteTarget(null)}
+          busy={deleting}
+          title="Delete Identity Provider"
+          subtitle="This action cannot be undone"
+          icon={<TrashIcon />}
+          iconTone="danger"
+          footer={
+            <>
+              <ButlerButton
+                variant="secondary"
+                onClick={() => setDeleteTarget(null)}
+                disabled={deleting}
+              >
+                Cancel
+              </ButlerButton>
+              <ButlerButton
+                variant="danger"
+                onClick={handleDelete}
+                disabled={deleting}
+              >
+                {deleting ? 'Deleting...' : 'Delete Provider'}
+              </ButlerButton>
+            </>
+          }
+        >
+          <p className={classes.deleteText}>
             Are you sure you want to delete the identity provider{' '}
-            <strong>
+            <span className={classes.deleteName}>
               {deleteTarget?.spec.displayName || deleteTarget?.metadata.name}
-            </strong>
+            </span>
             ?
-          </Typography>
-          <Typography
-            variant="body2"
-            color="error"
-            style={{ marginTop: 8 }}
-          >
-            This action cannot be undone. Users authenticating through this
-            provider will no longer be able to log in.
-          </Typography>
-        </DialogContent>
-        <DialogActions>
-          <Button
-            onClick={() => setDeleteTarget(null)}
-            disabled={deleting}
-          >
-            Cancel
-          </Button>
-          <Button
-            onClick={handleDelete}
-            color="secondary"
-            variant="contained"
-            disabled={deleting}
-          >
-            {deleting ? 'Deleting...' : 'Delete'}
-          </Button>
-        </DialogActions>
-      </Dialog>
+          </p>
+          <p className={classes.deleteHint}>
+            This will remove the SSO configuration. Users authenticating via
+            this provider will no longer be able to log in.
+          </p>
+        </ButlerDialog>
+      )}
+    </>
+  );
+};
+
+const IdentityProviderDetail = ({
+  provider,
+}: {
+  provider: IdentityProvider;
+}) => {
+  const classes = useStyles();
+  const issuerURL = provider.spec.oidc?.issuerURL || '';
+  const phase = provider.status?.phase || 'Active';
+  const endpoints = provider.status?.discoveredEndpoints;
+
+  return (
+    <div className={classes.detail}>
+      <div className={classes.badgeSlot}>
+        <ButlerStatusBadge status={phase} />
+      </div>
+
+      <div className={classes.block}>
+        <h4 className={classes.blockTitle}>Configuration</h4>
+        <div className={classes.grid2}>
+          <div>
+            <p className={classes.kvLabel}>Type</p>
+            <p className={classes.kvValue}>
+              {getIdentityProviderType(issuerURL)}
+            </p>
+          </div>
+          <div>
+            <p className={classes.kvLabel}>Created</p>
+            <p className={classes.kvValue}>
+              {formatIdentityProviderAge(provider.metadata.creationTimestamp)}
+            </p>
+          </div>
+        </div>
+        <div>
+          <p className={classes.kvLabel}>Issuer URL</p>
+          <p className={clsx(classes.kvValue, classes.kvMono)}>{issuerURL}</p>
+        </div>
+        <div>
+          <p className={classes.kvLabel}>Client ID</p>
+          <p className={clsx(classes.kvValue, classes.kvMono)}>
+            {provider.spec.oidc?.clientID || '-'}
+          </p>
+        </div>
+        <div>
+          <p className={classes.kvLabel}>Redirect URL</p>
+          <p className={clsx(classes.kvValue, classes.kvMono)}>
+            {provider.spec.oidc?.redirectURL || '-'}
+          </p>
+        </div>
+        {provider.spec.oidc?.hostedDomain && (
+          <div>
+            <p className={classes.kvLabel}>Hosted Domain</p>
+            <p className={classes.kvValue}>{provider.spec.oidc.hostedDomain}</p>
+          </div>
+        )}
+        {provider.spec.oidc?.scopes && provider.spec.oidc.scopes.length > 0 && (
+          <div>
+            <p className={classes.kvLabel}>Scopes</p>
+            <div className={classes.scopes}>
+              {provider.spec.oidc.scopes.map(scope => (
+                <ButlerChip key={scope} className={classes.scope}>
+                  {scope}
+                </ButlerChip>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+
+      {endpoints &&
+        (endpoints.authorizationEndpoint || endpoints.tokenEndpoint) && (
+          <div className={classes.block}>
+            <h4 className={classes.blockTitle}>Discovered Endpoints</h4>
+            {endpoints.authorizationEndpoint && (
+              <div>
+                <p className={clsx(classes.kvLabel, classes.kvSmall)}>
+                  Authorization
+                </p>
+                <p
+                  className={clsx(
+                    classes.kvValue,
+                    classes.kvSmall,
+                    classes.kvMono,
+                  )}
+                >
+                  {endpoints.authorizationEndpoint}
+                </p>
+              </div>
+            )}
+            {endpoints.tokenEndpoint && (
+              <div>
+                <p className={clsx(classes.kvLabel, classes.kvSmall)}>Token</p>
+                <p
+                  className={clsx(
+                    classes.kvValue,
+                    classes.kvSmall,
+                    classes.kvMono,
+                  )}
+                >
+                  {endpoints.tokenEndpoint}
+                </p>
+              </div>
+            )}
+          </div>
+        )}
+
+      {provider.status?.message && (
+        <p
+          className={clsx(
+            classes.message,
+            phase === 'Failed' && classes.messageFailed,
+          )}
+        >
+          {provider.status.message}
+        </p>
+      )}
     </div>
   );
 };
