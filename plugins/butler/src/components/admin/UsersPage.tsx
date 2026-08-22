@@ -1,791 +1,807 @@
 // Copyright 2026 The Butler Authors.
 // SPDX-License-Identifier: Apache-2.0
 
-import React, { useEffect, useState, useCallback } from 'react';
-import { Link as RouterLink } from 'react-router-dom';
+import React, { useCallback, useEffect, useState } from 'react';
 import { useApi } from '@backstage/core-plugin-api';
-import {
-  Progress,
-  EmptyState,
-} from '@backstage/core-components';
-import {
-  Typography,
-  Button,
-  Chip,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
-  TextField,
-  Table,
-  TableHead,
-  TableBody,
-  TableRow,
-  TableCell,
-  IconButton,
-  Menu,
-  MenuItem,
-  InputAdornment,
-  Box,
-  Avatar,
-  Tooltip,
-  makeStyles,
-} from '@material-ui/core';
-import AddIcon from '@material-ui/icons/Add';
-import ArrowBackIcon from '@material-ui/icons/ArrowBack';
-import RefreshIcon from '@material-ui/icons/Refresh';
-import MoreVertIcon from '@material-ui/icons/MoreVert';
-import FileCopyIcon from '@material-ui/icons/FileCopy';
+import { makeStyles } from '@material-ui/core/styles';
 import { butlerApiRef } from '../../api/ButlerApi';
 import { useButlerRoutes } from '../../hooks/useButlerRoutes';
+import { useTeamContext } from '../../hooks/useTeamContext';
+import { butlerTokens, rgb, rgba } from '../../theme';
+import {
+  ButlerButton,
+  ButlerCard,
+  ButlerChip,
+  ButlerDialog,
+  ButlerErrorState,
+  ButlerInput,
+  ButlerLoading,
+  ButlerPageHeader,
+  ButlerStack,
+  ButlerTable,
+  PlusIcon,
+} from '../ui';
+import type { ButlerColumn } from '../ui';
+import { ButlerAccessDenied } from '../ui/ButlerAccessDenied';
+import { ButlerCallout } from '../ui/ButlerCallout';
 
-const useStyles = makeStyles(theme => ({
-  header: {
-    display: 'flex',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: theme.spacing(3),
-  },
-  actions: {
-    display: 'flex',
-    gap: theme.spacing(1),
-  },
-  formField: {
-    marginBottom: theme.spacing(2),
-  },
-  teamChips: {
-    display: 'flex',
-    flexWrap: 'wrap' as const,
-    gap: theme.spacing(0.5),
-  },
-  nameCell: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: theme.spacing(1.5),
-  },
-  avatar: {
-    width: 32,
-    height: 32,
-    fontSize: '0.875rem',
-    backgroundColor: theme.palette.primary.main,
-  },
-  statusActive: {
-    backgroundColor: '#4caf50',
-    color: '#fff',
-  },
-  statusPending: {
-    backgroundColor: '#ff9800',
-    color: '#fff',
-  },
-  statusDisabled: {
-    backgroundColor: theme.palette.grey[500],
-    color: '#fff',
-  },
-  statusLocked: {
-    backgroundColor: theme.palette.error.main,
-    color: '#fff',
-  },
-  typeSso: {
-    backgroundColor: '#2196f3',
-    color: '#fff',
-  },
-  typeInternal: {
-    backgroundColor: '#9c27b0',
-    color: '#fff',
-  },
-  inviteUrlField: {
-    fontFamily: 'monospace',
-    fontSize: '0.8rem',
-  },
-  inviteWarning: {
-    marginTop: theme.spacing(1),
-    color: theme.palette.warning.main,
-    fontSize: '0.75rem',
-  },
-  tableContainer: {
-    overflowX: 'auto' as const,
-  },
-}));
-
-interface UserRecord {
-  username: string;
-  email: string;
+export interface UserRecord {
+  username?: string;
+  email?: string;
   displayName?: string;
   name?: string;
-  phase?: 'Pending' | 'Active' | 'Disabled' | 'Locked';
+  phase?: 'Pending' | 'Active' | 'Disabled' | 'Locked' | string;
   disabled?: boolean;
   authType?: 'internal' | 'sso';
   teams?: Array<{ name: string; role?: string }> | string[];
   isAdmin?: boolean;
-  role?: string;
-  createdAt?: string;
-  metadata?: {
-    name?: string;
-    creationTimestamp?: string;
-  };
-  spec?: {
-    email?: string;
-    displayName?: string;
-  };
-  status?: {
-    phase?: string;
-    teams?: Array<{ name: string; role?: string }>;
-  };
+  metadata?: { name?: string };
+  spec?: { email?: string; displayName?: string };
+  status?: { phase?: string; teams?: Array<{ name: string; role?: string }> };
 }
+
+const getName = (u: UserRecord) =>
+  u.displayName ||
+  u.name ||
+  u.spec?.displayName ||
+  u.metadata?.name ||
+  u.email ||
+  'Unknown';
+const getEmail = (u: UserRecord) => u.email || u.spec?.email || '';
+const getUsername = (u: UserRecord) =>
+  u.username || u.metadata?.name || getEmail(u);
+const getPhase = (u: UserRecord) =>
+  u.disabled ? 'Disabled' : u.phase || u.status?.phase || 'Active';
+const getAuthType = (u: UserRecord): 'internal' | 'sso' =>
+  u.authType || 'internal';
+const getTeams = (u: UserRecord): string[] => {
+  const raw = u.status?.teams ?? u.teams ?? [];
+  return raw.map((t: string | { name: string }) =>
+    typeof t === 'string' ? t : t.name,
+  );
+};
+
+const statusTone = (phase: string) => {
+  switch (phase) {
+    case 'Active':
+      return 'green' as const;
+    case 'Pending':
+      return 'yellow' as const;
+    case 'Locked':
+      return 'red' as const;
+    default:
+      return 'neutral' as const;
+  }
+};
+
+const useStyles = makeStyles(theme => {
+  const t = butlerTokens(theme);
+  const p = t.palette;
+  return {
+    user: {
+      display: 'flex',
+      alignItems: 'center',
+      gap: 12,
+    },
+    avatar: {
+      width: 32,
+      height: 32,
+      borderRadius: '50%',
+      backgroundColor: rgb(p.neutral[700]),
+      color: rgb(p.neutral[300]),
+      fontSize: 14,
+      fontWeight: 500,
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      flexShrink: 0,
+    },
+    userName: {
+      margin: 0,
+      fontSize: 14,
+      lineHeight: '20px',
+      fontWeight: 500,
+      color: rgb(p.neutral[200]),
+    },
+    userHandle: {
+      margin: 0,
+      fontSize: 12,
+      lineHeight: '16px',
+      color: t.text.subtle,
+    },
+    email: { color: rgb(p.neutral[300]) },
+    violetChip: {
+      backgroundColor: rgba(p.violet[500], 0.2),
+      color: rgb(p.violet[400]),
+    },
+    teams: {
+      display: 'flex',
+      flexWrap: 'wrap',
+      gap: 4,
+    },
+    teamChip: {
+      backgroundColor: rgb(p.neutral[700]),
+      color: rgb(p.neutral[300]),
+      fontWeight: 400,
+    },
+    more: { fontSize: 12, color: t.text.subtle },
+    dash: { fontSize: 12, color: t.text.subtle },
+    actions: {
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'flex-end',
+      gap: 8,
+    },
+    managed: { fontSize: 12, color: t.text.subtle, whiteSpace: 'nowrap' },
+    danger: {
+      color: rgb(p.red[400]),
+      '&:hover': { color: rgb(p.red[300]) },
+    },
+    checkbox: {
+      width: 16,
+      height: 16,
+      accentColor: rgb(p.green[500]),
+      cursor: 'pointer',
+    },
+    selectedRow: { backgroundColor: rgba(p.blue[500], 0.05) },
+    bulkBar: {
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      gap: 12,
+      padding: 12,
+      backgroundColor: rgba(p.blue[500], 0.05),
+      borderColor: rgba(p.blue[500], 0.2),
+      fontSize: 14,
+      color: rgb(p.neutral[200]),
+    },
+    bulkActions: { display: 'flex', gap: 8 },
+    empty: {
+      padding: 32,
+      textAlign: 'center',
+      fontSize: 14,
+      color: t.text.subtle,
+    },
+    text: {
+      margin: 0,
+      fontSize: 14,
+      lineHeight: '20px',
+      color: t.text.muted,
+      '& strong': { color: rgb(p.neutral[200]), fontWeight: 600 },
+    },
+    note: {
+      margin: 0,
+      fontSize: 12,
+      lineHeight: '16px',
+      color: t.text.subtle,
+    },
+    inviteRow: { position: 'relative' },
+    inviteInput: { paddingRight: 88 },
+    inviteCopy: { position: 'absolute', right: 4, top: 4 },
+    formError: {
+      margin: 0,
+      padding: 12,
+      borderRadius: t.radius.lg,
+      border: `1px solid ${rgba(p.red[500], 0.2)}`,
+      backgroundColor: rgba(p.red[500], 0.1),
+      fontSize: 14,
+      color: rgb(p.red[400]),
+    },
+  };
+});
 
 export const UsersPage = () => {
   const classes = useStyles();
   const api = useApi(butlerApiRef);
   const routes = useButlerRoutes();
+  const { isAdmin } = useTeamContext();
 
   const [users, setUsers] = useState<UserRecord[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<Error | undefined>();
+  const [loadError, setLoadError] = useState<Error | undefined>();
+  const [error, setError] = useState('');
+  const [currentUser, setCurrentUser] = useState<{
+    email?: string;
+    username?: string;
+  } | null>(null);
 
-  // Current user (for self-delete prevention)
-  const [currentUser, setCurrentUser] = useState<any>(null);
-
-  // Create user dialog
   const [createOpen, setCreateOpen] = useState(false);
   const [creating, setCreating] = useState(false);
   const [createForm, setCreateForm] = useState({ email: '', name: '' });
-  const [createError, setCreateError] = useState<string | undefined>();
+  const [createError, setCreateError] = useState('');
 
-  // Invite URL dialog (shown after creating user)
-  const [inviteUrlOpen, setInviteUrlOpen] = useState(false);
   const [inviteUrl, setInviteUrl] = useState('');
+  const [inviteOpen, setInviteOpen] = useState(false);
   const [copied, setCopied] = useState(false);
 
-  // Delete confirmation
   const [deleteTarget, setDeleteTarget] = useState<UserRecord | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [toggleTarget, setToggleTarget] = useState<UserRecord | null>(null);
+  const [toggling, setToggling] = useState(false);
 
-  // Actions menu
-  const [menuAnchor, setMenuAnchor] = useState<null | HTMLElement>(null);
-  const [menuUser, setMenuUser] = useState<UserRecord | null>(null);
-
-  // Inline action loading
-  const [actionLoading, setActionLoading] = useState<string | null>(null);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [bulkOpen, setBulkOpen] = useState(false);
+  const [bulkDeleting, setBulkDeleting] = useState(false);
 
   const fetchUsers = useCallback(async () => {
     setLoading(true);
-    setError(undefined);
+    setLoadError(undefined);
     try {
       const response = await api.listUsers();
       setUsers(response?.users || []);
     } catch (e) {
-      setError(e instanceof Error ? e : new Error(String(e)));
+      setLoadError(e instanceof Error ? e : new Error(String(e)));
     } finally {
       setLoading(false);
     }
   }, [api]);
 
-  const fetchCurrentUser = useCallback(async () => {
-    try {
-      const user = await api.getCurrentUser();
-      setCurrentUser(user);
-    } catch {
-      // not critical
-    }
-  }, [api]);
-
   useEffect(() => {
+    if (!isAdmin) return;
     fetchUsers();
-    fetchCurrentUser();
-  }, [fetchUsers, fetchCurrentUser]);
+    api
+      .getCurrentUser()
+      .then(u => setCurrentUser(u))
+      .catch(() => undefined);
+  }, [api, fetchUsers, isAdmin]);
 
-  // --- Helpers ---
+  const isSelf = (u: UserRecord) =>
+    !!currentUser &&
+    ((!!getEmail(u) && getEmail(u) === currentUser.email) ||
+      (!!currentUser.username && getUsername(u) === currentUser.username));
 
-  function getUserName(user: UserRecord): string {
-    return (
-      user.displayName ||
-      user.name ||
-      user.spec?.displayName ||
-      user.metadata?.name ||
-      user.email ||
-      'Unknown'
-    );
-  }
+  const fail = (e: unknown, fallback: string) =>
+    setError(e instanceof Error ? e.message : fallback);
 
-  function getUserEmail(user: UserRecord): string {
-    return user.email || user.spec?.email || '';
-  }
-
-  function getUserUsername(user: UserRecord): string {
-    return user.username || user.metadata?.name || getUserEmail(user);
-  }
-
-  function getUserPhase(user: UserRecord): string {
-    if (user.disabled) return 'Disabled';
-    return user.phase || user.status?.phase || 'Active';
-  }
-
-  function getUserAuthType(user: UserRecord): 'internal' | 'sso' {
-    return user.authType || 'internal';
-  }
-
-  function getUserTeams(
-    user: UserRecord,
-  ): Array<{ name: string; role?: string }> {
-    if (user.status?.teams) return user.status.teams;
-    if (!user.teams) return [];
-    return user.teams.map((t: any) =>
-      typeof t === 'string' ? { name: t } : t,
-    );
-  }
-
-  function isCurrentUser(user: UserRecord): boolean {
-    if (!currentUser) return false;
-    const userEmail = getUserEmail(user);
-    return (
-      userEmail === currentUser.email ||
-      getUserUsername(user) === currentUser.username
-    );
-  }
-
-  // --- Handlers ---
-
-  const handleCreateUser = async () => {
-    if (!createForm.email.trim()) {
-      setCreateError('Email is required.');
-      return;
-    }
-
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(createForm.email)) {
+  const handleCreate = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const email = createForm.email.trim();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
       setCreateError('Please enter a valid email address.');
       return;
     }
-
     setCreating(true);
-    setCreateError(undefined);
+    setCreateError('');
     try {
       const result = await api.createUser({
-        email: createForm.email.trim(),
+        email,
         name: createForm.name.trim() || undefined,
       });
       setCreateOpen(false);
       setCreateForm({ email: '', name: '' });
-
       if (result.inviteUrl) {
         setInviteUrl(result.inviteUrl);
-        setInviteUrlOpen(true);
+        setInviteOpen(true);
       }
-
       fetchUsers();
-    } catch (e) {
+    } catch (err) {
       setCreateError(
-        e instanceof Error ? e.message : 'Failed to create user.',
+        err instanceof Error ? err.message : 'Failed to create user.',
       );
     } finally {
       setCreating(false);
     }
   };
 
-  const handleCloseCreate = () => {
-    setCreateOpen(false);
-    setCreateForm({ email: '', name: '' });
-    setCreateError(undefined);
-  };
-
-  const handleCopyInviteUrl = async () => {
+  const copyInvite = async () => {
     try {
       await navigator.clipboard.writeText(inviteUrl);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
     } catch {
-      // Fallback
-      const textArea = document.createElement('textarea');
-      textArea.value = inviteUrl;
-      document.body.appendChild(textArea);
-      textArea.select();
+      const area = document.createElement('textarea');
+      area.value = inviteUrl;
+      document.body.appendChild(area);
+      area.select();
       document.execCommand('copy');
-      document.body.removeChild(textArea);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
+      document.body.removeChild(area);
     }
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
   };
 
-  const handleCloseInviteUrl = () => {
-    setInviteUrlOpen(false);
+  const closeInvite = () => {
+    setInviteOpen(false);
     setInviteUrl('');
     setCopied(false);
   };
 
-  const handleToggleDisable = async (user: UserRecord) => {
-    const username = getUserUsername(user);
-    const isDisabled = getUserPhase(user) === 'Disabled';
-    setActionLoading(username);
-    handleCloseMenu();
+  const resendInvite = async (u: UserRecord) => {
     try {
-      if (isDisabled) {
-        await api.enableUser(username);
-      } else {
-        await api.disableUser(username);
-      }
-      fetchUsers();
-    } catch {
-      // Error will be visible when the page re-renders
-    } finally {
-      setActionLoading(null);
-    }
-  };
-
-  const handleResendInvite = async (user: UserRecord) => {
-    const username = getUserUsername(user);
-    setActionLoading(username);
-    handleCloseMenu();
-    try {
-      const result = await api.resendInvite(username);
+      const result = await api.resendInvite(getUsername(u));
       if (result.inviteUrl) {
         setInviteUrl(result.inviteUrl);
-        setInviteUrlOpen(true);
+        setInviteOpen(true);
       }
-    } catch {
-      // silent
-    } finally {
-      setActionLoading(null);
+    } catch (e) {
+      fail(e, 'Failed to resend invite');
     }
   };
 
-  const handleDeleteUser = async () => {
+  const confirmToggle = async () => {
+    if (!toggleTarget) return;
+    const username = getUsername(toggleTarget);
+    const disabled = getPhase(toggleTarget) === 'Disabled';
+    setToggling(true);
+    try {
+      if (disabled) await api.enableUser(username);
+      else await api.disableUser(username);
+      setToggleTarget(null);
+      fetchUsers();
+    } catch (e) {
+      fail(e, `Failed to ${disabled ? 'enable' : 'disable'} user`);
+      setToggleTarget(null);
+    } finally {
+      setToggling(false);
+    }
+  };
+
+  const confirmDelete = async () => {
     if (!deleteTarget) return;
     setDeleting(true);
     try {
-      await api.deleteUser(getUserUsername(deleteTarget));
+      await api.deleteUser(getUsername(deleteTarget));
       setDeleteTarget(null);
       fetchUsers();
-    } catch {
-      // silent
+    } catch (e) {
+      fail(e, 'Failed to delete user');
+      setDeleteTarget(null);
     } finally {
       setDeleting(false);
     }
   };
 
-  const handleOpenMenu = (
-    event: React.MouseEvent<HTMLElement>,
-    user: UserRecord,
-  ) => {
-    setMenuAnchor(event.currentTarget);
-    setMenuUser(user);
-  };
+  const internalUsers = users.filter(u => getAuthType(u) === 'internal');
+  const toggleSelect = (username: string) =>
+    setSelected(prev => {
+      const next = new Set(prev);
+      if (next.has(username)) next.delete(username);
+      else next.add(username);
+      return next;
+    });
+  const toggleSelectAll = () =>
+    setSelected(
+      selected.size === internalUsers.length
+        ? new Set()
+        : new Set(internalUsers.map(getUsername)),
+    );
 
-  const handleCloseMenu = () => {
-    setMenuAnchor(null);
-    setMenuUser(null);
-  };
-
-  // --- Status badge ---
-
-  function getStatusChipClass(phase: string): string | undefined {
-    switch (phase) {
-      case 'Active':
-        return classes.statusActive;
-      case 'Pending':
-        return classes.statusPending;
-      case 'Disabled':
-        return classes.statusDisabled;
-      case 'Locked':
-        return classes.statusLocked;
-      default:
-        return undefined;
+  const bulkDelete = async () => {
+    setBulkDeleting(true);
+    for (const username of selected) {
+      const user = users.find(u => getUsername(u) === username);
+      if (user && isSelf(user)) continue;
+      try {
+        await api.deleteUser(username);
+      } catch {
+        // Continue with the remaining users, as the console does.
+      }
     }
-  }
+    setSelected(new Set());
+    setBulkDeleting(false);
+    setBulkOpen(false);
+    fetchUsers();
+  };
 
-  // --- Render ---
-
-  if (loading) {
-    return <Progress />;
-  }
-
-  if (error) {
+  if (!isAdmin) {
     return (
-      <EmptyState
-        title="Failed to load users"
-        description={error.message}
-        missing="info"
+      <ButlerAccessDenied
+        resourceType="page"
+        message="Platform administrator access is required to manage users."
+        homeTo={routes.root()}
       />
     );
   }
 
-  return (
-    <div>
-      <Button
-        startIcon={<ArrowBackIcon />}
-        component={RouterLink}
-        to={routes.admin()}
-        style={{ textTransform: 'none', marginBottom: 16 }}
-      >
-        Back to Admin
-      </Button>
-
-      <div className={classes.header}>
-        <div>
-          <Typography variant="h4">User Management</Typography>
-          <Typography variant="body2" color="textSecondary">
-            View all users with platform access (SSO and internal accounts)
-          </Typography>
+  const showSelect = internalUsers.length > 0;
+  const columns: ButlerColumn<UserRecord>[] = [
+    ...(showSelect
+      ? [
+          {
+            id: 'select',
+            width: 40,
+            header: (
+              <input
+                type="checkbox"
+                className={classes.checkbox}
+                aria-label="Select all internal users"
+                checked={
+                  selected.size > 0 && selected.size === internalUsers.length
+                }
+                onChange={toggleSelectAll}
+              />
+            ),
+            render: (u: UserRecord) =>
+              getAuthType(u) === 'internal' ? (
+                <input
+                  type="checkbox"
+                  className={classes.checkbox}
+                  aria-label={`Select ${getName(u)}`}
+                  checked={selected.has(getUsername(u))}
+                  onChange={() => toggleSelect(getUsername(u))}
+                />
+              ) : null,
+          } as ButlerColumn<UserRecord>,
+        ]
+      : []),
+    {
+      id: 'user',
+      header: 'User',
+      render: u => (
+        <div className={classes.user}>
+          <div className={classes.avatar} aria-hidden>
+            {(getName(u) || getEmail(u)).charAt(0).toUpperCase()}
+          </div>
+          <div>
+            <p className={classes.userName}>{getName(u)}</p>
+            {getAuthType(u) === 'internal' && getUsername(u) && (
+              <p className={classes.userHandle}>@{getUsername(u)}</p>
+            )}
+          </div>
         </div>
-        <div className={classes.actions}>
-          <Button
-            variant="outlined"
-            size="small"
-            startIcon={<RefreshIcon />}
-            onClick={fetchUsers}
-          >
-            Refresh
-          </Button>
-          <Button
-            variant="contained"
-            color="primary"
-            startIcon={<AddIcon />}
+      ),
+    },
+    {
+      id: 'email',
+      header: 'Email',
+      render: u => <span className={classes.email}>{getEmail(u)}</span>,
+    },
+    {
+      id: 'type',
+      header: 'Type',
+      render: u =>
+        getAuthType(u) === 'sso' ? (
+          <ButlerChip tone="blue">SSO</ButlerChip>
+        ) : (
+          <ButlerChip className={classes.violetChip}>Internal</ButlerChip>
+        ),
+    },
+    {
+      id: 'status',
+      header: 'Status',
+      render: u => {
+        const phase = getPhase(u);
+        return <ButlerChip tone={statusTone(phase)}>{phase}</ButlerChip>;
+      },
+    },
+    {
+      id: 'teams',
+      header: 'Teams',
+      render: u => {
+        const teams = getTeams(u);
+        if (teams.length === 0) return <span className={classes.dash}>-</span>;
+        return (
+          <div className={classes.teams}>
+            {teams.slice(0, 2).map(team => (
+              <ButlerChip key={team} className={classes.teamChip}>
+                {team}
+              </ButlerChip>
+            ))}
+            {teams.length > 2 && (
+              <span className={classes.more}>+{teams.length - 2}</span>
+            )}
+          </div>
+        );
+      },
+    },
+    {
+      id: 'actions',
+      header: 'Actions',
+      align: 'right',
+      render: u => {
+        if (getAuthType(u) === 'sso') {
+          return <span className={classes.managed}>Managed via Teams</span>;
+        }
+        const phase = getPhase(u);
+        return (
+          <div className={classes.actions}>
+            {phase === 'Pending' && (
+              <ButlerButton
+                variant="ghost"
+                size="sm"
+                onClick={() => resendInvite(u)}
+              >
+                Resend Invite
+              </ButlerButton>
+            )}
+            <ButlerButton
+              variant="ghost"
+              size="sm"
+              onClick={() => setToggleTarget(u)}
+            >
+              {phase === 'Disabled' ? 'Enable' : 'Disable'}
+            </ButlerButton>
+            {!isSelf(u) && (
+              <ButlerButton
+                variant="ghost"
+                size="sm"
+                className={classes.danger}
+                onClick={() => setDeleteTarget(u)}
+              >
+                Delete
+              </ButlerButton>
+            )}
+          </div>
+        );
+      },
+    },
+  ];
+
+  let body: React.ReactNode;
+  if (loading) {
+    body = <ButlerLoading />;
+  } else if (loadError) {
+    body = (
+      <ButlerErrorState
+        message="Failed to load users"
+        detail={loadError.message}
+        onRetry={fetchUsers}
+      />
+    );
+  } else if (users.length === 0) {
+    body = (
+      <ButlerCard flush className={classes.empty}>
+        No users found. Create your first user or add members to teams.
+      </ButlerCard>
+    );
+  } else {
+    body = (
+      <ButlerTable<UserRecord>
+        aria-label="Users"
+        columns={columns}
+        rows={users}
+        rowKey={u => getUsername(u) || getEmail(u)}
+      />
+    );
+  }
+
+  const targetName = deleteTarget ? getUsername(deleteTarget) : '';
+  const toggleDisabled =
+    toggleTarget !== null && getPhase(toggleTarget) === 'Disabled';
+
+  return (
+    <ButlerStack>
+      <ButlerPageHeader
+        title="User Management"
+        subtitle="View all users with platform access (SSO and internal accounts)"
+        actions={
+          <ButlerButton
+            startIcon={<PlusIcon />}
             onClick={() => setCreateOpen(true)}
           >
             Add User
-          </Button>
-        </div>
-      </div>
+          </ButlerButton>
+        }
+      />
 
-      {users.length === 0 ? (
-        <EmptyState
-          title="No users found"
-          description="No users have been created on the platform."
-          missing="content"
-          action={
-            <Button
-              variant="contained"
-              color="primary"
-              startIcon={<AddIcon />}
-              onClick={() => setCreateOpen(true)}
-            >
-              Add User
-            </Button>
-          }
+      {error && (
+        <ButlerErrorState
+          message={error}
+          onRetry={() => setError('')}
+          retryLabel="Dismiss"
         />
-      ) : (
-        <div className={classes.tableContainer}>
-          <Table size="small">
-            <TableHead>
-              <TableRow>
-                <TableCell>User</TableCell>
-                <TableCell>Email</TableCell>
-                <TableCell>Type</TableCell>
-                <TableCell>Status</TableCell>
-                <TableCell>Teams</TableCell>
-                <TableCell align="right">Actions</TableCell>
-              </TableRow>
-            </TableHead>
-            <TableBody>
-              {users.map((user, index) => {
-                const phase = getUserPhase(user);
-                const authType = getUserAuthType(user);
-                const teams = getUserTeams(user);
-                const username = getUserUsername(user);
-                const isLoading = actionLoading === username;
-
-                return (
-                  <TableRow key={getUserEmail(user) || `user-${index}`}>
-                    <TableCell>
-                      <Box className={classes.nameCell}>
-                        <Avatar className={classes.avatar}>
-                          {(getUserName(user) || getUserEmail(user))
-                            .charAt(0)
-                            .toUpperCase()}
-                        </Avatar>
-                        <Box>
-                          <Typography variant="body2" style={{ fontWeight: 600 }}>
-                            {getUserName(user)}
-                          </Typography>
-                          {authType === 'internal' && username && (
-                            <Typography variant="caption" color="textSecondary">
-                              @{username}
-                            </Typography>
-                          )}
-                        </Box>
-                      </Box>
-                    </TableCell>
-                    <TableCell>
-                      <Typography variant="body2">
-                        {getUserEmail(user)}
-                      </Typography>
-                    </TableCell>
-                    <TableCell>
-                      <Chip
-                        size="small"
-                        label={authType === 'sso' ? 'SSO' : 'Internal'}
-                        className={
-                          authType === 'sso'
-                            ? classes.typeSso
-                            : classes.typeInternal
-                        }
-                      />
-                    </TableCell>
-                    <TableCell>
-                      <Chip
-                        size="small"
-                        label={phase}
-                        className={getStatusChipClass(phase)}
-                        variant={
-                          getStatusChipClass(phase) ? 'default' : 'outlined'
-                        }
-                      />
-                    </TableCell>
-                    <TableCell>
-                      <div className={classes.teamChips}>
-                        {teams.length === 0 ? (
-                          <Typography
-                            variant="body2"
-                            color="textSecondary"
-                          >
-                            --
-                          </Typography>
-                        ) : (
-                          <>
-                            {teams.slice(0, 2).map(team => (
-                              <Chip
-                                key={team.name}
-                                label={
-                                  team.role
-                                    ? `${team.name} (${team.role})`
-                                    : team.name
-                                }
-                                size="small"
-                                variant="outlined"
-                              />
-                            ))}
-                            {teams.length > 2 && (
-                              <Typography
-                                variant="caption"
-                                color="textSecondary"
-                              >
-                                +{teams.length - 2}
-                              </Typography>
-                            )}
-                          </>
-                        )}
-                      </div>
-                    </TableCell>
-                    <TableCell align="right">
-                      {authType === 'sso' ? (
-                        <Typography
-                          variant="caption"
-                          color="textSecondary"
-                        >
-                          Managed via Teams
-                        </Typography>
-                      ) : (
-                        <Tooltip title="Actions">
-                          <IconButton
-                            size="small"
-                            onClick={e => handleOpenMenu(e, user)}
-                            disabled={isLoading}
-                          >
-                            <MoreVertIcon fontSize="small" />
-                          </IconButton>
-                        </Tooltip>
-                      )}
-                    </TableCell>
-                  </TableRow>
-                );
-              })}
-            </TableBody>
-          </Table>
-        </div>
       )}
 
-      {/* Actions Menu */}
-      <Menu
-        anchorEl={menuAnchor}
-        open={Boolean(menuAnchor) && Boolean(menuUser)}
-        onClose={handleCloseMenu}
-      >
-        {menuUser &&
-          getUserPhase(menuUser) === 'Pending' && (
-            <MenuItem
-              onClick={() => {
-                if (menuUser) handleResendInvite(menuUser);
-              }}
+      {selected.size > 0 && (
+        <ButlerCard flush className={classes.bulkBar} role="status">
+          <span>
+            {selected.size} user{selected.size === 1 ? '' : 's'} selected
+          </span>
+          <div className={classes.bulkActions}>
+            <ButlerButton
+              variant="secondary"
+              size="sm"
+              onClick={() => setSelected(new Set())}
             >
-              Resend Invite
-            </MenuItem>
-          )}
-        {menuUser &&
-          getUserAuthType(menuUser) === 'internal' && (
-            <MenuItem
-              onClick={() => {
-                if (menuUser) handleToggleDisable(menuUser);
-              }}
+              Clear
+            </ButlerButton>
+            <ButlerButton
+              variant="danger"
+              size="sm"
+              onClick={() => setBulkOpen(true)}
             >
-              {getUserPhase(menuUser) === 'Disabled' ? 'Enable' : 'Disable'}
-            </MenuItem>
-          )}
-        {menuUser &&
-          getUserAuthType(menuUser) === 'internal' &&
-          !isCurrentUser(menuUser) && (
-            <MenuItem
-              onClick={() => {
-                setDeleteTarget(menuUser);
-                handleCloseMenu();
-              }}
-              style={{ color: '#f44336' }}
-            >
-              Delete
-            </MenuItem>
-          )}
-        {menuUser && isCurrentUser(menuUser) && (
-          <MenuItem disabled>
-            Cannot delete yourself
-          </MenuItem>
-        )}
-      </Menu>
+              Delete {selected.size}
+            </ButlerButton>
+          </div>
+        </ButlerCard>
+      )}
 
-      {/* Create User Dialog */}
-      <Dialog
+      {body}
+
+      <ButlerDialog
         open={createOpen}
-        onClose={handleCloseCreate}
-        maxWidth="sm"
-        fullWidth
+        onClose={() => {
+          if (creating) return;
+          setCreateOpen(false);
+          setCreateError('');
+        }}
+        busy={creating}
+        title="Add New User"
+        footer={
+          <>
+            <ButlerButton
+              variant="secondary"
+              disabled={creating}
+              onClick={() => {
+                setCreateOpen(false);
+                setCreateError('');
+              }}
+            >
+              Cancel
+            </ButlerButton>
+            <ButlerButton type="submit" form="create-user-form" disabled={creating}>
+              {creating ? 'Creating...' : 'Create User'}
+            </ButlerButton>
+          </>
+        }
       >
-        <DialogTitle>Add New User</DialogTitle>
-        <DialogContent>
+        <form
+          id="create-user-form"
+          onSubmit={handleCreate}
+          style={{ display: 'flex', flexDirection: 'column', gap: 16 }}
+        >
           {createError && (
-            <Typography color="error" variant="body2" gutterBottom>
+            <p className={classes.formError} role="alert">
               {createError}
-            </Typography>
+            </p>
           )}
-          <TextField
-            className={classes.formField}
+          <ButlerInput
+            id="new-user-email"
             label="Email Address"
             type="email"
             value={createForm.email}
             onChange={e =>
               setCreateForm(prev => ({ ...prev, email: e.target.value }))
             }
-            fullWidth
+            placeholder="user@example.com"
             required
             autoFocus
-            margin="dense"
-            placeholder="user@example.com"
-            helperText="The email address of the user to invite."
           />
-          <TextField
-            className={classes.formField}
+          <ButlerInput
+            id="new-user-name"
             label="Display Name (optional)"
             value={createForm.name}
             onChange={e =>
               setCreateForm(prev => ({ ...prev, name: e.target.value }))
             }
-            fullWidth
-            margin="dense"
             placeholder="John Doe"
-            helperText="Optional display name for the user."
           />
-          <Typography variant="caption" color="textSecondary">
+          <p className={classes.note}>
             An invite link will be generated. Share it with the user to let
             them set their password.
-          </Typography>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={handleCloseCreate} disabled={creating}>
-            Cancel
-          </Button>
-          <Button
-            onClick={handleCreateUser}
-            color="primary"
-            variant="contained"
-            disabled={creating}
-          >
-            {creating ? 'Creating...' : 'Create User'}
-          </Button>
-        </DialogActions>
-      </Dialog>
+          </p>
+        </form>
+      </ButlerDialog>
 
-      {/* Invite URL Dialog */}
-      <Dialog
-        open={inviteUrlOpen}
-        onClose={handleCloseInviteUrl}
-        maxWidth="sm"
-        fullWidth
+      <ButlerDialog
+        open={inviteOpen}
+        onClose={closeInvite}
+        title="Invite Link Generated"
+        footer={<ButlerButton onClick={closeInvite}>Done</ButlerButton>}
       >
-        <DialogTitle>Invite Link Generated</DialogTitle>
-        <DialogContent>
-          <Typography variant="body2" color="textSecondary" gutterBottom>
-            Share this link with the user. They will use it to set their
-            password and activate their account.
-          </Typography>
-          <TextField
-            fullWidth
+        <p className={classes.text}>
+          Share this link with the user. They will use it to set their
+          password and activate their account.
+        </p>
+        <div className={classes.inviteRow}>
+          <ButlerInput
+            aria-label="Invite link"
+            readOnly
+            mono
             value={inviteUrl}
-            margin="dense"
-            variant="outlined"
-            InputProps={{
-              readOnly: true,
-              className: classes.inviteUrlField,
-              endAdornment: (
-                <InputAdornment position="end">
-                  <Tooltip title={copied ? 'Copied!' : 'Copy to clipboard'}>
-                    <IconButton
-                      size="small"
-                      onClick={handleCopyInviteUrl}
-                    >
-                      <FileCopyIcon fontSize="small" />
-                    </IconButton>
-                  </Tooltip>
-                </InputAdornment>
-              ),
-            }}
+            className={classes.inviteInput}
           />
-          {copied && (
-            <Typography
-              variant="caption"
-              style={{ color: '#4caf50', marginTop: 4, display: 'block' }}
-            >
-              Copied to clipboard!
-            </Typography>
-          )}
-          <Typography className={classes.inviteWarning}>
+          <ButlerButton
+            size="sm"
+            className={classes.inviteCopy}
+            onClick={copyInvite}
+          >
+            {copied ? 'Copied!' : 'Copy'}
+          </ButlerButton>
+        </div>
+        <ButlerCallout tone="warning" compact>
+          <p className={classes.note}>
             This link is only shown once and expires in 48 hours.
-          </Typography>
-        </DialogContent>
-        <DialogActions>
-          <Button
-            onClick={handleCloseInviteUrl}
-            color="primary"
-            variant="contained"
-          >
-            Done
-          </Button>
-        </DialogActions>
-      </Dialog>
+          </p>
+        </ButlerCallout>
+      </ButlerDialog>
 
-      {/* Delete Confirmation Dialog */}
-      <Dialog
-        open={Boolean(deleteTarget)}
-        onClose={() => setDeleteTarget(null)}
-        maxWidth="xs"
-        fullWidth
+      <ButlerDialog
+        open={toggleTarget !== null}
+        onClose={() => setToggleTarget(null)}
+        busy={toggling}
+        title={toggleDisabled ? 'Enable User' : 'Disable User'}
+        footer={
+          <>
+            <ButlerButton
+              variant="secondary"
+              onClick={() => setToggleTarget(null)}
+              disabled={toggling}
+            >
+              Cancel
+            </ButlerButton>
+            <ButlerButton
+              variant={toggleDisabled ? 'primary' : 'danger'}
+              onClick={confirmToggle}
+              disabled={toggling}
+            >
+              {toggling
+                ? toggleDisabled
+                  ? 'Enabling...'
+                  : 'Disabling...'
+                : toggleDisabled
+                  ? 'Enable User'
+                  : 'Disable User'}
+            </ButlerButton>
+          </>
+        }
       >
-        <DialogTitle>Delete User</DialogTitle>
-        <DialogContent>
-          <Typography variant="body2">
-            Are you sure you want to delete user{' '}
-            <strong>{deleteTarget ? getUserUsername(deleteTarget) : ''}</strong>?
-            This action cannot be undone.
-          </Typography>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setDeleteTarget(null)} disabled={deleting}>
-            Cancel
-          </Button>
-          <Button
-            onClick={handleDeleteUser}
-            style={{ color: '#f44336' }}
-            disabled={deleting}
-          >
-            {deleting ? 'Deleting...' : 'Delete User'}
-          </Button>
-        </DialogActions>
-      </Dialog>
-    </div>
+        <p className={classes.text}>
+          {toggleDisabled ? 'Re-enable' : 'Disable'} user{' '}
+          <strong>{toggleTarget ? getUsername(toggleTarget) : ''}</strong>?
+          {toggleDisabled
+            ? ' They will be able to sign in again.'
+            : ' They will no longer be able to sign in until re-enabled.'}
+        </p>
+      </ButlerDialog>
+
+      <ButlerDialog
+        open={deleteTarget !== null}
+        onClose={() => setDeleteTarget(null)}
+        busy={deleting}
+        title="Delete User"
+        footer={
+          <>
+            <ButlerButton
+              variant="secondary"
+              onClick={() => setDeleteTarget(null)}
+              disabled={deleting}
+            >
+              Cancel
+            </ButlerButton>
+            <ButlerButton
+              variant="danger"
+              onClick={confirmDelete}
+              disabled={deleting}
+            >
+              {deleting ? 'Deleting...' : 'Delete User'}
+            </ButlerButton>
+          </>
+        }
+      >
+        <p className={classes.text}>
+          Are you sure you want to delete user <strong>{targetName}</strong>?
+          This action cannot be undone.
+        </p>
+      </ButlerDialog>
+
+      <ButlerDialog
+        open={bulkOpen}
+        onClose={() => setBulkOpen(false)}
+        busy={bulkDeleting}
+        title={`Delete ${selected.size} user${selected.size === 1 ? '' : 's'}`}
+        footer={
+          <>
+            <ButlerButton
+              variant="secondary"
+              onClick={() => setBulkOpen(false)}
+              disabled={bulkDeleting}
+            >
+              Cancel
+            </ButlerButton>
+            <ButlerButton
+              variant="danger"
+              onClick={bulkDelete}
+              disabled={bulkDeleting}
+            >
+              {bulkDeleting ? 'Deleting...' : `Delete ${selected.size}`}
+            </ButlerButton>
+          </>
+        }
+      >
+        <p className={classes.text}>
+          The selected internal users will be permanently deleted. Your own
+          account is skipped. This action cannot be undone.
+        </p>
+      </ButlerDialog>
+    </ButlerStack>
   );
 };

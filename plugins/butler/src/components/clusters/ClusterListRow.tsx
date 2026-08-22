@@ -1,8 +1,10 @@
 // Copyright 2026 The Butler Authors.
 // SPDX-License-Identifier: Apache-2.0
 
+import type { ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { makeStyles } from '@material-ui/core/styles';
+import clsx from 'clsx';
 import { butlerTokens, rgb, rgba } from '../../theme';
 import { ButlerCard, ButlerStatusBadge, ServerIcon } from '../ui';
 
@@ -41,6 +43,32 @@ const useStyles = makeStyles(theme => {
       alignItems: 'center',
       justifyContent: 'center',
       flexShrink: 0,
+    },
+    iconViolet: {
+      backgroundColor: rgba(t.palette.violet[500], 0.1),
+      color: rgb(t.palette.violet[500]),
+    },
+    cardViolet: {
+      borderColor: rgba(t.palette.violet[500], 0.2),
+    },
+    accent: {
+      borderLeftWidth: 4,
+      borderLeftStyle: 'solid',
+    },
+    nameRow: {
+      display: 'flex',
+      alignItems: 'center',
+      gap: 8,
+      flexWrap: 'wrap',
+    },
+    tag: {
+      padding: '2px 8px',
+      borderRadius: t.radius.sm,
+      fontSize: 12,
+      lineHeight: '16px',
+      fontWeight: 500,
+      backgroundColor: rgba(t.palette.violet[500], 0.1),
+      color: rgb(t.palette.violet[400]),
     },
     name: {
       margin: 0,
@@ -98,6 +126,12 @@ export interface ClusterListRowProps {
   namespace: string;
   phase: string;
   stats: ClusterListRowStat[];
+  /** Violet tile and border for the console management cluster card. */
+  tone?: 'green' | 'violet';
+  /** Small tag after the name (console "Management"). */
+  tag?: ReactNode;
+  /** Left accent border color (console env-grouped rows). */
+  accentBorder?: string;
 }
 
 /**
@@ -110,18 +144,37 @@ export const ClusterListRow = ({
   namespace,
   phase,
   stats,
+  tone = 'green',
+  tag,
+  accentBorder,
 }: ClusterListRowProps) => {
   const classes = useStyles();
   return (
     <Link to={to} className={classes.link}>
-      <ButlerCard hoverable>
+      <ButlerCard
+        hoverable
+        className={clsx(
+          tone === 'violet' && classes.cardViolet,
+          accentBorder && classes.accent,
+        )}
+        style={accentBorder ? { borderLeftColor: accentBorder } : undefined}
+      >
         <div className={classes.row}>
           <div className={classes.identity}>
-            <div className={classes.icon}>
+            <div
+              className={clsx(classes.icon, tone === 'violet' && classes.iconViolet)}
+            >
               <ServerIcon />
             </div>
             <div>
-              <p className={classes.name}>{name}</p>
+              {tag ? (
+                <div className={classes.nameRow}>
+                  <p className={classes.name}>{name}</p>
+                  <span className={classes.tag}>{tag}</span>
+                </div>
+              ) : (
+                <p className={classes.name}>{name}</p>
+              )}
               <p className={classes.namespace}>{namespace}</p>
             </div>
           </div>
