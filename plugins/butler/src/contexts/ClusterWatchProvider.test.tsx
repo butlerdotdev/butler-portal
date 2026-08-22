@@ -206,10 +206,28 @@ describe('ClusterWatchProvider', () => {
     await waitFor(() => expect(FakeWebSocket.instances).toHaveLength(5));
   });
 
-  it('keeps retrying at the 30s cap instead of giving up', async () => {
+  it('keeps retrying at the 30s cap after short-lived connections', async () => {
     renderProvider();
     await waitFor(() => expect(FakeWebSocket.instances).toHaveLength(1));
     for (let attempt = 0; attempt < 8; attempt += 1) {
+      act(() => {
+        latestSocket().emitOpen();
+        latestSocket().emitServerClose();
+      });
+      act(() => {
+        jest.advanceTimersByTime(30000);
+      });
+      // eslint-disable-next-line no-await-in-loop
+      await waitFor(() =>
+        expect(FakeWebSocket.instances).toHaveLength(attempt + 2),
+      );
+    }
+  });
+
+  it('stops after five upgrades that never opened', async () => {
+    renderProvider();
+    await waitFor(() => expect(FakeWebSocket.instances).toHaveLength(1));
+    for (let attempt = 0; attempt < 4; attempt += 1) {
       act(() => latestSocket().emitServerClose());
       act(() => {
         jest.advanceTimersByTime(30000);
@@ -219,16 +237,14 @@ describe('ClusterWatchProvider', () => {
         expect(FakeWebSocket.instances).toHaveLength(attempt + 2),
       );
     }
-    // Delay is capped: after many failures a retry still happens within 30s.
     act(() => latestSocket().emitServerClose());
     act(() => {
-      jest.advanceTimersByTime(29999);
+      jest.advanceTimersByTime(60000);
     });
-    expect(FakeWebSocket.instances).toHaveLength(9);
-    act(() => {
-      jest.advanceTimersByTime(1);
+    await act(async () => {
+      await Promise.resolve();
     });
-    await waitFor(() => expect(FakeWebSocket.instances).toHaveLength(10));
+    expect(FakeWebSocket.instances).toHaveLength(5);
   });
 
   it('closes the socket and cancels reconnects on unmount', async () => {

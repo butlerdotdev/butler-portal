@@ -27,6 +27,11 @@ const MAX_RECONNECT_DELAY_MS = 30000;
 // butler-server is down and the socket closes moments later; resetting
 // on open alone would reconnect every second for the whole outage.
 const STABLE_CONNECTION_MS = 10000;
+// A socket the server refuses outright (the upgrade never opens, for
+// example a 403 from the authorization gate) is retried a few times and
+// then left alone; retrying forever would cost an authorize call per tab
+// every 30 seconds for a decision that will not change.
+const MAX_NEVER_OPENED_ATTEMPTS = 5;
 const MAX_NOTIFICATIONS = 50;
 const SEVERITIES: NotificationSeverity[] = ['success', 'warning', 'error', 'info'];
 const CATEGORIES: NotificationCategory[] = ['cluster', 'team', 'infra', 'security'];
@@ -87,6 +92,7 @@ export const ClusterWatchProvider = ({
   const listenersRef = useRef<Set<ClusterWatchListener>>(new Set());
   const socketRef = useRef<WebSocket | null>(null);
   const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const neverOpenedRef = useRef(0);
   const reconnectAttemptsRef = useRef(0);
   const disposedRef = useRef(false);
   const socketFactoryRef = useRef(socketFactory);
@@ -195,6 +201,7 @@ export const ClusterWatchProvider = ({
       ws.onopen = () => {
         if (disposedRef.current) return;
         openedAt = Date.now();
+        neverOpenedRef.current = 0;
         setConnected(true);
       };
       ws.onmessage = (event: MessageEvent) => {
@@ -211,6 +218,10 @@ export const ClusterWatchProvider = ({
           reconnectAttemptsRef.current = 0;
         }
         setConnected(false);
+        if (openedAt === null) {
+          neverOpenedRef.current += 1;
+          if (neverOpenedRef.current >= MAX_NEVER_OPENED_ATTEMPTS) return;
+        }
         scheduleReconnect();
       };
     }
