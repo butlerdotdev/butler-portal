@@ -79,6 +79,21 @@ describe('ButlerPage admin route guard', () => {
     expect(screen.queryByText('Admin Mode')).not.toBeInTheDocument();
   });
 
+  it('does not offer admin view to a team admin on an unknown admin path', async () => {
+    const api = new MockButlerApi({
+      identity: {
+        isPlatformAdmin: false,
+        teams: fixtureTeams.filter(t => t.name === FIXTURE_TEAM),
+      },
+    });
+    await renderAt(api, '/butler/admin/audit');
+    await waitFor(() => {
+      expect(screen.getByText('Team Admin')).toBeInTheDocument();
+    });
+    expect(screen.queryByText('Admin View')).not.toBeInTheDocument();
+    expect(screen.getByText('Page not found')).toBeInTheDocument();
+  });
+
   it('lets a platform admin open admin routes and shows the admin rail', async () => {
     const api = new MockButlerApi({ identity: { isPlatformAdmin: true } });
     await renderAt(api, '/butler/admin/users');

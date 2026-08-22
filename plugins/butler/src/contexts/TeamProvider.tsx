@@ -21,14 +21,16 @@ export const TeamProvider = ({ children }: { children: React.ReactNode }) => {
   const isAdminRoute = useIsAdminRoute();
 
   const [teams, setTeams] = useState<TeamInfo[]>([]);
-  const [activeTeam, setActiveTeam] = useState<string | null>(
-    () => localStorage.getItem(TEAM_STORAGE_KEY),
+  const [activeTeam, setActiveTeam] = useState<string | null>(() =>
+    localStorage.getItem(TEAM_STORAGE_KEY),
   );
   const [loading, setLoading] = useState(true);
   const [isAdmin, setIsAdmin] = useState(false);
 
-  // Derive mode from the current URL path
-  const mode: ViewMode = isAdminRoute ? 'admin' : 'team';
+  // Administration mode needs both an admin route and the platform role.
+  // Deriving it from the path alone told a team admin they were in admin
+  // view whenever they opened an admin URL.
+  const mode: ViewMode = isAdminRoute && isAdmin ? 'admin' : 'team';
 
   useEffect(() => {
     let cancelled = false;
@@ -51,8 +53,7 @@ export const TeamProvider = ({ children }: { children: React.ReactNode }) => {
 
         // Restore active team from localStorage or default to the first team
         const stored = localStorage.getItem(TEAM_STORAGE_KEY);
-        const validStored =
-          stored && fetchedTeams.some(t => t.name === stored);
+        const validStored = stored && fetchedTeams.some(t => t.name === stored);
 
         if (validStored) {
           api.setTeamContext(stored);
@@ -133,14 +134,23 @@ export const TeamProvider = ({ children }: { children: React.ReactNode }) => {
       isAdmin,
       mode,
     }),
-    [teams, activeTeam, activeTeamDisplayName, activeTeamRole, isTeamAdmin, switchTeam, switchToAdmin, loading, isAdmin, mode],
+    [
+      teams,
+      activeTeam,
+      activeTeamDisplayName,
+      activeTeamRole,
+      isTeamAdmin,
+      switchTeam,
+      switchToAdmin,
+      loading,
+      isAdmin,
+      mode,
+    ],
   );
 
   if (loading) {
     return <Progress />;
   }
 
-  return (
-    <TeamContext.Provider value={value}>{children}</TeamContext.Provider>
-  );
+  return <TeamContext.Provider value={value}>{children}</TeamContext.Provider>;
 };

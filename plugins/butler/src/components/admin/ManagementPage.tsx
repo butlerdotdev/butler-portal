@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Link as RouterLink, useSearchParams } from 'react-router-dom';
+import { useSearchParams } from 'react-router-dom';
 import { useApi, discoveryApiRef } from '@backstage/core-plugin-api';
 import { makeStyles } from '@material-ui/core/styles';
 import clsx from 'clsx';
@@ -49,16 +49,15 @@ import {
   ButlerPreviewToggle,
   ButlerSearchInput,
   ButlerSelect,
-  ButlerDashboardStat,
   ButlerSpinner,
   ButlerStack,
   ButlerStatGrid,
+  ButlerStatTile,
   ButlerStatusBadge,
   ButlerTable,
   ButlerTabPanel,
   ButlerTabs,
   ButlerToggleBar,
-  ChevronLeftIcon,
   PlusIcon,
   ServerIcon,
 } from '../ui';
@@ -72,7 +71,6 @@ const useStyles = makeStyles(theme => {
   const t = butlerTokens(theme);
   const p = t.palette;
   return {
-    backRow: { display: 'flex' },
     headerRow: { display: 'flex', alignItems: 'flex-start', gap: 16 },
     iconTile: {
       width: 48,
@@ -521,18 +519,6 @@ export const ManagementPage = () => {
 
   return (
     <ButlerStack>
-      <div className={classes.backRow}>
-        <ButlerButton
-          variant="ghost"
-          size="sm"
-          component={RouterLink}
-          to={routes.admin()}
-          startIcon={<ChevronLeftIcon size={16} />}
-        >
-          Back to Admin
-        </ButlerButton>
-      </div>
-
       <div className={classes.headerRow}>
         <div className={classes.iconTile} aria-hidden>
           <ServerIcon size={24} />
@@ -555,24 +541,21 @@ export const ManagementPage = () => {
         />
       </div>
 
-      <ButlerStatGrid>
-        <ButlerDashboardStat
+      <ButlerStatGrid variant="metrics">
+        <ButlerStatTile
           label="Nodes"
           value={`${management.nodes.ready}/${management.nodes.total}`}
         />
-        <ButlerDashboardStat
+        <ButlerStatTile
           label="Tenant Clusters"
           value={management.tenantClusters}
           tone="green"
         />
-        <ButlerDashboardStat
+        <ButlerStatTile
           label="System Namespaces"
           value={management.systemNamespaces.length}
         />
-        <ButlerDashboardStat
-          label="Version"
-          value={management.kubernetesVersion}
-        />
+        <ButlerStatTile label="Version" value={management.kubernetesVersion} />
       </ButlerStatGrid>
 
       <ButlerTabs

@@ -29,6 +29,7 @@ import {
 } from '../../routes';
 import { butlerTokens } from '../../theme';
 import { ButlerNav, ButlerRoleBanner } from '../ButlerNav';
+import { NotFoundPage } from './NotFoundPage';
 import { useTeamContext } from '../../hooks/useTeamContext';
 import { useButlerRoutes } from '../../hooks/useButlerRoutes';
 import { ButlerErrorBoundary } from '../ErrorBoundary/ErrorBoundary';
@@ -176,52 +177,127 @@ const ButlerContent = () => {
     <Content className={classes.surface} noPadding>
       <div className={classes.watermark} />
       <div className={classes.contentInner}>
-      <ButlerNav />
-      <div className={classes.main}>
-      <React.Suspense fallback={<Progress />}>
-        {/* Keyed on the path so navigating away clears a previous error. */}
-        <ButlerErrorBoundary key={location.pathname}>
-        <Routes>
-          <Route path="/" element={<OverviewPage />} />
-          <Route path={teamRouteRef.path} element={<DashboardPage />} />
-          <Route path={clustersRouteRef.path} element={<ClustersPage />} />
-          <Route
-            path={createClusterRouteRef.path}
-            element={<CreateClusterPage />}
-          />
-          <Route
-            path={clusterDetailRouteRef.path}
-            element={<ClusterDetailPage />}
-          />
-          <Route path={teamMembersRouteRef.path} element={<TeamMembersPage />} />
-          <Route path={teamSettingsRouteRef.path} element={<TeamSettingsPage />} />
-          <Route path={adminRouteRef.path} element={<AdminRouteGuard><AdminDashboard /></AdminRouteGuard>} />
-          <Route path={adminClustersRouteRef.path} element={<AdminRouteGuard><AdminClustersPage /></AdminRouteGuard>} />
-          <Route path={adminManagementRouteRef.path} element={<AdminRouteGuard><ManagementPage /></AdminRouteGuard>} />
-          <Route path={adminTeamsRouteRef.path} element={<AdminRouteGuard><AdminTeamsPage /></AdminRouteGuard>} />
-          <Route
-            path={adminTeamDetailRouteRef.path}
-            element={<AdminRouteGuard><AdminTeamDetailPage /></AdminRouteGuard>}
-          />
-          <Route path={adminUsersRouteRef.path} element={<AdminRouteGuard><UsersPage /></AdminRouteGuard>} />
-          <Route path={adminProvidersRouteRef.path} element={<AdminRouteGuard><ProvidersPage /></AdminRouteGuard>} />
-          <Route
-            path={adminCreateProviderRouteRef.path}
-            element={<AdminRouteGuard><CreateProviderPage /></AdminRouteGuard>}
-          />
-          <Route
-            path={adminIdentityProvidersRouteRef.path}
-            element={<AdminRouteGuard><IdentityProvidersPage /></AdminRouteGuard>}
-          />
-          <Route
-            path={adminCreateIdentityProviderRouteRef.path}
-            element={<AdminRouteGuard><CreateIdentityProviderPage /></AdminRouteGuard>}
-          />
-          <Route path={adminSettingsRouteRef.path} element={<AdminRouteGuard><SettingsPage /></AdminRouteGuard>} />
-        </Routes>
-        </ButlerErrorBoundary>
-      </React.Suspense>
-      </div>
+        <ButlerNav />
+        <div className={classes.main}>
+          <React.Suspense fallback={<Progress />}>
+            {/* Keyed on the path so navigating away clears a previous error. */}
+            <ButlerErrorBoundary key={location.pathname}>
+              <Routes>
+                <Route path="/" element={<OverviewPage />} />
+                <Route path={teamRouteRef.path} element={<DashboardPage />} />
+                <Route
+                  path={clustersRouteRef.path}
+                  element={<ClustersPage />}
+                />
+                <Route
+                  path={createClusterRouteRef.path}
+                  element={<CreateClusterPage />}
+                />
+                <Route
+                  path={clusterDetailRouteRef.path}
+                  element={<ClusterDetailPage />}
+                />
+                <Route
+                  path={teamMembersRouteRef.path}
+                  element={<TeamMembersPage />}
+                />
+                <Route
+                  path={teamSettingsRouteRef.path}
+                  element={<TeamSettingsPage />}
+                />
+                <Route
+                  path={adminRouteRef.path}
+                  element={
+                    <AdminRouteGuard>
+                      <AdminDashboard />
+                    </AdminRouteGuard>
+                  }
+                />
+                <Route
+                  path={adminClustersRouteRef.path}
+                  element={
+                    <AdminRouteGuard>
+                      <AdminClustersPage />
+                    </AdminRouteGuard>
+                  }
+                />
+                <Route
+                  path={adminManagementRouteRef.path}
+                  element={
+                    <AdminRouteGuard>
+                      <ManagementPage />
+                    </AdminRouteGuard>
+                  }
+                />
+                <Route
+                  path={adminTeamsRouteRef.path}
+                  element={
+                    <AdminRouteGuard>
+                      <AdminTeamsPage />
+                    </AdminRouteGuard>
+                  }
+                />
+                <Route
+                  path={adminTeamDetailRouteRef.path}
+                  element={
+                    <AdminRouteGuard>
+                      <AdminTeamDetailPage />
+                    </AdminRouteGuard>
+                  }
+                />
+                <Route
+                  path={adminUsersRouteRef.path}
+                  element={
+                    <AdminRouteGuard>
+                      <UsersPage />
+                    </AdminRouteGuard>
+                  }
+                />
+                <Route
+                  path={adminProvidersRouteRef.path}
+                  element={
+                    <AdminRouteGuard>
+                      <ProvidersPage />
+                    </AdminRouteGuard>
+                  }
+                />
+                <Route
+                  path={adminCreateProviderRouteRef.path}
+                  element={
+                    <AdminRouteGuard>
+                      <CreateProviderPage />
+                    </AdminRouteGuard>
+                  }
+                />
+                <Route
+                  path={adminIdentityProvidersRouteRef.path}
+                  element={
+                    <AdminRouteGuard>
+                      <IdentityProvidersPage />
+                    </AdminRouteGuard>
+                  }
+                />
+                <Route
+                  path={adminCreateIdentityProviderRouteRef.path}
+                  element={
+                    <AdminRouteGuard>
+                      <CreateIdentityProviderPage />
+                    </AdminRouteGuard>
+                  }
+                />
+                <Route
+                  path={adminSettingsRouteRef.path}
+                  element={
+                    <AdminRouteGuard>
+                      <SettingsPage />
+                    </AdminRouteGuard>
+                  }
+                />
+                <Route path="*" element={<NotFoundPage />} />
+              </Routes>
+            </ButlerErrorBoundary>
+          </React.Suspense>
+        </div>
       </div>
     </Content>
   );
