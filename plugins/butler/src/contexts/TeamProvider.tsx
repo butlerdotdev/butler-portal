@@ -26,11 +26,16 @@ export const TeamProvider = ({ children }: { children: React.ReactNode }) => {
   );
   const [loading, setLoading] = useState(true);
   const [isAdmin, setIsAdmin] = useState(false);
+  const [platformRole, setPlatformRole] = useState('');
 
-  // Administration mode needs both an admin route and the platform role.
+  // The server grants admin reads to platform viewers as well, so reading
+  // the estate and mutating it are separate rights.
+  const canAccessAdmin = isAdmin || platformRole === 'viewer';
+
+  // Administration mode needs both an admin route and a platform role.
   // Deriving it from the path alone told a team admin they were in admin
   // view whenever they opened an admin URL.
-  const mode: ViewMode = isAdminRoute && isAdmin ? 'admin' : 'team';
+  const mode: ViewMode = isAdminRoute && canAccessAdmin ? 'admin' : 'team';
 
   useEffect(() => {
     let cancelled = false;
@@ -45,6 +50,9 @@ export const TeamProvider = ({ children }: { children: React.ReactNode }) => {
         if (cancelled) return;
 
         setIsAdmin(identity.isPlatformAdmin);
+        setPlatformRole(
+          identity.platformRole || (identity.isPlatformAdmin ? 'admin' : ''),
+        );
 
         const fetchedTeams = identity.teams ?? [];
 
@@ -72,6 +80,7 @@ export const TeamProvider = ({ children }: { children: React.ReactNode }) => {
         if (!cancelled) {
           setTeams([]);
           setIsAdmin(false);
+          setPlatformRole('');
         }
       } finally {
         if (!cancelled) {
@@ -131,7 +140,9 @@ export const TeamProvider = ({ children }: { children: React.ReactNode }) => {
       switchTeam,
       switchToAdmin,
       loading,
+      platformRole,
       isAdmin,
+      canAccessAdmin,
       mode,
     }),
     [
@@ -143,7 +154,9 @@ export const TeamProvider = ({ children }: { children: React.ReactNode }) => {
       switchTeam,
       switchToAdmin,
       loading,
+      platformRole,
       isAdmin,
+      canAccessAdmin,
       mode,
     ],
   );

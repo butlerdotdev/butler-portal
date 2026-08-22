@@ -30,7 +30,6 @@ import { useButlerRoutes } from '../../hooks/useButlerRoutes';
 import { useTeamContext } from '../../hooks/useTeamContext';
 import { butlerTokens, rgb, rgba } from '../../theme';
 import {
-  ButlerAccessDenied,
   ButlerBanner,
   ButlerButton,
   ButlerCard,
@@ -455,7 +454,6 @@ export const ManagementPage = () => {
   }, [fetchManagement, isAdmin]);
 
   useEffect(() => {
-    if (!isAdmin) return;
     if (activeTab === 'nodes' && !nodesLoaded) {
       fetchNodes();
     } else if (activeTab === 'pods' && !podsLoaded) {
@@ -487,16 +485,6 @@ export const ManagementPage = () => {
     setPodsLoaded(false);
     setAddonsLoaded(false);
   };
-
-  if (!isAdmin) {
-    return (
-      <ButlerAccessDenied
-        resourceType="page"
-        message="Platform administrator access is required to view the management cluster."
-        homeTo={routes.root()}
-      />
-    );
-  }
 
   if (loading) {
     return <ButlerLoading />;

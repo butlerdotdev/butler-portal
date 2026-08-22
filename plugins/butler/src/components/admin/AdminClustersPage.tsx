@@ -13,7 +13,6 @@ import { useButlerRoutes } from '../../hooks/useButlerRoutes';
 import { useTeamContext } from '../../hooks/useTeamContext';
 import { butlerTokens, rgb, rgba } from '../../theme';
 import {
-  ButlerAccessDenied,
   ButlerButton,
   ButlerCallout,
   ButlerDialog,
@@ -485,16 +484,6 @@ export const AdminClustersPage = () => {
       };
     });
   }, [viewMode, filtered, teamsByNamespace, tokens]);
-
-  if (!isAdmin) {
-    return (
-      <ButlerAccessDenied
-        resourceType="page"
-        message="Platform administrator access is required to view all clusters."
-        homeTo={routes.root()}
-      />
-    );
-  }
 
   const clusterRow = (cluster: Cluster, accentBorder?: string) => {
     const team = cluster.spec.teamRef?.name || cluster.metadata.namespace;

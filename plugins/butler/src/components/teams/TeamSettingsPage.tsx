@@ -166,8 +166,11 @@ export const TeamSettingsPage = () => {
     try {
       const response: TeamDetail = await api.getTeam(team);
       setTeamDetail(response);
-      setDisplayName(response?.spec?.displayName || '');
-      setDescription(response?.spec?.description || '');
+      // The server answers with the flat team response; the resource shape
+      // is the fallback. Reading only spec left the form blank.
+      const raw = response as any;
+      setDisplayName(raw?.displayName || response?.spec?.displayName || '');
+      setDescription(raw?.description || response?.spec?.description || '');
     } catch (err) {
       setError(
         err instanceof Error ? err.message : 'Failed to load team details',
@@ -221,20 +224,31 @@ export const TeamSettingsPage = () => {
     );
   }
 
-  const quotas = teamDetail?.spec?.resourceQuotas;
+  const raw = teamDetail as any;
+  const quotas =
+    raw?.resourceLimits ||
+    raw?.resourceQuotas ||
+    teamDetail?.spec?.resourceQuotas;
+  const usage = raw?.resourceUsage;
   const quotaRows = QUOTA_ROWS.filter(r => quotas?.[r.key] !== undefined);
   const users = teamDetail?.spec?.access?.users ?? [];
   const groups = teamDetail?.spec?.access?.groups ?? [];
   const namespace =
+    raw?.namespace ||
     teamDetail?.status?.namespace ||
     teamDetail?.metadata?.namespace ||
-    `team-${team}`;
-  const created = teamDetail?.metadata?.creationTimestamp
-    ? new Date(teamDetail.metadata.creationTimestamp).toLocaleDateString(
-        undefined,
-        { year: 'numeric', month: 'long', day: 'numeric' },
-      )
-    : '-';
+    team ||
+    '';
+  const created =
+    raw?.createdAt || teamDetail?.metadata?.creationTimestamp
+      ? new Date(
+          raw?.createdAt || teamDetail!.metadata!.creationTimestamp!,
+        ).toLocaleDateString(undefined, {
+          year: 'numeric',
+          month: 'long',
+          day: 'numeric',
+        })
+      : '-';
 
   return (
     <ButlerStack>
@@ -246,16 +260,18 @@ export const TeamSettingsPage = () => {
 
       <ButlerCard flush className={classes.card}>
         <h2 className={`${classes.cardTitle} ${classes.cardTitleTight}`}>
-          Resource Quotas
+          Resource Usage
         </h2>
         <p className={classes.cardDescription}>
-          Limits configured for your team
+          Usage against the limits configured for your team
         </p>
         {quotaRows.length > 0 ? (
           <ButlerKeyValueList dense>
             {quotaRows.map(r => (
               <ButlerKeyValueRow key={r.key} label={r.label} mono dense>
-                {quotas?.[r.key]}
+                {usage?.[r.key] !== undefined
+                  ? `${usage[r.key]} / ${quotas?.[r.key]}`
+                  : quotas?.[r.key]}
               </ButlerKeyValueRow>
             ))}
           </ButlerKeyValueList>

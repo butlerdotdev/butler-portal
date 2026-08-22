@@ -11,7 +11,6 @@ import { useButlerRoutes } from '../../hooks/useButlerRoutes';
 import { useTeamContext } from '../../hooks/useTeamContext';
 import { butlerTokens, rgb, rgba } from '../../theme';
 import {
-  ButlerAccessDenied,
   ButlerButton,
   ButlerCard,
   ButlerChip,
@@ -250,16 +249,6 @@ export const AdminTeamsPage = () => {
       setCreating(false);
     }
   };
-
-  if (!isAdmin) {
-    return (
-      <ButlerAccessDenied
-        resourceType="page"
-        message="Platform administrator access is required to manage teams."
-        homeTo={routes.root()}
-      />
-    );
-  }
 
   const createButton = (
     <ButlerButton startIcon={<PlusIcon />} onClick={() => setCreateOpen(true)}>

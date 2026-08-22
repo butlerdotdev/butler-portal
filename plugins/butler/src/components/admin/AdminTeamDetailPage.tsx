@@ -13,7 +13,6 @@ import { useButlerRoutes } from '../../hooks/useButlerRoutes';
 import { useTeamContext } from '../../hooks/useTeamContext';
 import { butlerTokens, rgb, rgba } from '../../theme';
 import {
-  ButlerAccessDenied,
   ButlerButton,
   ButlerCallout,
   ButlerCard,
@@ -675,17 +674,6 @@ export const AdminTeamDetailPage = () => {
       setDeletingTeam(false);
     }
   };
-
-  if (!isAdmin) {
-    return (
-      <ButlerAccessDenied
-        resourceType="team"
-        resourceName={teamName}
-        message="Platform administrator access is required to manage teams."
-        homeTo={routes.root()}
-      />
-    );
-  }
 
   if (loading) {
     return <ButlerLoading />;

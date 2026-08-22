@@ -4,6 +4,8 @@
 export interface TeamInfo {
   name: string;
   displayName: string;
+  /** Namespace the team's resources live in, as served by the server. */
+  namespace?: string;
   role: string;
   clusterCount: number;
 }

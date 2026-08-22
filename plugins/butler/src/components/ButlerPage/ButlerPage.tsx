@@ -158,14 +158,14 @@ const useStyles = makeStyles(theme => ({
   },
 }));
 
-// Console sends non-admins who land on an admin route back to their team
-// dashboard (or the landing page) instead of rendering admin pages that
-// fail later with 403s. Identity must have resolved before deciding.
+// Console sends callers without a platform role back to their team
+// dashboard instead of rendering admin pages that fail later with 403s.
+// A platform viewer keeps the read-only estate the server grants them.
 const AdminRouteGuard = ({ children }: { children: React.ReactElement }) => {
   const routes = useButlerRoutes();
-  const { isAdmin, loading, teams } = useTeamContext();
+  const { canAccessAdmin, loading, teams } = useTeamContext();
   if (loading) return <Progress />;
-  if (isAdmin) return children;
+  if (canAccessAdmin) return children;
   const team = teams[0]?.name;
   return <Navigate to={team ? routes.team({ team }) : routes.root()} replace />;
 };

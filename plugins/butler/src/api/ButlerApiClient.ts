@@ -130,9 +130,7 @@ export class ButlerApiClient implements ButlerApi {
       } catch {
         errorMessage = response.statusText;
       }
-      throw new Error(
-        `Butler API error (${response.status}): ${errorMessage}`,
-      );
+      throw new Error(`Butler API error (${response.status}): ${errorMessage}`);
     }
 
     // Handle 204 No Content
@@ -163,9 +161,7 @@ export class ButlerApiClient implements ButlerApi {
       } catch {
         errorMessage = response.statusText;
       }
-      throw new Error(
-        `Butler API error (${response.status}): ${errorMessage}`,
-      );
+      throw new Error(`Butler API error (${response.status}): ${errorMessage}`);
     }
 
     return response.text();
@@ -220,6 +216,7 @@ export class ButlerApiClient implements ButlerApi {
     email: string | null;
     displayName: string;
     isPlatformAdmin: boolean;
+    platformRole?: string;
     teams: TeamInfo[];
   }> {
     return this.get('/_identity');
@@ -278,9 +275,7 @@ export class ButlerApiClient implements ButlerApi {
     namespace: string,
     name: string,
   ): Promise<{ nodes: Node[] }> {
-    return this.get<{ nodes: Node[] }>(
-      `/clusters/${namespace}/${name}/nodes`,
-    );
+    return this.get<{ nodes: Node[] }>(`/clusters/${namespace}/${name}/nodes`);
   }
 
   async getClusterAddons(
@@ -359,9 +354,7 @@ export class ButlerApiClient implements ButlerApi {
   async getManagementPods(
     namespace: string,
   ): Promise<{ pods: ManagementPod[] }> {
-    return this.get<{ pods: ManagementPod[] }>(
-      `/management/pods/${namespace}`,
-    );
+    return this.get<{ pods: ManagementPod[] }>(`/management/pods/${namespace}`);
   }
 
   // ---- Providers ----
@@ -440,10 +433,7 @@ export class ButlerApiClient implements ButlerApi {
     clusterName: string,
     data: InstallAddonRequest,
   ): Promise<unknown> {
-    return this.post(
-      `/clusters/${namespace}/${clusterName}/addons`,
-      data,
-    );
+    return this.post(`/clusters/${namespace}/${clusterName}/addons`, data);
   }
 
   async getAddonDetails(
@@ -579,16 +569,10 @@ export class ButlerApiClient implements ButlerApi {
     name: string,
     config: any,
   ): Promise<{ success: boolean; message: string }> {
-    return this.post(
-      `/clusters/${namespace}/${name}/gitops/enable`,
-      config,
-    );
+    return this.post(`/clusters/${namespace}/${name}/gitops/enable`, config);
   }
 
-  async disableClusterGitOps(
-    namespace: string,
-    name: string,
-  ): Promise<void> {
+  async disableClusterGitOps(namespace: string, name: string): Promise<void> {
     return this.del(`/clusters/${namespace}/${name}/gitops`);
   }
 
@@ -609,22 +593,14 @@ export class ButlerApiClient implements ButlerApi {
     );
   }
 
-  async exportManagementRelease(
-    request: any,
-  ): Promise<ExportAddonResponse> {
-    return this.post<ExportAddonResponse>(
-      '/management/gitops/export',
-      request,
-    );
+  async exportManagementRelease(request: any): Promise<ExportAddonResponse> {
+    return this.post<ExportAddonResponse>('/management/gitops/export', request);
   }
 
   async migrateManagementReleases(
     request: MigrationRequest,
   ): Promise<MigrationResult> {
-    return this.post<MigrationResult>(
-      '/management/gitops/migrate',
-      request,
-    );
+    return this.post<MigrationResult>('/management/gitops/migrate', request);
   }
 
   async enableManagementGitOps(
@@ -656,9 +632,7 @@ export class ButlerApiClient implements ButlerApi {
     category: CertificateCategory;
     certificates: CertificateInfo[];
   }> {
-    return this.get(
-      `/clusters/${namespace}/${name}/certificates/${category}`,
-    );
+    return this.get(`/clusters/${namespace}/${name}/certificates/${category}`);
   }
 
   async rotateCertificates(
@@ -685,24 +659,17 @@ export class ButlerApiClient implements ButlerApi {
   // ---- Identity Providers ----
 
   async listIdentityProviders(): Promise<IdentityProviderListResponse> {
-    return this.get<IdentityProviderListResponse>(
-      '/admin/identity-providers',
-    );
+    return this.get<IdentityProviderListResponse>('/admin/identity-providers');
   }
 
   async getIdentityProvider(name: string): Promise<IdentityProvider> {
-    return this.get<IdentityProvider>(
-      `/admin/identity-providers/${name}`,
-    );
+    return this.get<IdentityProvider>(`/admin/identity-providers/${name}`);
   }
 
   async createIdentityProvider(
     data: CreateIdentityProviderRequest,
   ): Promise<IdentityProvider> {
-    return this.post<IdentityProvider>(
-      '/admin/identity-providers',
-      data,
-    );
+    return this.post<IdentityProvider>('/admin/identity-providers', data);
   }
 
   async deleteIdentityProvider(
@@ -711,18 +678,13 @@ export class ButlerApiClient implements ButlerApi {
     return this.del(`/admin/identity-providers/${name}`);
   }
 
-  async testIdPDiscovery(
-    issuerURL: string,
-  ): Promise<TestDiscoveryResponse> {
-    return this.post<TestDiscoveryResponse>(
-      '/admin/identity-providers/test',
-      { issuerURL },
-    );
+  async testIdPDiscovery(issuerURL: string): Promise<TestDiscoveryResponse> {
+    return this.post<TestDiscoveryResponse>('/admin/identity-providers/test', {
+      issuerURL,
+    });
   }
 
-  async validateIdentityProvider(
-    name: string,
-  ): Promise<TestDiscoveryResponse> {
+  async validateIdentityProvider(name: string): Promise<TestDiscoveryResponse> {
     return this.post<TestDiscoveryResponse>(
       `/admin/identity-providers/${name}/validate`,
       {},
@@ -790,9 +752,7 @@ export class ButlerApiClient implements ButlerApi {
   }
 
   async getTeamClusters(name: string): Promise<ClusterListResponse> {
-    return this.get<ClusterListResponse>(
-      `/teams/${name}/clusters`,
-    );
+    return this.get<ClusterListResponse>(`/teams/${name}/clusters`);
   }
 
   async getTeamMembers(name: string): Promise<any> {
@@ -807,7 +767,9 @@ export class ButlerApiClient implements ButlerApi {
   }
 
   async removeTeamMember(teamName: string, email: string): Promise<void> {
-    return this.del(`/admin/teams/${teamName}/members/${encodeURIComponent(email)}`);
+    return this.del(
+      `/admin/teams/${teamName}/members/${encodeURIComponent(email)}`,
+    );
   }
 
   async updateMemberRole(
@@ -815,7 +777,10 @@ export class ButlerApiClient implements ButlerApi {
     email: string,
     role: string,
   ): Promise<void> {
-    return this.patch(`/admin/teams/${teamName}/members/${encodeURIComponent(email)}`, { role });
+    return this.patch(
+      `/admin/teams/${teamName}/members/${encodeURIComponent(email)}`,
+      { role },
+    );
   }
 
   async getTeamGroupSyncs(name: string): Promise<any> {
@@ -830,7 +795,9 @@ export class ButlerApiClient implements ButlerApi {
   }
 
   async removeGroupSync(teamName: string, groupName: string): Promise<void> {
-    return this.del(`/admin/teams/${teamName}/groups/${encodeURIComponent(groupName)}`);
+    return this.del(
+      `/admin/teams/${teamName}/groups/${encodeURIComponent(groupName)}`,
+    );
   }
 
   async updateGroupSyncRole(
@@ -838,7 +805,10 @@ export class ButlerApiClient implements ButlerApi {
     groupName: string,
     role: string,
   ): Promise<void> {
-    return this.patch(`/admin/teams/${teamName}/groups/${encodeURIComponent(groupName)}`, { role });
+    return this.patch(
+      `/admin/teams/${teamName}/groups/${encodeURIComponent(groupName)}`,
+      { role },
+    );
   }
 
   // ---- Workspaces ----

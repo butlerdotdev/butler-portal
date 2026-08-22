@@ -9,7 +9,6 @@ import { useButlerRoutes } from '../../hooks/useButlerRoutes';
 import { useTeamContext } from '../../hooks/useTeamContext';
 import { butlerTokens, rgb, rgba } from '../../theme';
 import {
-  ButlerAccessDenied,
   ButlerButton,
   ButlerCallout,
   ButlerCard,
@@ -237,7 +236,6 @@ export const UsersPage = () => {
   }, [api]);
 
   useEffect(() => {
-    if (!isAdmin) return;
     fetchUsers();
     api
       .getCurrentUser()
@@ -380,16 +378,6 @@ export const UsersPage = () => {
     setBulkOpen(false);
     fetchUsers();
   };
-
-  if (!isAdmin) {
-    return (
-      <ButlerAccessDenied
-        resourceType="page"
-        message="Platform administrator access is required to manage users."
-        homeTo={routes.root()}
-      />
-    );
-  }
 
   const showSelect = internalUsers.length > 0;
   const columns: ButlerColumn<UserRecord>[] = [

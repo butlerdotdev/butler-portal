@@ -15,7 +15,12 @@ export interface TeamContextValue {
   switchTeam: (teamName: string) => void;
   switchToAdmin: () => void;
   loading: boolean;
+  /** Platform role from the server: 'admin', 'viewer' or empty. */
+  platformRole: string;
+  /** Platform admin: may read and mutate every platform surface. */
   isAdmin: boolean;
+  /** Platform admin or platform viewer: may read every platform surface. */
+  canAccessAdmin: boolean;
   mode: ViewMode;
 }
 

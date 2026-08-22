@@ -361,9 +361,13 @@ export const ClusterDetailPage = () => {
   // The server refuses cluster mutations to viewers only, so an operator
   // and a team admin keep the destructive action the console hides from
   // them. Offering it to a viewer would be a dead control.
-  const { isAdmin, activeTeamRole } = useTeamContext();
+  // The role must come from the team in the route, not the stored active
+  // team, or a stale selection would gate a destructive action against the
+  // wrong team.
+  const { isAdmin, teams } = useTeamContext();
+  const routeTeamRole = teams.find(t => t.name === team)?.role;
   const canOperate =
-    isAdmin || activeTeamRole === 'admin' || activeTeamRole === 'operator';
+    isAdmin || routeTeamRole === 'admin' || routeTeamRole === 'operator';
 
   const { subscribe } = useClusterWatch();
   const [deletedRemotely, setDeletedRemotely] = useState(false);

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { useEffect, useState, useCallback, useMemo } from 'react';
+import { useParams } from 'react-router-dom';
 import { useApi } from '@backstage/core-plugin-api';
 import { makeStyles } from '@material-ui/core/styles';
 import clsx from 'clsx';
@@ -782,13 +783,17 @@ export const GitOpsTab = ({
 }: GitOpsTabProps) => {
   const classes = useStyles();
   const api = useApi(butlerApiRef);
-  const { isAdmin, activeTeamRole } = useTeamContext();
+  const { team } = useParams<{ team: string }>();
+  const { isAdmin, teams } = useTeamContext();
 
   // Console: canMutate (platform admin) gates reconfigure and exports;
   // canOperate (platform admin, team admin or operator) gates enable/disable.
+  // The role comes from the team in the route rather than the stored active
+  // team, so a stale selection cannot gate the wrong cluster.
+  const routeTeamRole = teams.find(t => t.name === team)?.role;
   const canMutate = isAdmin;
   const canOperate =
-    isAdmin || activeTeamRole === 'admin' || activeTeamRole === 'operator';
+    isAdmin || routeTeamRole === 'admin' || routeTeamRole === 'operator';
 
   // Core state
   const [gitConfig, setGitConfig] = useState<GitProviderConfig | null>(null);

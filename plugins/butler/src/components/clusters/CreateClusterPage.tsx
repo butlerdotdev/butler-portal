@@ -181,12 +181,24 @@ export const CreateClusterPage = () => {
   const navigate = useNavigate();
   const { team } = useParams<{ team: string }>();
   const { teams } = useTeamContext();
-  const teamDisplayName = teams.find(t => t.name === team)?.displayName || team;
+  const activeTeam = teams.find(t => t.name === team);
+  const teamDisplayName = activeTeam?.displayName || team;
+  // The team's namespace comes from the server. Deriving it as
+  // `team-{name}` produced a namespace that does not exist.
+  const teamNamespace = activeTeam?.namespace || team || '';
 
   const [form, setForm] = useState<CreateClusterFormState>({
     ...initialFormState,
-    namespace: team ? `team-${team}` : '',
+    namespace: teamNamespace,
   });
+
+  useEffect(() => {
+    setForm(prev =>
+      prev.namespace === teamNamespace
+        ? prev
+        : { ...prev, namespace: teamNamespace },
+    );
+  }, [teamNamespace]);
 
   const [providers, setProviders] = useState<Provider[]>([]);
   const [providersLoading, setProvidersLoading] = useState(true);

@@ -142,12 +142,12 @@ interface NavSection {
 export const ButlerNav = () => {
   const classes = useStyles();
   const routes = useButlerRoutes();
-  const { mode, activeTeam, activeTeamDisplayName, isAdmin, isTeamAdmin } =
+  const { mode, activeTeam, activeTeamDisplayName, isAdmin, canAccessAdmin } =
     useTeamContext();
 
   let sections: NavSection[];
   let context: { label: string; value: string } | null = null;
-  if (mode === 'admin' && isAdmin) {
+  if (mode === 'admin' && canAccessAdmin) {
     sections = [
       {
         items: [
@@ -197,7 +197,10 @@ export const ButlerNav = () => {
         ],
       },
     ];
-    context = { label: 'Mode', value: 'Platform administration' };
+    context = {
+      label: 'Mode',
+      value: isAdmin ? 'Platform administration' : 'Platform (read only)',
+    };
   } else if (activeTeam) {
     const team = activeTeam;
     sections = [
@@ -239,9 +242,9 @@ export const ButlerNav = () => {
 
   const active = mode === 'admin' ? classes.activeAdmin : classes.activeTeam;
   const footer =
-    mode === 'admin' && isAdmin
+    mode === 'admin' && canAccessAdmin
       ? { to: routes.adminSettings(), label: 'Settings' }
-      : activeTeam && isTeamAdmin
+      : activeTeam
       ? { to: routes.teamSettings({ team: activeTeam }), label: 'Settings' }
       : null;
 

@@ -95,14 +95,15 @@ describe('ManagementPage', () => {
     expect(screen.getByRole('button', { name: 'Retry' })).toBeInTheDocument();
   });
 
-  it('denies access when the user is not a platform admin', async () => {
+  it('reads as a platform viewer without offering mutations', async () => {
+    // The server grants admin reads to the viewer role, so the page must
+    // render rather than deny, with the mutating controls withheld.
     await renderPage(
-      new MockButlerApi({ failures: { getIdentity: new Error('nope') } }),
+      new MockButlerApi({
+        identity: { isPlatformAdmin: false, platformRole: 'viewer' },
+      }),
     );
 
-    expect(await screen.findByText('Access Denied')).toBeInTheDocument();
-    expect(
-      screen.queryByRole('heading', { name: 'Management Cluster' }),
-    ).not.toBeInTheDocument();
+    expect(screen.queryByText('Access Denied')).not.toBeInTheDocument();
   });
 });

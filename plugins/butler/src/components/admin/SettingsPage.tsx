@@ -14,7 +14,6 @@ import { useButlerRoutes } from '../../hooks/useButlerRoutes';
 import { useTeamContext } from '../../hooks/useTeamContext';
 import { butlerTokens, rgb } from '../../theme';
 import {
-  ButlerAccessDenied,
   ButlerBanner,
   ButlerCard,
   ButlerErrorState,
@@ -182,16 +181,6 @@ export const SettingsPage = () => {
   useEffect(() => {
     if (isAdmin) load();
   }, [isAdmin, load]);
-
-  if (!isAdmin) {
-    return (
-      <ButlerAccessDenied
-        resourceType="page"
-        message="Platform administrator access is required to view platform settings."
-        homeTo={routes.root()}
-      />
-    );
-  }
 
   let body: React.ReactNode;
   if (loading) {

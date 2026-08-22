@@ -101,6 +101,7 @@ export interface ButlerApi {
     email: string | null;
     displayName: string;
     isPlatformAdmin: boolean;
+    platformRole?: string;
     teams: TeamInfo[];
   }>;
 
@@ -118,10 +119,7 @@ export interface ButlerApi {
     namespace: string,
     name: string,
   ): Promise<{ kubeconfig: string }>;
-  getClusterNodes(
-    namespace: string,
-    name: string,
-  ): Promise<{ nodes: Node[] }>;
+  getClusterNodes(namespace: string, name: string): Promise<{ nodes: Node[] }>;
   getClusterAddons(
     namespace: string,
     name: string,
@@ -152,19 +150,14 @@ export interface ButlerApi {
   // Management
   getManagement(): Promise<ManagementCluster>;
   getManagementNodes(): Promise<{ nodes: ManagementNode[] }>;
-  getManagementPods(
-    namespace: string,
-  ): Promise<{ pods: ManagementPod[] }>;
+  getManagementPods(namespace: string): Promise<{ pods: ManagementPod[] }>;
 
   // Providers
   listProviders(): Promise<ProviderListResponse>;
   getProvider(namespace: string, name: string): Promise<Provider>;
   createProvider(data: CreateProviderRequest): Promise<Provider>;
   deleteProvider(namespace: string, name: string): Promise<void>;
-  validateProvider(
-    namespace: string,
-    name: string,
-  ): Promise<ValidateResponse>;
+  validateProvider(namespace: string, name: string): Promise<ValidateResponse>;
   testProviderConnection(
     data: CreateProviderRequest,
   ): Promise<ValidateResponse>;
@@ -213,9 +206,7 @@ export interface ButlerApi {
 
   // GitOps
   getGitOpsConfig(): Promise<GitProviderConfig>;
-  saveGitOpsConfig(
-    request: SaveGitProviderRequest,
-  ): Promise<GitProviderConfig>;
+  saveGitOpsConfig(request: SaveGitProviderRequest): Promise<GitProviderConfig>;
   clearGitOpsConfig(): Promise<void>;
   listRepositories(): Promise<Repository[]>;
   listBranches(owner: string, repo: string): Promise<Branch[]>;
@@ -284,10 +275,7 @@ export interface ButlerApi {
     type: string,
     acknowledge?: boolean,
   ): Promise<RotationEvent>;
-  getRotationStatus(
-    namespace: string,
-    name: string,
-  ): Promise<RotationEvent>;
+  getRotationStatus(namespace: string, name: string): Promise<RotationEvent>;
 
   // Identity Providers
   listIdentityProviders(): Promise<IdentityProviderListResponse>;
@@ -299,9 +287,7 @@ export interface ButlerApi {
     name: string,
   ): Promise<{ status: string; message: string }>;
   testIdPDiscovery(issuerURL: string): Promise<TestDiscoveryResponse>;
-  validateIdentityProvider(
-    name: string,
-  ): Promise<TestDiscoveryResponse>;
+  validateIdentityProvider(name: string): Promise<TestDiscoveryResponse>;
 
   // Settings
   getPlatformConfig(): Promise<PlatformConfig>;
@@ -424,10 +410,7 @@ export interface ButlerApi {
     name: string,
     data: Partial<CreateWorkspaceTemplateRequest>,
   ): Promise<WorkspaceTemplate>;
-  deleteWorkspaceTemplate(
-    namespace: string,
-    name: string,
-  ): Promise<void>;
+  deleteWorkspaceTemplate(namespace: string, name: string): Promise<void>;
 
   // SSH Keys
   listSSHKeys(): Promise<SSHKeyListResponse>;
