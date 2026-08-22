@@ -134,6 +134,7 @@ export async function createRouter(options: {
     portalSigner,
     userInfo,
     auth,
+    identityResolver,
   });
   let upgradeHandlerAttached = false;
 
