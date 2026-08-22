@@ -45,6 +45,13 @@ const useStyles = makeStyles(theme => {
       borderBottomColor: rgb(t.palette.green[500]),
       '&:hover': { color: rgb(t.palette.green[500]) },
     },
+    // The console accents platform administration in violet so the reach
+    // of the current scope stays visible.
+    activeAdmin: {
+      color: rgb(t.palette.violet[500]),
+      borderBottomColor: rgb(t.palette.violet[500]),
+      '&:hover': { color: rgb(t.palette.violet[500]) },
+    },
   };
 });
 
@@ -60,6 +67,8 @@ export interface ButlerTabsProps<T extends string> {
   onChange: (id: T) => void;
   /** Prefix for the tab and panel ids; pair with `ButlerTabPanel`. */
   idPrefix?: string;
+  /** Accent for the active tab. Platform administration uses violet. */
+  tone?: 'team' | 'admin';
   className?: string;
   'aria-label'?: string;
 }
@@ -76,10 +85,12 @@ export function ButlerTabs<T extends string>({
   value,
   onChange,
   idPrefix = 'butler',
+  tone = 'team',
   className,
   'aria-label': ariaLabel,
 }: ButlerTabsProps<T>) {
   const classes = useStyles();
+  const activeClass = tone === 'admin' ? classes.activeAdmin : classes.active;
   // Roving tabindex: only the active tab is in the tab order, arrows move
   // between enabled tabs and activate them (WAI-ARIA tabs pattern).
   const onKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
@@ -114,7 +125,7 @@ export function ButlerTabs<T extends string>({
             aria-controls={tabPanelId(idPrefix, tab.id)}
             tabIndex={value === tab.id ? 0 : -1}
             disabled={tab.disabled}
-            className={clsx(classes.tab, value === tab.id && classes.active)}
+            className={clsx(classes.tab, value === tab.id && activeClass)}
             onClick={() => onChange(tab.id)}
           >
             {tab.label}
