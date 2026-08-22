@@ -23,9 +23,49 @@ import {
   HttpAuthService,
   UserInfoService,
   AuthService,
+  PermissionsService,
+  BackstageCredentials,
 } from '@backstage/backend-plugin-api';
+import { AuthorizeResult } from '@backstage/plugin-permission-common';
+import { resolveRoutePermission } from '@internal/plugin-butler-common';
 import { AuthManager } from './service/AuthManager';
 import { PortalSigner } from './service/PortalSigner';
+
+/**
+ * Outcome of the proxy-side authorization check for one request.
+ * `unmapped` means the route is not in the authorization table.
+ */
+export type RouteDecision =
+  | { kind: 'allow' }
+  | { kind: 'deny'; permission: string }
+  | { kind: 'unmapped' };
+
+/**
+ * Decides whether a proxied request may be forwarded. Every butler-server
+ * route the plugin uses is mapped to a butler.* permission; the decision
+ * is delegated to the portal's permission policy (RBAC). Unmapped routes
+ * are reported so the caller can apply the configured default.
+ *
+ * Exported for unit testing.
+ */
+export async function authorizeRoute(opts: {
+  permissions: PermissionsService;
+  credentials: BackstageCredentials;
+  method: string;
+  path: string;
+}): Promise<RouteDecision> {
+  const permission = resolveRoutePermission(opts.method, opts.path);
+  if (!permission) {
+    return { kind: 'unmapped' };
+  }
+  const [decision] = await opts.permissions.authorize([{ permission }], {
+    credentials: opts.credentials,
+  });
+  if (decision.result === AuthorizeResult.ALLOW) {
+    return { kind: 'allow' };
+  }
+  return { kind: 'deny', permission: permission.name };
+}
 
 /**
  * applyPortalCarrierSwap is the Stage 2 per-request carrier switch.
@@ -85,9 +125,20 @@ export async function createRouter(options: {
   // until the chart mounts a signing key Secret) the legacy carrier path
   // is unchanged.
   portalSigner?: PortalSigner | null;
+  // Permission service used to gate every proxied route. Required in
+  // production; tests that only exercise the relay may omit it, in which
+  // case no authorization check runs.
+  permissions?: PermissionsService;
+  // Forward routes that are absent from the authorization table. Default
+  // false: an unmapped route is refused with 403 and logged, so a new
+  // butler-server route cannot reach the service-account credential
+  // without being classified first.
+  allowUnmappedRoutes?: boolean;
 }): Promise<Router> {
   const { baseUrl, authManager, httpAuth, userInfo, auth, logger } = options;
   const portalSigner = options.portalSigner ?? null;
+  const permissions = options.permissions;
+  const allowUnmappedRoutes = options.allowUnmappedRoutes ?? false;
   const targetUrl = baseUrl.replace(/\/+$/, '');
 
   const router = Router();
@@ -123,6 +174,8 @@ export async function createRouter(options: {
     portalSigner,
     userInfo,
     auth,
+    permissions,
+    allowUnmappedRoutes,
   });
   let upgradeHandlerAttached = false;
 
@@ -335,6 +388,47 @@ export async function createRouter(options: {
   });
 
   // Proxy all HTTP requests to butler-server
+  // Authorization gate for every proxied route. Runs after the
+  // framework's authentication barrier, before any forward. /_health
+  // and /_identity are registered above and never reach this point.
+  router.use(async (req: Request, res: Response, next) => {
+    if (!permissions) {
+      next();
+      return;
+    }
+    const credentials = await httpAuth.credentials(req, { allow: ['user'] });
+    const decision = await authorizeRoute({
+      permissions,
+      credentials,
+      method: req.method,
+      path: req.path,
+    });
+    if (decision.kind === 'allow') {
+      next();
+      return;
+    }
+    if (decision.kind === 'unmapped') {
+      if (allowUnmappedRoutes) {
+        logger.warn('Forwarding route absent from the authorization table', {
+          method: req.method,
+          path: req.path,
+        });
+        next();
+        return;
+      }
+      logger.error('Refusing route absent from the authorization table', {
+        method: req.method,
+        path: req.path,
+      });
+      res.status(403).json({
+        error: 'forbidden',
+        reason: 'route not classified for authorization',
+      });
+      return;
+    }
+    res.status(403).json({ error: 'forbidden', permission: decision.permission });
+  });
+
   router.all('/*', async (req: Request, res: Response) => {
     try {
       const token = await authManager.getToken();
@@ -522,6 +616,8 @@ export function createButlerUpgradeHandler(deps: {
   portalSigner?: PortalSigner | null;
   userInfo?: UserInfoService;
   auth?: AuthService;
+  permissions?: PermissionsService;
+  allowUnmappedRoutes?: boolean;
 }): (request: IncomingMessage, socket: Duplex, head: Buffer) => void {
   const {
     httpAuth,
@@ -532,7 +628,17 @@ export function createButlerUpgradeHandler(deps: {
     portalSigner,
     userInfo,
     auth,
+    permissions,
+    allowUnmappedRoutes,
   } = deps;
+  const refuse = (socket: Duplex, status: string) => {
+    socket.end(
+      `HTTP/1.1 ${status}\r\n` +
+        'Connection: close\r\n' +
+        'Content-Length: 0\r\n' +
+        '\r\n',
+    );
+  };
   return (request: IncomingMessage, socket: Duplex, head: Buffer) => {
     const pathname = request.url || '';
     if (!pathname.startsWith('/api/butler/ws/')) {
@@ -541,6 +647,25 @@ export function createButlerUpgradeHandler(deps: {
     httpAuth
       .credentials(request as any, { allow: ['user', 'service'] })
       .then(async credentials => {
+        if (permissions) {
+          const decision = await authorizeRoute({
+            permissions,
+            credentials,
+            method: 'WS',
+            path: pathname.replace('/api/butler', '').split('?')[0],
+          });
+          if (
+            decision.kind === 'deny' ||
+            (decision.kind === 'unmapped' && !allowUnmappedRoutes)
+          ) {
+            logger.warn('WebSocket upgrade refused by authorization', {
+              path: pathname,
+              decision: decision.kind,
+            });
+            refuse(socket, '403 Forbidden');
+            return;
+          }
+        }
         // Resolve the acting user's email when the Stage 2 carrier is
         // configured AND the credentials principal is a user. This mirrors
         // the HTTP proxy's resolveUserEmail: entity ref local part with

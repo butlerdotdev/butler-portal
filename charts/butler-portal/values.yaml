@@ -105,6 +105,11 @@ permission:
       - catalog
       - scaffolder
       - permission
+      # The Butler plugin declares butler.* permissions (see
+      # plugins/butler-common/PERMISSIONS.md). Listed unconditionally:
+      # when plugins.butler.enabled is false the plugin is not loaded and
+      # the entry is inert.
+      - butler
     # Default read-tier policy applied to every authenticated user. Adds
     # a virtual role that grants the enumerated reads; writes stay routed
     # through the CSV policy.
@@ -121,6 +126,18 @@ permission:
           action: read
         - permission: scaffolder.template.step.read
           action: read
+        # Butler read tier: see and inspect the clusters, teams,
+        # providers and workspaces butler-server already scopes to the
+        # caller. Credential export, mutations and platform pages need a
+        # role binding in the CSV.
+        - permission: butler.cluster.read
+          action: read
+        - permission: butler.team.read
+          action: read
+        - permission: butler.provider.read
+          action: read
+        - permission: butler.workspace.read
+          action: read
     # Adopter policy CSV. Rendered as a ConfigMap and mounted at
     # policies-csv-file. Default gates the known-privileged scaffolder
     # writes and catalog.location.create to role:default/butler-portal-
@@ -134,6 +151,16 @@ permission:
         p, role:default/butler-portal-admin, scaffolder.action.execute, use, allow
         p, role:default/butler-portal-admin, scaffolder.template.management, use, allow
         p, role:default/butler-portal-admin, catalog.location.create, create, allow
+        p, role:default/butler-portal-admin, butler.cluster.create, create, allow
+        p, role:default/butler-portal-admin, butler.cluster.update, update, allow
+        p, role:default/butler-portal-admin, butler.cluster.delete, delete, allow
+        p, role:default/butler-portal-admin, butler.cluster.kubeconfig, read, allow
+        p, role:default/butler-portal-admin, butler.cluster.terminal, update, allow
+        p, role:default/butler-portal-admin, butler.team.manage, update, allow
+        p, role:default/butler-portal-admin, butler.provider.manage, update, allow
+        p, role:default/butler-portal-admin, butler.admin.read, read, allow
+        p, role:default/butler-portal-admin, butler.admin.manage, update, allow
+        p, role:default/butler-portal-admin, butler.workspace.manage, update, allow
 
         g, group:default/PLACEHOLDER-ADMIN-GROUP, role:default/butler-portal-admin
 

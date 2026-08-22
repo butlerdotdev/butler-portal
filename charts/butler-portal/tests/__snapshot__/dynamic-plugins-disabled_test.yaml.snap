@@ -44,9 +44,9 @@ with dynamicPlugins disabled (chart default) and butler off (chart default), pod
             - name: APP_CONFIG_permission_enabled
               value: "true"
             - name: APP_CONFIG_permission_rbac_pluginsWithPermission
-              value: '["catalog","scaffolder","permission"]'
+              value: '["catalog","scaffolder","permission","butler"]'
             - name: APP_CONFIG_permission_rbac_defaultPermissions
-              value: '{"basicPermissions":[{"action":"read","permission":"catalog.entity.read"},{"action":"read","permission":"catalog.location.read"},{"action":"read","permission":"scaffolder.task.read"},{"action":"read","permission":"scaffolder.template.parameter.read"},{"action":"read","permission":"scaffolder.template.step.read"}],"defaultRole":"role:default/butler-portal-user"}'
+              value: '{"basicPermissions":[{"action":"read","permission":"catalog.entity.read"},{"action":"read","permission":"catalog.location.read"},{"action":"read","permission":"scaffolder.task.read"},{"action":"read","permission":"scaffolder.template.parameter.read"},{"action":"read","permission":"scaffolder.template.step.read"},{"action":"read","permission":"butler.cluster.read"},{"action":"read","permission":"butler.team.read"},{"action":"read","permission":"butler.provider.read"},{"action":"read","permission":"butler.workspace.read"}],"defaultRole":"role:default/butler-portal-user"}'
             - name: APP_CONFIG_permission_rbac_policies-csv-file
               value: /etc/butler-portal-rbac/policy.csv
             - name: APP_CONFIG_permission_rbac_policyFileReload
@@ -142,9 +142,9 @@ with dynamicPlugins disabled and butler enabled, pod template byte-identical to 
             - name: APP_CONFIG_permission_enabled
               value: "true"
             - name: APP_CONFIG_permission_rbac_pluginsWithPermission
-              value: '["catalog","scaffolder","permission"]'
+              value: '["catalog","scaffolder","permission","butler"]'
             - name: APP_CONFIG_permission_rbac_defaultPermissions
-              value: '{"basicPermissions":[{"action":"read","permission":"catalog.entity.read"},{"action":"read","permission":"catalog.location.read"},{"action":"read","permission":"scaffolder.task.read"},{"action":"read","permission":"scaffolder.template.parameter.read"},{"action":"read","permission":"scaffolder.template.step.read"}],"defaultRole":"role:default/butler-portal-user"}'
+              value: '{"basicPermissions":[{"action":"read","permission":"catalog.entity.read"},{"action":"read","permission":"catalog.location.read"},{"action":"read","permission":"scaffolder.task.read"},{"action":"read","permission":"scaffolder.template.parameter.read"},{"action":"read","permission":"scaffolder.template.step.read"},{"action":"read","permission":"butler.cluster.read"},{"action":"read","permission":"butler.team.read"},{"action":"read","permission":"butler.provider.read"},{"action":"read","permission":"butler.workspace.read"}],"defaultRole":"role:default/butler-portal-user"}'
             - name: APP_CONFIG_permission_rbac_policies-csv-file
               value: /etc/butler-portal-rbac/policy.csv
             - name: APP_CONFIG_permission_rbac_policyFileReload
