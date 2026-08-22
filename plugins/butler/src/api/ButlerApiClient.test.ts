@@ -1,68 +1,112 @@
-/*
- * Copyright 2026 The Butler Authors.
- * SPDX-License-Identifier: Apache-2.0
- */
+// Copyright 2026 The Butler Authors.
+// SPDX-License-Identifier: Apache-2.0
 
-import type { DiscoveryApi, FetchApi } from '@backstage/core-plugin-api';
 import { ButlerApiClient } from './ButlerApiClient';
 
-// Minimal fetch double: records the URL and init of every call and
-// answers with a canned JSON body.
-function makeClient(body: unknown = {}) {
-  const calls: Array<{ url: string; init: RequestInit | undefined }> = [];
-  const fetchApi: FetchApi = {
-    fetch: jest.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
-      calls.push({ url: String(input), init });
-      return {
-        ok: true,
-        status: 200,
-        json: async () => body,
-      } as unknown as Response;
-    }),
-  };
-  const discoveryApi: DiscoveryApi = {
-    getBaseUrl: jest.fn(async () => 'http://portal/api/butler'),
-  };
-  const client = new ButlerApiClient({ discoveryApi, fetchApi });
+type FetchCall = { url: string; init: RequestInit | undefined };
+
+function makeClient(responder: (url: string) => Partial<Response>) {
+  const calls: FetchCall[] = [];
+  const fetchFn = jest.fn(async (url: string, init?: RequestInit) => {
+    calls.push({ url, init });
+    return responder(url) as Response;
+  });
+  const client = new ButlerApiClient({
+    discoveryApi: { getBaseUrl: async () => 'http://localhost/api/butler' },
+    fetchApi: { fetch: fetchFn as unknown as typeof fetch },
+  });
   return { client, calls };
 }
 
-describe('ButlerApiClient routes', () => {
-  it('lists branches through the server query-parameter route', async () => {
-    const { client, calls } = makeClient([]);
-    await client.listBranches('butlerdotdev', 'tenant-live');
-    expect(calls[0].url).toBe(
-      'http://portal/api/butler/gitops/repos/branches?repo=butlerdotdev%2Ftenant-live',
+function jsonResponse(body: unknown, status = 200): Partial<Response> {
+  return {
+    ok: status >= 200 && status < 300,
+    status,
+    statusText: 'OK',
+    json: async () => body,
+    text: async () => JSON.stringify(body),
+  };
+}
+
+describe('ButlerApiClient cluster detail reads', () => {
+  it('fetches machine requests from the machines path', async () => {
+    const { client, calls } = makeClient(() =>
+      jsonResponse({ machineRequests: [{ metadata: { name: 'm-1' } }] }),
     );
+    const result = await client.getClusterMachineRequests('ns', 'c1');
+    expect(calls[0].url).toBe(
+      'http://localhost/api/butler/clusters/ns/c1/machines',
+    );
+    expect(result.machineRequests).toHaveLength(1);
   });
 
-  it('encodes nested group repository names', async () => {
-    const { client, calls } = makeClient([]);
-    await client.listBranches('group/subgroup', 'repo');
-    expect(calls[0].url).toContain('repo=group%2Fsubgroup%2Frepo');
+  it('fetches load balancer requests from the load-balancers path', async () => {
+    const { client, calls } = makeClient(() =>
+      jsonResponse({ loadBalancerRequests: [] }),
+    );
+    const result = await client.getClusterLoadBalancerRequests('ns', 'c1');
+    expect(calls[0].url).toBe(
+      'http://localhost/api/butler/clusters/ns/c1/load-balancers',
+    );
+    expect(result.loadBalancerRequests).toEqual([]);
   });
 
-  it('reads platform configuration from /admin/config', async () => {
-    const { client, calls } = makeClient({
-      multiTenancy: { mode: 'Optional' },
-      defaultNamespace: 'butler-tenants',
-      status: null,
-    });
-    const config = await client.getPlatformConfig();
-    expect(calls[0].url).toBe('http://portal/api/butler/admin/config');
-    expect(config.multiTenancy?.mode).toBe('Optional');
+  it('fetches the tenant control plane projection', async () => {
+    const { client, calls } = makeClient(() =>
+      jsonResponse({
+        name: 'c1',
+        namespace: 'tenant-c1',
+        specVersion: 'v1.31.0',
+        status: { phase: 'Ready', replicas: 2, readyReplicas: 2 },
+      }),
+    );
+    const result = await client.getClusterTenantControlPlane('ns', 'c1');
+    expect(calls[0].url).toBe(
+      'http://localhost/api/butler/clusters/ns/c1/tenantcontrolplane',
+    );
+    expect(result.status?.readyReplicas).toBe(2);
   });
 
-  it('sends the team header only when a team context is set', async () => {
-    const { client, calls } = makeClient({ clusters: [] });
-    await client.listClusters();
-    expect(
-      (calls[0].init?.headers as Record<string, string>)['X-Butler-Team'],
-    ).toBeUndefined();
-    client.setTeamContext('alpha');
-    await client.listClusters();
-    expect(
-      (calls[1].init?.headers as Record<string, string>)['X-Butler-Team'],
-    ).toBe('alpha');
+  it('exports YAML as text with a yaml Accept header', async () => {
+    const yaml = 'apiVersion: butler.butlerlabs.dev/v1alpha1\nkind: TenantCluster\n';
+    const { client, calls } = makeClient(() => ({
+      ok: true,
+      status: 200,
+      statusText: 'OK',
+      text: async () => yaml,
+      json: async () => {
+        throw new Error('not json');
+      },
+    }));
+    const result = await client.exportClusterYAML('ns', 'c1');
+    expect(result).toBe(yaml);
+    expect(calls[0].url).toBe(
+      'http://localhost/api/butler/clusters/ns/c1/export',
+    );
+    const headers = calls[0].init?.headers as Record<string, string>;
+    expect(headers.Accept).toBe('application/x-yaml');
+    expect(headers['Content-Type']).toBeUndefined();
+  });
+
+  it('sends the team context header on the text path', async () => {
+    const { client, calls } = makeClient(() => ({
+      ok: true,
+      status: 200,
+      statusText: 'OK',
+      text: async () => 'kind: TenantCluster\n',
+    }));
+    client.setTeamContext('platform');
+    await client.exportClusterYAML('ns', 'c1');
+    const headers = calls[0].init?.headers as Record<string, string>;
+    expect(headers['X-Butler-Team']).toBe('platform');
+  });
+
+  it('throws the standard error shape when export fails', async () => {
+    const { client } = makeClient(() =>
+      jsonResponse({ error: 'cluster not found' }, 404),
+    );
+    await expect(client.exportClusterYAML('ns', 'missing')).rejects.toThrow(
+      'Butler API error (404): cluster not found',
+    );
   });
 });

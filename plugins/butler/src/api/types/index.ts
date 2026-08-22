@@ -11,3 +11,5 @@ export * from './identity-providers';
 export * from './workspaces';
 export * from './config';
 export * from './ws';
+export * from './machines';
+export * from './steward';

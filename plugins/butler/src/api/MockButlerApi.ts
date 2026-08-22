@@ -21,6 +21,8 @@
  */
 
 import type { PlatformConfig } from './types/config';
+import type { MachineRequest, MachineRequestListResponse, LoadBalancerRequest, LoadBalancerRequestListResponse } from './types/machines';
+import type { TenantControlPlaneSummary } from './types/steward';
 import type { ButlerApi } from './ButlerApi';
 import type {
   Cluster,
@@ -1036,6 +1038,47 @@ export class MockButlerApi implements ButlerApi {
       if (!idp) throw notFound('identity provider', name);
       return { valid: true, message: `Discovery succeeded for ${idp.spec.oidc?.issuerURL}` };
     });
+  }
+
+  // ---- Cluster detail read parity ----
+
+  getClusterMachineRequests(namespace: string, name: string): Promise<MachineRequestListResponse> {
+    return this.run('getClusterMachineRequests', () => ({
+      machineRequests: (this.clusters.find(c => c.metadata.namespace === namespace && c.metadata.name === name)
+        ? [0, 1].map(i => ({
+            metadata: { name: `${name}-worker-${i}`, namespace },
+            spec: { clusterName: name, machineName: `${name}-worker-${i}`, role: 'worker' as const, cpu: 2, memoryMB: 4096, diskGB: 20, providerConfigRef: { name: 'harvester' } },
+            status: { phase: i === 0 ? 'Running' : 'Creating', ipAddress: i === 0 ? '10.40.2.10' : '' },
+          }))
+        : []) as unknown as MachineRequest[],
+    }));
+  }
+
+  getClusterLoadBalancerRequests(namespace: string, name: string): Promise<LoadBalancerRequestListResponse> {
+    return this.run('getClusterLoadBalancerRequests', () => ({
+      loadBalancerRequests: [
+        { metadata: { name: `${name}-api`, namespace }, spec: { clusterName: name, port: 6443, providerConfigRef: { name: 'harvester' } }, status: { phase: 'Ready', endpoint: '10.40.2.56' } },
+      ] as LoadBalancerRequest[],
+    }));
+  }
+
+  getClusterTenantControlPlane(namespace: string, name: string): Promise<TenantControlPlaneSummary> {
+    return this.run('getClusterTenantControlPlane', () => {
+      const cluster = this.clusters.find(c => c.metadata.namespace === namespace && c.metadata.name === name);
+      if (!cluster || cluster.status?.phase === 'Pending') {
+        throw new Error('Butler API error (404): TenantControlPlane not found for cluster');
+      }
+      return {
+        name,
+        namespace: cluster.status?.tenantNamespace ?? `${name}-tenant`,
+        specVersion: cluster.spec.kubernetesVersion ?? 'v1.33.2',
+        status: { phase: 'Ready', version: cluster.spec.kubernetesVersion ?? 'v1.33.2', controlPlaneEndpoint: '10.40.2.56:6443', replicas: 1, readyReplicas: 1 },
+      } as TenantControlPlaneSummary;
+    });
+  }
+
+  exportClusterYAML(namespace: string, name: string): Promise<string> {
+    return this.run('exportClusterYAML', () => `apiVersion: butler.butlerlabs.dev/v1alpha1\nkind: TenantCluster\nmetadata:\n  name: ${name}\n  namespace: ${namespace}\n`);
   }
 
   // ---- Settings ----

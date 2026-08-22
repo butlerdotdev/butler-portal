@@ -34,6 +34,10 @@ import Switch from '@material-ui/core/Switch';
 import { butlerApiRef } from '../../api/ButlerApi';
 import { useButlerResource } from '../../hooks/useButlerResource';
 import type { Cluster, Node, ClusterEvent } from '../../api/types/clusters';
+import type {
+  MachineRequest,
+  LoadBalancerRequest,
+} from '../../api/types/machines';
 import { StatusBadge } from '../StatusBadge/StatusBadge';
 import { useClusterWatch } from '../../hooks/useClusterWatch';
 import { AddonsTab } from './AddonsTab';
@@ -41,6 +45,10 @@ import { GitOpsTab } from './GitOpsTab';
 import { CertificatesTab } from './CertificatesTab';
 import { TerminalTab } from './TerminalTab';
 import { useButlerRoutes } from '../../hooks/useButlerRoutes';
+import { ControlPlaneTab } from './ControlPlaneTab';
+import { MachineRequestsCard } from './MachineRequestsCard';
+import { LoadBalancerRequestsCard } from './LoadBalancerRequestsCard';
+import { InfrastructureOverrideCard } from './InfrastructureOverrideCard';
 
 const useStyles = makeStyles(theme => ({
   header: {
@@ -174,6 +182,7 @@ export const ClusterDetailPage = () => {
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [downloading, setDownloading] = useState(false);
+  const [exporting, setExporting] = useState(false);
   const [togglingWorkspaces, setTogglingWorkspaces] = useState(false);
 
   // Nodes state
@@ -215,6 +224,77 @@ export const ClusterDetailPage = () => {
       });
     }
   }, [alertApi, refreshError]);
+
+  // Provisioning state (Overview tab only)
+  const [machineRequests, setMachineRequests] = useState<MachineRequest[]>([]);
+  const [loadBalancerRequests, setLoadBalancerRequests] = useState<
+    LoadBalancerRequest[]
+  >([]);
+  const [provisioningLoaded, setProvisioningLoaded] = useState(false);
+
+  const fetchProvisioning = useCallback(async () => {
+    if (!namespace || !name) return;
+    const [machines, lbs] = await Promise.allSettled([
+      api.getClusterMachineRequests(namespace, name),
+      api.getClusterLoadBalancerRequests(namespace, name),
+    ]);
+    if (machines.status === 'fulfilled') {
+      setMachineRequests(machines.value.machineRequests ?? []);
+    } else {
+      alertApi.post({
+        message: `Failed to load machine requests: ${String(
+          machines.reason instanceof Error
+            ? machines.reason.message
+            : machines.reason,
+        )}`,
+        severity: 'error',
+      });
+    }
+    if (lbs.status === 'fulfilled') {
+      setLoadBalancerRequests(lbs.value.loadBalancerRequests ?? []);
+    } else {
+      alertApi.post({
+        message: `Failed to load load balancer requests: ${String(
+          lbs.reason instanceof Error ? lbs.reason.message : lbs.reason,
+        )}`,
+        severity: 'error',
+      });
+    }
+    setProvisioningLoaded(true);
+  }, [api, alertApi, namespace, name]);
+
+  useEffect(() => {
+    if (activeTab === 0 && !provisioningLoaded) {
+      fetchProvisioning();
+    }
+  }, [activeTab, provisioningLoaded, fetchProvisioning]);
+
+  const handleExportYAML = async () => {
+    if (!namespace || !name) return;
+    setExporting(true);
+    try {
+      const yaml = await api.exportClusterYAML(namespace, name);
+      const blob = new Blob([yaml], { type: 'application/x-yaml' });
+      const url = window.URL.createObjectURL(blob);
+      const anchor = document.createElement('a');
+      anchor.href = url;
+      anchor.download = `${name}.yaml`;
+      document.body.appendChild(anchor);
+      anchor.click();
+      document.body.removeChild(anchor);
+      window.URL.revokeObjectURL(url);
+    } catch (e) {
+      alertApi.post({
+        message: `Failed to export YAML: ${
+          e instanceof Error ? e.message : String(e)
+        }`,
+        severity: 'error',
+      });
+    } finally {
+      setExporting(false);
+    }
+  };
+
   // The toggle endpoint returns the updated cluster; show it until the next
   // poll or refresh delivers a fresh server copy (tracked by object identity).
   const [clusterOverride, setClusterOverride] = useState<
@@ -286,10 +366,10 @@ export const ClusterDetailPage = () => {
 
   // Lazy-load tab data
   useEffect(() => {
-    if (activeTab === 1 && !nodesLoaded) {
+    if (activeTab === 2 && !nodesLoaded) {
       fetchNodes();
     }
-    if (activeTab === 5 && !eventsLoaded) {
+    if (activeTab === 6 && !eventsLoaded) {
       fetchEvents();
     }
   }, [activeTab, nodesLoaded, eventsLoaded, fetchNodes, fetchEvents]);
@@ -499,6 +579,15 @@ export const ClusterDetailPage = () => {
           <Button
             variant="outlined"
             size="small"
+            startIcon={<GetAppIcon />}
+            onClick={handleExportYAML}
+            disabled={exporting}
+          >
+            {exporting ? 'Exporting...' : 'Export YAML'}
+          </Button>
+          <Button
+            variant="outlined"
+            size="small"
             color="secondary"
             startIcon={<DeleteIcon />}
             onClick={() => setDeleteOpen(true)}
@@ -518,6 +607,7 @@ export const ClusterDetailPage = () => {
         scrollButtons="auto"
       >
         <Tab label="Overview" />
+        <Tab label="Control Plane" />
         <Tab label="Nodes" />
         <Tab label="Addons" />
         <Tab label="GitOps" />
@@ -671,11 +761,37 @@ export const ClusterDetailPage = () => {
                 </Box>
               )}
             </Grid>
+            {machineRequests.length > 0 && (
+              <Grid item xs={12} md={6}>
+                <MachineRequestsCard machineRequests={machineRequests} />
+              </Grid>
+            )}
+            {loadBalancerRequests.length > 0 && (
+              <Grid item xs={12} md={6}>
+                <LoadBalancerRequestsCard
+                  loadBalancerRequests={loadBalancerRequests}
+                />
+              </Grid>
+            )}
+            {cluster.spec.infrastructureOverride && (
+              <Grid item xs={12} md={6}>
+                <InfrastructureOverrideCard
+                  override={cluster.spec.infrastructureOverride}
+                />
+              </Grid>
+            )}
           </Grid>
         </TabPanel>
 
-        {/* Nodes Tab */}
+        {/* Control Plane Tab */}
         <TabPanel value={activeTab} index={1}>
+          {namespace && name && (
+            <ControlPlaneTab clusterNamespace={namespace} clusterName={name} />
+          )}
+        </TabPanel>
+
+        {/* Nodes Tab */}
+        <TabPanel value={activeTab} index={2}>
           {nodesLoading ? (
             <Progress />
           ) : nodes.length === 0 ? (
@@ -699,28 +815,28 @@ export const ClusterDetailPage = () => {
         </TabPanel>
 
         {/* Addons Tab */}
-        <TabPanel value={activeTab} index={2}>
+        <TabPanel value={activeTab} index={3}>
           {namespace && name && (
             <AddonsTab clusterNamespace={namespace} clusterName={name} />
           )}
         </TabPanel>
 
         {/* GitOps Tab */}
-        <TabPanel value={activeTab} index={3}>
+        <TabPanel value={activeTab} index={4}>
           {namespace && name && (
             <GitOpsTab clusterNamespace={namespace} clusterName={name} />
           )}
         </TabPanel>
 
         {/* Certificates Tab */}
-        <TabPanel value={activeTab} index={4}>
+        <TabPanel value={activeTab} index={5}>
           {namespace && name && (
             <CertificatesTab clusterNamespace={namespace} clusterName={name} />
           )}
         </TabPanel>
 
         {/* Events Tab */}
-        <TabPanel value={activeTab} index={5}>
+        <TabPanel value={activeTab} index={6}>
           {eventsLoading ? (
             <Progress />
           ) : events.length === 0 ? (
@@ -745,7 +861,7 @@ export const ClusterDetailPage = () => {
         </TabPanel>
 
         {/* Terminal Tab */}
-        <TabPanel value={activeTab} index={6}>
+        <TabPanel value={activeTab} index={7}>
           {namespace && name && (
             <TerminalTab clusterNamespace={namespace} clusterName={name} />
           )}
