@@ -9,7 +9,9 @@ import { useButlerRoutes } from '../../hooks/useButlerRoutes';
 import { useTeamContext } from '../../hooks/useTeamContext';
 import { butlerTokens, rgb, rgba } from '../../theme';
 import {
+  ButlerAccessDenied,
   ButlerButton,
+  ButlerCallout,
   ButlerCard,
   ButlerChip,
   ButlerDialog,
@@ -22,8 +24,6 @@ import {
   PlusIcon,
 } from '../ui';
 import type { ButlerColumn } from '../ui';
-import { ButlerAccessDenied } from '../ui/ButlerAccessDenied';
-import { ButlerCallout } from '../ui/ButlerCallout';
 
 export interface UserRecord {
   username?: string;
@@ -627,7 +627,11 @@ export const UsersPage = () => {
             >
               Cancel
             </ButlerButton>
-            <ButlerButton type="submit" form="create-user-form" disabled={creating}>
+            <ButlerButton
+              type="submit"
+              form="create-user-form"
+              disabled={creating}
+            >
               {creating ? 'Creating...' : 'Create User'}
             </ButlerButton>
           </>
@@ -665,8 +669,8 @@ export const UsersPage = () => {
             placeholder="John Doe"
           />
           <p className={classes.note}>
-            An invite link will be generated. Share it with the user to let
-            them set their password.
+            An invite link will be generated. Share it with the user to let them
+            set their password.
           </p>
         </form>
       </ButlerDialog>
@@ -678,8 +682,8 @@ export const UsersPage = () => {
         footer={<ButlerButton onClick={closeInvite}>Done</ButlerButton>}
       >
         <p className={classes.text}>
-          Share this link with the user. They will use it to set their
-          password and activate their account.
+          Share this link with the user. They will use it to set their password
+          and activate their account.
         </p>
         <div className={classes.inviteRow}>
           <ButlerInput
@@ -728,8 +732,8 @@ export const UsersPage = () => {
                   ? 'Enabling...'
                   : 'Disabling...'
                 : toggleDisabled
-                  ? 'Enable User'
-                  : 'Disable User'}
+                ? 'Enable User'
+                : 'Disable User'}
             </ButlerButton>
           </>
         }

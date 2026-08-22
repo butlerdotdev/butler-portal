@@ -28,25 +28,23 @@ import { butlerTokens, rgb, rgba } from '../../theme';
 import {
   AlertTriangleIcon,
   ButlerButton,
+  ButlerCallout,
   ButlerCard,
+  ButlerCheckbox,
   ButlerChip,
   ButlerDialog,
+  ButlerDisclosure,
   ButlerEmptyState,
   ButlerErrorState,
   ButlerInput,
-  ButlerSpinner,
-  ButlerStack,
-} from '../ui';
-import {
-  ButlerCallout,
-  ButlerCheckbox,
-  ButlerDisclosure,
   ButlerLinkButton,
   ButlerMenu,
   ButlerMenuItem,
+  ButlerSpinner,
+  ButlerStack,
   ButlerStatGrid,
   ButlerStatTile,
-} from '../ui/extras';
+} from '../ui';
 
 interface CertificatesTabProps {
   clusterNamespace: string;
@@ -109,9 +107,20 @@ const useStyles = makeStyles(theme => {
       lineHeight: '20px',
       fontWeight: 500,
     },
-    pillDot: { width: 8, height: 8, borderRadius: '50%', backgroundColor: 'currentColor' },
-    green: { backgroundColor: rgba(p.green[500], 0.1), color: rgb(p.green[400]) },
-    yellow: { backgroundColor: rgba(p.yellow[500], 0.1), color: rgb(p.yellow[400]) },
+    pillDot: {
+      width: 8,
+      height: 8,
+      borderRadius: '50%',
+      backgroundColor: 'currentColor',
+    },
+    green: {
+      backgroundColor: rgba(p.green[500], 0.1),
+      color: rgb(p.green[400]),
+    },
+    yellow: {
+      backgroundColor: rgba(p.yellow[500], 0.1),
+      color: rgb(p.yellow[400]),
+    },
     red: { backgroundColor: rgba(p.red[500], 0.1), color: rgb(p.red[400]) },
     textGreen: { color: rgb(p.green[400]) },
     textYellow: { color: rgb(p.yellow[400]) },
@@ -201,7 +210,12 @@ const useStyles = makeStyles(theme => {
     },
     certExpiry: { textAlign: 'right', flexShrink: 0 },
     certDays: { margin: 0, fontSize: 14, lineHeight: '20px', fontWeight: 500 },
-    certDaysHint: { margin: 0, fontSize: 12, lineHeight: '16px', color: t.text.subtle },
+    certDaysHint: {
+      margin: 0,
+      fontSize: 12,
+      lineHeight: '16px',
+      color: t.text.subtle,
+    },
     certDates: {
       marginTop: 12,
       display: 'flex',
@@ -343,8 +357,9 @@ export const CertificatesTab = ({
   const canRotate = isAdmin;
   const canRotateCA = isAdmin;
 
-  const [certificates, setCertificates] =
-    useState<ClusterCertificates | null>(null);
+  const [certificates, setCertificates] = useState<ClusterCertificates | null>(
+    null,
+  );
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<Error | undefined>();
 
@@ -357,8 +372,9 @@ export const CertificatesTab = ({
   const [menuAnchor, setMenuAnchor] = useState<HTMLElement | null>(null);
 
   // Rotation status
-  const [rotationStatus, setRotationStatus] =
-    useState<RotationEvent | null>(null);
+  const [rotationStatus, setRotationStatus] = useState<RotationEvent | null>(
+    null,
+  );
   const [rotationPolling, setRotationPolling] = useState(false);
   const [showRotationSuccess, setShowRotationSuccess] = useState(false);
 
@@ -558,7 +574,7 @@ export const CertificatesTab = ({
           </span>
         </div>
 
-        <ButlerStatGrid className={classes.metrics}>
+        <ButlerStatGrid variant="metrics" className={classes.metrics}>
           <ButlerStatTile
             label="Healthy"
             value={healthCounts.Healthy}
@@ -592,7 +608,8 @@ export const CertificatesTab = ({
 
         {certificates.lastRotation && (
           <p className={classes.lastRotation}>
-            Last Rotation: {formatCertDate(certificates.lastRotation.initiatedAt)}
+            Last Rotation:{' '}
+            {formatCertDate(certificates.lastRotation.initiatedAt)}
             {certificates.lastRotation.initiatedBy && (
               <> by {certificates.lastRotation.initiatedBy}</>
             )}
@@ -868,7 +885,11 @@ function RotationDialog({
       title={title}
       footer={
         <>
-          <ButlerButton variant="secondary" onClick={onClose} disabled={loading}>
+          <ButlerButton
+            variant="secondary"
+            onClick={onClose}
+            disabled={loading}
+          >
             Cancel
           </ButlerButton>
           <ButlerButton onClick={onConfirm} disabled={loading}>
@@ -1005,7 +1026,9 @@ function CARotationDialog({
               Kubeadm/Rocky Linux Workers:
             </p>
             <code className={classes.recoveryCode}>
-              {'# Update /etc/kubernetes/pki/ca.crt with new CA\nsystemctl restart kubelet'}
+              {
+                '# Update /etc/kubernetes/pki/ca.crt with new CA\nsystemctl restart kubelet'
+              }
             </code>
             <p className={classes.recoveryHint}>
               Copy the new CA certificate to each worker node and restart

@@ -18,19 +18,20 @@ import { useButlerRoutes } from '../../hooks/useButlerRoutes';
 import { useTeamContext } from '../../hooks/useTeamContext';
 import { butlerTokens, rgb, rgba } from '../../theme';
 import {
+  ArchiveIcon,
   ButlerButton,
   ButlerCard,
   ButlerChip,
   ButlerDialog,
   ButlerErrorState,
+  ButlerInsetPanel,
   ButlerLoading,
   ButlerPageHeader,
   ButlerSpinner,
   ButlerStack,
   PlusIcon,
+  TrashIcon,
 } from '../ui';
-import { ButlerInsetPanel } from '../ui/ButlerFormSection';
-import { ArchiveIcon, TrashIcon } from '../ui/formIcons';
 import { ProviderIcon } from './ProviderIcon';
 
 const useStyles = makeStyles(theme => {
@@ -434,7 +435,7 @@ export const ProvidersPage = () => {
         {providers.length === 0 ? (
           <ButlerCard flush className={classes.emptyCard}>
             <div className={classes.emptyIcon}>
-              <ArchiveIcon />
+              <ArchiveIcon size={24} />
             </div>
             <h3 className={classes.emptyTitle}>No Providers</h3>
             <p className={classes.emptyText}>

@@ -5,7 +5,7 @@ import type { ReactNode } from 'react';
 import { makeStyles } from '@material-ui/core/styles';
 import clsx from 'clsx';
 import { butlerTokens, rgba } from '../../theme';
-import { ChevronDownIcon } from './ButlerDashboardIcons';
+import { ChevronDownIcon } from './icons';
 
 const useStyles = makeStyles(theme => {
   const t = butlerTokens(theme);

@@ -14,17 +14,18 @@ import { useButlerRoutes } from '../../hooks/useButlerRoutes';
 import { useTeamContext } from '../../hooks/useTeamContext';
 import { butlerTokens, rgb } from '../../theme';
 import {
+  ButlerAccessDenied,
   ButlerBanner,
   ButlerCard,
   ButlerErrorState,
   ButlerInput,
   ButlerLoading,
   ButlerPageHeader,
+  ButlerSelect,
   ButlerStack,
+  ButlerSwitch,
+  ButlerTextarea,
 } from '../ui';
-import { ButlerSelect, ButlerTextarea } from '../ui/ButlerForm';
-import { ButlerSwitch } from '../ui/ButlerSwitch';
-import { ButlerAccessDenied } from '../ui/ButlerAccessDenied';
 
 const useStyles = makeStyles(theme => {
   const t = butlerTokens(theme);
@@ -249,7 +250,9 @@ export const SettingsPage = () => {
         <Section title="Control Plane Exposure">
           <div className={classes.fields}>
             <ButlerSelect label="Exposure Mode" value={mode} disabled>
-              <option value="LoadBalancer">LoadBalancer (1 IP per tenant)</option>
+              <option value="LoadBalancer">
+                LoadBalancer (1 IP per tenant)
+              </option>
               <option value="Ingress">Ingress (shared IP, SNI routing)</option>
               <option value="Gateway">Gateway API (shared IP, TLSRoute)</option>
             </ButlerSelect>
@@ -306,12 +309,48 @@ export const SettingsPage = () => {
           intro="Default versions used when tenant clusters don't specify their own."
         >
           <div className={classes.grid2}>
-            <ButlerInput label="Cilium" value={addons.cilium || ''} placeholder="1.16.1" readOnly disabled />
-            <ButlerInput label="MetalLB" value={addons.metallb || ''} placeholder="0.14.8" readOnly disabled />
-            <ButlerInput label="cert-manager" value={addons.certManager || ''} placeholder="1.15.3" readOnly disabled />
-            <ButlerInput label="Longhorn" value={addons.longhorn || ''} placeholder="1.7.2" readOnly disabled />
-            <ButlerInput label="Traefik" value={addons.traefik || ''} placeholder="31.1.1" readOnly disabled />
-            <ButlerInput label="FluxCD" value={addons.fluxcd || ''} placeholder="2.14.0" readOnly disabled />
+            <ButlerInput
+              label="Cilium"
+              value={addons.cilium || ''}
+              placeholder="1.16.1"
+              readOnly
+              disabled
+            />
+            <ButlerInput
+              label="MetalLB"
+              value={addons.metallb || ''}
+              placeholder="0.14.8"
+              readOnly
+              disabled
+            />
+            <ButlerInput
+              label="cert-manager"
+              value={addons.certManager || ''}
+              placeholder="1.15.3"
+              readOnly
+              disabled
+            />
+            <ButlerInput
+              label="Longhorn"
+              value={addons.longhorn || ''}
+              placeholder="1.7.2"
+              readOnly
+              disabled
+            />
+            <ButlerInput
+              label="Traefik"
+              value={addons.traefik || ''}
+              placeholder="31.1.1"
+              readOnly
+              disabled
+            />
+            <ButlerInput
+              label="FluxCD"
+              value={addons.fluxcd || ''}
+              placeholder="2.14.0"
+              readOnly
+              disabled
+            />
           </div>
         </Section>
 
@@ -320,11 +359,41 @@ export const SettingsPage = () => {
           intro="Default resource limits applied to new teams. Can be overridden per team."
         >
           <div className={classes.grid2}>
-            <ButlerInput label="Max Clusters" value={limits.maxClusters ?? ''} placeholder="10" readOnly disabled />
-            <ButlerInput label="Max Workers Per Cluster" value={limits.maxWorkersPerCluster ?? ''} placeholder="20" readOnly disabled />
-            <ButlerInput label="Max Total CPU" value={limits.maxTotalCPU || ''} placeholder="100 (cores)" readOnly disabled />
-            <ButlerInput label="Max Total Memory" value={limits.maxTotalMemory || ''} placeholder="256Gi" readOnly disabled />
-            <ButlerInput label="Max Total Storage" value={limits.maxTotalStorage || ''} placeholder="1Ti" readOnly disabled />
+            <ButlerInput
+              label="Max Clusters"
+              value={limits.maxClusters ?? ''}
+              placeholder="10"
+              readOnly
+              disabled
+            />
+            <ButlerInput
+              label="Max Workers Per Cluster"
+              value={limits.maxWorkersPerCluster ?? ''}
+              placeholder="20"
+              readOnly
+              disabled
+            />
+            <ButlerInput
+              label="Max Total CPU"
+              value={limits.maxTotalCPU || ''}
+              placeholder="100 (cores)"
+              readOnly
+              disabled
+            />
+            <ButlerInput
+              label="Max Total Memory"
+              value={limits.maxTotalMemory || ''}
+              placeholder="256Gi"
+              readOnly
+              disabled
+            />
+            <ButlerInput
+              label="Max Total Storage"
+              value={limits.maxTotalStorage || ''}
+              placeholder="1Ti"
+              readOnly
+              disabled
+            />
           </div>
         </Section>
 
@@ -334,16 +403,38 @@ export const SettingsPage = () => {
         >
           <div className={classes.rows}>
             <ResourceRow label="API Server" value={cp.apiServer} />
-            <ResourceRow label="Controller Manager" value={cp.controllerManager} />
+            <ResourceRow
+              label="Controller Manager"
+              value={cp.controllerManager}
+            />
             <ResourceRow label="Scheduler" value={cp.scheduler} />
           </div>
         </Section>
 
         <Section title="Image Factory">
           <div className={classes.fields}>
-            <ButlerInput label="Factory URL" value={factory?.url || ''} placeholder="https://factory.butlerlabs.dev" readOnly disabled />
-            <ButlerInput label="Credentials Secret" value={factory?.credentialsRef || ''} placeholder="Secret name containing API key" readOnly disabled />
-            <ButlerInput label="Default Schematic ID" value={factory?.defaultSchematicID || ''} placeholder="SHA-256 hex string" readOnly disabled mono />
+            <ButlerInput
+              label="Factory URL"
+              value={factory?.url || ''}
+              placeholder="https://factory.butlerlabs.dev"
+              readOnly
+              disabled
+            />
+            <ButlerInput
+              label="Credentials Secret"
+              value={factory?.credentialsRef || ''}
+              placeholder="Secret name containing API key"
+              readOnly
+              disabled
+            />
+            <ButlerInput
+              label="Default Schematic ID"
+              value={factory?.defaultSchematicID || ''}
+              placeholder="SHA-256 hex string"
+              readOnly
+              disabled
+              mono
+            />
             <ButlerSwitch
               label="Auto Sync"
               help="Automatically sync images when a cluster references an unavailable image"

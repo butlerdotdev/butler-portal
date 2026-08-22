@@ -6,7 +6,7 @@ import { makeStyles } from '@material-ui/core/styles';
 import { butlerTokens, rgb, rgba } from '../../theme';
 import { ButlerButton } from './ButlerButton';
 import { ButlerCard } from './ButlerCard';
-import { ArrowLeftIcon, LockIcon } from './adminIcons';
+import { ArrowLeftIcon, LockIcon } from './icons';
 
 const useStyles = makeStyles(theme => {
   const t = butlerTokens(theme);

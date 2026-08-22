@@ -11,24 +11,20 @@ import type { Cluster } from '../../api/types/clusters';
 import { useButlerRoutes } from '../../hooks/useButlerRoutes';
 import {
   ButlerButton,
+  ButlerDashboardStat,
   ButlerEmptyState,
   ButlerErrorState,
+  ButlerList,
+  ButlerListCard,
+  ButlerListRow,
   ButlerLoading,
   ButlerPageHeader,
   ButlerStack,
+  ButlerStatGrid,
   ButlerStatusBadge,
   PlusIcon,
   ServerIcon,
 } from '../ui';
-import {
-  ButlerDashboardStat,
-  ButlerStatGrid,
-} from '../ui/ButlerDashboardStats';
-import {
-  ButlerList,
-  ButlerListCard,
-  ButlerListRow,
-} from '../ui/ButlerListCard';
 
 // Console DashboardPage counts these phases as "Provisioning".
 const PROVISIONING_PHASES = [

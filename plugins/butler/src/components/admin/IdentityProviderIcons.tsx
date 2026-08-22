@@ -3,7 +3,7 @@
 
 import { makeStyles } from '@material-ui/core/styles';
 import { butlerTokens, rgb } from '../../theme';
-import { KeyIcon } from '../ui/formIcons';
+import { KeyIcon } from '../ui';
 
 // Port of the inline icons in butler-console `IdentityProvidersPage.tsx`.
 // Brand fills are the vendors' colors and do not change with theme.

@@ -11,6 +11,7 @@ import { useButlerRoutes } from '../../hooks/useButlerRoutes';
 import { useTeamContext } from '../../hooks/useTeamContext';
 import { butlerTokens, rgb, rgba } from '../../theme';
 import {
+  ButlerAccessDenied,
   ButlerButton,
   ButlerCard,
   ButlerChip,
@@ -20,13 +21,13 @@ import {
   ButlerLoading,
   ButlerPageHeader,
   ButlerStack,
+  ButlerTextarea,
+  ChevronRightIcon,
   PlusIcon,
   ServerIcon,
+  UserGroupIcon,
+  UsersIcon,
 } from '../ui';
-import { ButlerTextarea } from '../ui/ButlerForm';
-import { ButlerAccessDenied } from '../ui/ButlerAccessDenied';
-import { ChevronRightIcon, UsersIcon } from '../ui/ButlerDashboardIcons';
-import { UserGroupIcon } from '../ui/adminIcons';
 
 /** `/teams` returns the console `TeamResponse`; these fields are optional in TeamInfo. */
 interface AdminTeam extends TeamInfo {
@@ -189,7 +190,11 @@ export const AdminTeamsPage = () => {
   const [error, setError] = useState<Error | undefined>();
   const [createOpen, setCreateOpen] = useState(false);
   const [creating, setCreating] = useState(false);
-  const [form, setForm] = useState({ name: '', displayName: '', description: '' });
+  const [form, setForm] = useState({
+    name: '',
+    displayName: '',
+    description: '',
+  });
   const [formError, setFormError] = useState<string | undefined>();
 
   const fetchTeams = useCallback(async () => {
@@ -238,7 +243,9 @@ export const AdminTeamsPage = () => {
       closeCreate();
       fetchTeams();
     } catch (err) {
-      setFormError(err instanceof Error ? err.message : 'Failed to create team.');
+      setFormError(
+        err instanceof Error ? err.message : 'Failed to create team.',
+      );
     } finally {
       setCreating(false);
     }

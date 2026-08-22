@@ -8,34 +8,28 @@ import type { Cluster, ManagementCluster } from '../../api/types/clusters';
 import type { TeamInfo } from '../../api/types/teams';
 import { useButlerRoutes } from '../../hooks/useButlerRoutes';
 import {
+  ArchiveIcon,
+  ButlerAvatarTile,
   ButlerChip,
+  ButlerDashboardStat,
   ButlerErrorState,
   ButlerGrid,
-  ButlerLoading,
-  ButlerPageHeader,
-  ButlerStack,
-  PlusIcon,
-  ServerIcon,
-} from '../ui';
-import {
-  ButlerDashboardStat,
-  ButlerStatDots,
-  ButlerStatGrid,
-} from '../ui/ButlerDashboardStats';
-import {
   ButlerList,
   ButlerListCard,
   ButlerListEmpty,
   ButlerListRow,
-} from '../ui/ButlerListCard';
-import { ButlerQuickAction } from '../ui/ButlerQuickAction';
-import { ButlerAvatarTile } from '../ui/ButlerAvatarTile';
-import {
-  ArchiveIcon,
+  ButlerLoading,
+  ButlerPageHeader,
+  ButlerQuickAction,
+  ButlerStack,
+  ButlerStatDots,
+  ButlerStatGrid,
+  PlusIcon,
+  ServerIcon,
   TeamsIcon,
   UserAddIcon,
   UsersIcon,
-} from '../ui/ButlerDashboardIcons';
+} from '../ui';
 
 // Console AdminDashboard counts these phases as provisioning.
 const PROVISIONING_PHASES = ['provisioning', 'pending', 'scaling'];

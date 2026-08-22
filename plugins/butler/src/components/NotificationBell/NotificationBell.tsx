@@ -13,7 +13,7 @@ import type {
   ButlerNotification,
   NotificationSeverity,
 } from '../../api/types/ws';
-import { BellIcon } from '../ui/ButlerDashboardIcons';
+import { BellIcon } from '../ui';
 
 // Same resource-to-route map as the console bell, restricted to the
 // routes the plugin registers.

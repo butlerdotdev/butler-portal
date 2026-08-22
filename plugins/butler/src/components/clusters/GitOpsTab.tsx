@@ -27,25 +27,23 @@ import { butlerTokens, rgb, rgba } from '../../theme';
 import {
   AlertTriangleIcon,
   ButlerButton,
+  ButlerCallout,
   ButlerCard,
+  ButlerCheckbox,
   ButlerChip,
   ButlerDialog,
   ButlerEmptyState,
   ButlerErrorState,
-  ButlerInput,
-  ButlerSpinner,
-  ButlerStack,
-} from '../ui';
-import {
-  ButlerCallout,
-  ButlerCheckbox,
   ButlerField,
   ButlerFilePreview,
   ButlerFormRow,
+  ButlerInput,
   ButlerLinkButton,
   ButlerPreviewToggle,
   ButlerSelect,
-} from '../ui/extras';
+  ButlerSpinner,
+  ButlerStack,
+} from '../ui';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -114,7 +112,10 @@ const useStyles = makeStyles(theme => {
     engineCard: {
       padding: 16,
       borderColor: rgba(p.blue[500], 0.3),
-      backgroundImage: `linear-gradient(to right, ${rgba(p.blue[500], 0.12)}, ${rgba(p.violet[500], 0.12)})`,
+      backgroundImage: `linear-gradient(to right, ${rgba(
+        p.blue[500],
+        0.12,
+      )}, ${rgba(p.violet[500], 0.12)})`,
     },
     emoji: { fontSize: 24, lineHeight: '32px' },
     cardTitle: {
@@ -124,7 +125,12 @@ const useStyles = makeStyles(theme => {
       fontWeight: 500,
       color: t.text.strong,
     },
-    cardSub: { margin: 0, fontSize: 14, lineHeight: '20px', color: t.text.muted },
+    cardSub: {
+      margin: 0,
+      fontSize: 14,
+      lineHeight: '20px',
+      color: t.text.muted,
+    },
     cardSubMono: { fontFamily: t.fontMono, fontSize: 12 },
     engineChip: { border: `1px solid ${rgba(p.green[500], 0.3)}` },
     engineChipDegraded: { border: `1px solid ${rgba(p.yellow[500], 0.3)}` },
@@ -145,7 +151,10 @@ const useStyles = makeStyles(theme => {
       justifyContent: 'center',
       flexShrink: 0,
       color: rgb(p.blue[400]),
-      backgroundImage: `linear-gradient(to bottom right, ${rgba(p.blue[500], 0.2)}, ${rgba(p.violet[500], 0.2)})`,
+      backgroundImage: `linear-gradient(to bottom right, ${rgba(
+        p.blue[500],
+        0.2,
+      )}, ${rgba(p.violet[500], 0.2)})`,
     },
     ctaTitle: {
       margin: 0,
@@ -184,7 +193,12 @@ const useStyles = makeStyles(theme => {
       fontWeight: 500,
       color: rgb(p.neutral[200]),
     },
-    benefitDesc: { margin: 0, fontSize: 12, lineHeight: '16px', color: t.text.subtle },
+    benefitDesc: {
+      margin: 0,
+      fontSize: 12,
+      lineHeight: '16px',
+      color: t.text.subtle,
+    },
     providerCard: { padding: 16 },
     providerIcon: {
       width: 40,
@@ -205,7 +219,12 @@ const useStyles = makeStyles(theme => {
       fontWeight: 500,
       color: rgb(p.neutral[200]),
     },
-    providerMeta: { margin: 0, fontSize: 14, lineHeight: '20px', color: t.text.subtle },
+    providerMeta: {
+      margin: 0,
+      fontSize: 14,
+      lineHeight: '20px',
+      color: t.text.subtle,
+    },
     sectionTitle: {
       margin: 0,
       fontSize: 18,
@@ -213,7 +232,12 @@ const useStyles = makeStyles(theme => {
       fontWeight: 500,
       color: t.text.strong,
     },
-    sectionSub: { margin: '4px 0 0', fontSize: 14, lineHeight: '20px', color: t.text.muted },
+    sectionSub: {
+      margin: '4px 0 0',
+      fontSize: 14,
+      lineHeight: '20px',
+      color: t.text.muted,
+    },
     warningCard: {
       padding: 16,
       borderColor: rgba(p.yellow[500], 0.3),
@@ -248,7 +272,12 @@ const useStyles = makeStyles(theme => {
       justifyContent: 'space-between',
       gap: 12,
     },
-    releaseNameRow: { display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 },
+    releaseNameRow: {
+      display: 'flex',
+      alignItems: 'center',
+      gap: 8,
+      minWidth: 0,
+    },
     releaseName: {
       margin: 0,
       fontSize: 16,
@@ -270,18 +299,37 @@ const useStyles = makeStyles(theme => {
       color: rgb(p.violet[400]),
       border: `1px solid ${rgba(p.violet[500], 0.3)}`,
     },
-    releaseMeta: { margin: '4px 0 0', fontSize: 14, lineHeight: '20px', color: t.text.subtle },
-    releaseChips: { display: 'flex', alignItems: 'center', gap: 8, marginTop: 8 },
+    releaseMeta: {
+      margin: '4px 0 0',
+      fontSize: 14,
+      lineHeight: '20px',
+      color: t.text.subtle,
+    },
+    releaseChips: {
+      display: 'flex',
+      alignItems: 'center',
+      gap: 8,
+      marginTop: 8,
+    },
     pill: {
       padding: '2px 8px',
       borderRadius: t.radius.pill,
       fontSize: 12,
       lineHeight: '16px',
     },
-    pillInfra: { backgroundColor: rgba(p.blue[500], 0.1), color: rgb(p.blue[400]) },
+    pillInfra: {
+      backgroundColor: rgba(p.blue[500], 0.1),
+      color: rgb(p.blue[400]),
+    },
     pillApp: { backgroundColor: rgb(p.neutral[700]), color: t.text.muted },
-    pillDeployed: { backgroundColor: rgba(p.green[500], 0.1), color: rgb(p.green[400]) },
-    pillOther: { backgroundColor: rgba(p.yellow[500], 0.1), color: rgb(p.yellow[400]) },
+    pillDeployed: {
+      backgroundColor: rgba(p.green[500], 0.1),
+      color: rgb(p.green[400]),
+    },
+    pillOther: {
+      backgroundColor: rgba(p.yellow[500], 0.1),
+      color: rgb(p.yellow[400]),
+    },
     repoWarning: {
       display: 'flex',
       alignItems: 'center',
@@ -364,7 +412,10 @@ const useStyles = makeStyles(theme => {
       fontFamily: t.fontSans,
       color: rgb(p.neutral[200]),
       transition: 'border-color 150ms, background-color 150ms',
-      '&:hover': { backgroundColor: rgb(p.neutral[800]), color: t.text.primary },
+      '&:hover': {
+        backgroundColor: rgb(p.neutral[800]),
+        color: t.text.primary,
+      },
       '&:focus-visible': {
         outline: 'none',
         boxShadow: `0 0 0 2px ${t.surface}, 0 0 0 4px ${t.accent}`,
@@ -422,7 +473,10 @@ const useStyles = makeStyles(theme => {
     },
     infoCheck: { color: rgb(p.green[400]), flexShrink: 0, marginTop: 2 },
     code: { fontFamily: t.fontMono, color: t.text.muted },
-    link: { color: rgb(p.green[400]), '&:hover': { textDecoration: 'underline' } },
+    link: {
+      color: rgb(p.green[400]),
+      '&:hover': { textDecoration: 'underline' },
+    },
     linkGitlab: { color: rgb(p.orange[400]) },
     inlineError: {
       margin: 0,
@@ -576,7 +630,13 @@ const SyncIcon = ({ size = 24 }: { size?: number }) => (
 );
 
 const GitHubIcon = ({ size = 20 }: { size?: number }) => (
-  <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+  <svg
+    width={size}
+    height={size}
+    viewBox="0 0 24 24"
+    fill="currentColor"
+    aria-hidden
+  >
     <path
       fillRule="evenodd"
       clipRule="evenodd"
@@ -586,7 +646,13 @@ const GitHubIcon = ({ size = 20 }: { size?: number }) => (
 );
 
 const GitLabIcon = ({ size = 20 }: { size?: number }) => (
-  <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+  <svg
+    width={size}
+    height={size}
+    viewBox="0 0 24 24"
+    fill="currentColor"
+    aria-hidden
+  >
     <path d="M22.65 14.39L12 22.13 1.35 14.39a.84.84 0 01-.3-.94l1.22-3.78 2.44-7.51A.42.42 0 014.82 2a.43.43 0 01.58 0 .42.42 0 01.11.18l2.44 7.49h8.1l2.44-7.51A.42.42 0 0118.6 2a.43.43 0 01.58 0 .42.42 0 01.11.18l2.44 7.51L23 13.45a.84.84 0 01-.35.94z" />
   </svg>
 );
@@ -710,7 +776,10 @@ function BranchSelect({
 // Main Component: GitOpsTab
 // ===========================================================================
 
-export const GitOpsTab = ({ clusterNamespace, clusterName }: GitOpsTabProps) => {
+export const GitOpsTab = ({
+  clusterNamespace,
+  clusterName,
+}: GitOpsTabProps) => {
   const classes = useStyles();
   const api = useApi(butlerApiRef);
   const { isAdmin, activeTeamRole } = useTeamContext();
@@ -1008,7 +1077,9 @@ export const GitOpsTab = ({ clusterNamespace, clusterName }: GitOpsTabProps) => 
               </p>
               <p className={classes.providerMeta}>
                 {gitConfig.username}
-                {gitConfig.organization && <> &bull; {gitConfig.organization}</>}
+                {gitConfig.organization && (
+                  <> &bull; {gitConfig.organization}</>
+                )}
               </p>
             </div>
           </div>
@@ -1172,7 +1243,9 @@ function ReleaseCard({ release, onExport }: ReleaseCardProps) {
         <div style={{ flex: 1, minWidth: 0 }}>
           <div className={classes.releaseNameRow}>
             <h3 className={classes.releaseName}>{release.name}</h3>
-            {isPlatform && <span className={classes.platformTag}>Platform</span>}
+            {isPlatform && (
+              <span className={classes.platformTag}>Platform</span>
+            )}
           </div>
           <p className={classes.releaseMeta}>
             {release.namespace} &bull; {release.chart}:{release.chartVersion}
@@ -1284,7 +1357,9 @@ function GitProviderSetup({ onConfigured, onCancel }: GitProviderSetupProps) {
   const isGithub = providerType === 'github';
   const tokenUrl = isGithub
     ? 'https://github.com/settings/tokens/new?scopes=repo&description=Butler%20Portal'
-    : `${/^https?:\/\//i.test(url.trim()) ? url.trim() : 'https://gitlab.com'}/-/profile/personal_access_tokens`;
+    : `${
+        /^https?:\/\//i.test(url.trim()) ? url.trim() : 'https://gitlab.com'
+      }/-/profile/personal_access_tokens`;
 
   return (
     <div className={classes.setupRoot}>
@@ -1374,7 +1449,10 @@ function GitProviderSetup({ onConfigured, onCancel }: GitProviderSetupProps) {
                     href={tokenUrl}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className={clsx(classes.link, !isGithub && classes.linkGitlab)}
+                    className={clsx(
+                      classes.link,
+                      !isGithub && classes.linkGitlab,
+                    )}
                   >
                     Create token &rarr;
                   </a>
@@ -1564,10 +1642,17 @@ function EnableGitOpsDialog({
       title={`Enable GitOps on ${clusterName}`}
       footer={
         <>
-          <ButlerButton variant="secondary" onClick={onClose} disabled={enabling}>
+          <ButlerButton
+            variant="secondary"
+            onClick={onClose}
+            disabled={enabling}
+          >
             Cancel
           </ButlerButton>
-          <ButlerButton onClick={handleEnable} disabled={enabling || !repository}>
+          <ButlerButton
+            onClick={handleEnable}
+            disabled={enabling || !repository}
+          >
             {enabling ? (
               <>
                 <ButlerSpinner small />
@@ -1581,7 +1666,11 @@ function EnableGitOpsDialog({
       }
     >
       <ButlerField label="GitOps Tool">
-        <div className={classes.toolGrid} role="radiogroup" aria-label="GitOps Tool">
+        <div
+          className={classes.toolGrid}
+          role="radiogroup"
+          aria-label="GitOps Tool"
+        >
           {(['flux', 'argocd'] as GitOpsToolType[]).map(tool => {
             const isSelected = provider === tool;
             const isDisabled = tool === 'argocd';
@@ -1610,7 +1699,9 @@ function EnableGitOpsDialog({
                   >
                     {TOOL_LABELS[tool]}
                   </p>
-                  {isDisabled && <p className={classes.toolHint}>Coming soon</p>}
+                  {isDisabled && (
+                    <p className={classes.toolHint}>Coming soon</p>
+                  )}
                 </span>
               </button>
             );
@@ -1734,7 +1825,11 @@ function DisableGitOpsDialog({
       iconTone="danger"
       footer={
         <>
-          <ButlerButton variant="secondary" onClick={onClose} disabled={disabling}>
+          <ButlerButton
+            variant="secondary"
+            onClick={onClose}
+            disabled={disabling}
+          >
             Cancel
           </ButlerButton>
           <ButlerButton
@@ -1922,7 +2017,11 @@ function ExportReleaseDialog({
       subtitle={release.name}
       footer={
         <>
-          <ButlerButton variant="secondary" onClick={onClose} disabled={exporting}>
+          <ButlerButton
+            variant="secondary"
+            onClick={onClose}
+            disabled={exporting}
+          >
             Cancel
           </ButlerButton>
           <ButlerButton
@@ -2190,10 +2289,17 @@ function MigrateAllDialog({
       subtitle={`${selected.size} of ${releases.length} releases selected`}
       footer={
         <>
-          <ButlerButton variant="secondary" onClick={onClose} disabled={migrating}>
+          <ButlerButton
+            variant="secondary"
+            onClick={onClose}
+            disabled={migrating}
+          >
             Cancel
           </ButlerButton>
-          <ButlerButton onClick={handleMigrate} disabled={migrating || !canMigrate}>
+          <ButlerButton
+            onClick={handleMigrate}
+            disabled={migrating || !canMigrate}
+          >
             {migrating ? (
               <>
                 <ButlerSpinner small />

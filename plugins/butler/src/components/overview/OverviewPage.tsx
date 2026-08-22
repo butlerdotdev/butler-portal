@@ -7,13 +7,13 @@ import { butlerTokens, rgb, rgba } from '../../theme';
 import { useTeamContext } from '../../hooks/useTeamContext';
 import { useButlerRoutes } from '../../hooks/useButlerRoutes';
 import {
+  ButlerAvatarTile,
   ButlerCard,
   ButlerEmptyState,
   ButlerLoading,
   ButlerPageHeader,
   ButlerStack,
 } from '../ui';
-import { ButlerAvatarTile } from '../ui/ButlerAvatarTile';
 
 const useStyles = makeStyles(theme => {
   const t = butlerTokens(theme);

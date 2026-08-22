@@ -7,7 +7,7 @@ import { makeStyles } from '@material-ui/core/styles';
 import clsx from 'clsx';
 import { butlerTokens, rgb } from '../../theme';
 import { ButlerCard } from './ButlerCard';
-import { ChevronRightIcon } from './ButlerDashboardIcons';
+import { ChevronRightIcon } from './icons';
 
 const useStyles = makeStyles(theme => {
   const t = butlerTokens(theme);

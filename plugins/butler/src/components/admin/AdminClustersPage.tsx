@@ -13,26 +13,25 @@ import { useButlerRoutes } from '../../hooks/useButlerRoutes';
 import { useTeamContext } from '../../hooks/useTeamContext';
 import { butlerTokens, rgb, rgba } from '../../theme';
 import {
+  ButlerAccessDenied,
   ButlerButton,
+  ButlerCallout,
   ButlerDialog,
   ButlerEmptyState,
   ButlerErrorState,
-  ButlerLoading,
-  ButlerPageHeader,
-  ButlerSearchInput,
-  ButlerStack,
-  PlusIcon,
-} from '../ui';
-import { ButlerSelect } from '../ui/ButlerForm';
-import { ButlerCallout } from '../ui/ButlerCallout';
-import { CheckIcon } from '../ui/ButlerDashboardIcons';
-import { ButlerAccessDenied } from '../ui/ButlerAccessDenied';
-import {
   ButlerGroupEmpty,
   ButlerGroupNested,
   ButlerGroupSection,
-} from '../ui/ButlerGroupHeader';
-import { envAccent, neutralAccent } from '../ui/envAccent';
+  ButlerLoading,
+  ButlerPageHeader,
+  ButlerSearchInput,
+  ButlerSelect,
+  ButlerStack,
+  CheckIcon,
+  envAccent,
+  neutralAccent,
+  PlusIcon,
+} from '../ui';
 import { ClusterListRow } from '../clusters/ClusterListRow';
 
 /** Console `ENVIRONMENT_LABEL` (`src/types/environments.ts`). */
@@ -326,8 +325,7 @@ export const AdminClustersPage = () => {
     [clusters],
   );
   const statuses = useMemo(
-    () =>
-      [...new Set(clusters.map(c => c.status?.phase || 'Unknown'))].sort(),
+    () => [...new Set(clusters.map(c => c.status?.phase || 'Unknown'))].sort(),
     [clusters],
   );
 
@@ -678,8 +676,8 @@ export const AdminClustersPage = () => {
                 cap?.varies
                   ? 'per-member cap: varies by team'
                   : cap?.value != null
-                    ? `per-member cap: ${cap.value}`
-                    : null,
+                  ? `per-member cap: ${cap.value}`
+                  : null,
               ]
                 .filter(Boolean)
                 .join(' · ');

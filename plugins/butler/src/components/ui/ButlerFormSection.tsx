@@ -6,7 +6,7 @@ import type { HTMLAttributes, ReactNode } from 'react';
 import { makeStyles } from '@material-ui/core/styles';
 import clsx from 'clsx';
 import { butlerTokens, rgb, rgba } from '../../theme';
-import { ChevronRightIcon } from './formIcons';
+import { ChevronRightIcon } from './icons';
 
 const useStyles = makeStyles(theme => {
   const t = butlerTokens(theme);
@@ -85,38 +85,6 @@ const useStyles = makeStyles(theme => {
     },
     bodyBordered: {
       borderLeft: `1px solid ${t.border}`,
-    },
-    field: {
-      display: 'flex',
-      flexDirection: 'column',
-      gap: 4,
-      minWidth: 0,
-      fontFamily: t.fontSans,
-    },
-    label: {
-      fontSize: 14,
-      lineHeight: '20px',
-      fontWeight: 500,
-      color: t.text.muted,
-    },
-    labelRow: {
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'space-between',
-      gap: 8,
-    },
-    help: {
-      margin: 0,
-      fontSize: 12,
-      lineHeight: '16px',
-      color: t.text.subtle,
-    },
-    helpBefore: { marginBottom: 4 },
-    error: {
-      margin: 0,
-      fontSize: 14,
-      lineHeight: '20px',
-      color: rgb(p.red[400]),
     },
     footer: {
       display: 'flex',
@@ -243,6 +211,7 @@ export const ButlerFormSection = ({
           onClick={() => setOpen(o => !o)}
         >
           <ChevronRightIcon
+            size={16}
             className={clsx(classes.chevron, open && classes.chevronOpen)}
           />
           <h3 className={headingClass}>{title}</h3>
@@ -280,70 +249,6 @@ export const ButlerFormSection = ({
         {children}
       </div>
     </section>
-  );
-};
-
-export interface ButlerFieldProps {
-  label: ReactNode;
-  /** The control. Pass `htmlFor` so the label targets it. */
-  children: ReactNode;
-  htmlFor?: string;
-  required?: boolean;
-  /** 12px subtle copy under the control (console `text-xs neutral-500`). */
-  help?: ReactNode;
-  /** Place the help copy between the label and the control. */
-  helpAbove?: boolean;
-  /** 14px red-400 error copy, replaces help when set. */
-  error?: ReactNode;
-  /** Rendered at the right edge of the label row (e.g. "+ Add"). */
-  labelAction?: ReactNode;
-  className?: string;
-}
-
-/**
- * Console form field: 14px/500 muted label, control, 12px help, red error.
- * Required fields get the console's trailing asterisk.
- */
-export const ButlerField = ({
-  label,
-  children,
-  htmlFor,
-  required,
-  help,
-  helpAbove = false,
-  error,
-  labelAction,
-  className,
-}: ButlerFieldProps) => {
-  const classes = useStyles();
-  const labelEl = (
-    <label className={classes.label} htmlFor={htmlFor}>
-      {label}
-      {required && ' *'}
-    </label>
-  );
-  return (
-    <div className={clsx(classes.field, className)}>
-      {labelAction ? (
-        <div className={classes.labelRow}>
-          {labelEl}
-          {labelAction}
-        </div>
-      ) : (
-        labelEl
-      )}
-      {help && helpAbove && !error && (
-        <p className={clsx(classes.help, classes.helpBefore)}>{help}</p>
-      )}
-      {children}
-      {error ? (
-        <p className={classes.error} role="alert">
-          {error}
-        </p>
-      ) : (
-        help && !helpAbove && <p className={classes.help}>{help}</p>
-      )}
-    </div>
   );
 };
 

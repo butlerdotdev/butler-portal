@@ -18,27 +18,25 @@ import { butlerTokens, rgb } from '../../theme';
 import {
   ButlerButton,
   ButlerCard,
+  ButlerCheckbox,
   ButlerEmptyState,
-  ButlerInput,
-  ButlerPageHeader,
-  ButlerSpinner,
-  ButlerStack,
-} from '../ui';
-import {
   ButlerField,
+  ButlerFileButton,
   ButlerFormFooter,
   ButlerFormMessage,
   ButlerFormSection,
+  ButlerInput,
   ButlerInsetPanel,
-} from '../ui/ButlerFormSection';
-import {
-  ButlerCheckbox,
-  ButlerFileButton,
+  ButlerPageHeader,
+  ButlerRadioTile,
+  ButlerRadioTileGroup,
   ButlerSegmented,
+  ButlerSpinner,
+  ButlerStack,
   ButlerTextarea,
-} from '../ui/ButlerFormControls';
-import { ButlerRadioTile, ButlerRadioTileGroup } from '../ui/ButlerRadioTile';
-import { CheckIcon, XIcon } from '../ui/formIcons';
+  CheckIcon,
+  XIcon,
+} from '../ui';
 import { ProviderIcon } from './ProviderIcon';
 
 type ProviderType = CreateProviderRequest['provider'];
@@ -533,7 +531,7 @@ export const CreateProviderPage = () => {
             {testResult && (
               <ButlerFormMessage
                 tone={testResult.valid ? 'success' : 'danger'}
-                icon={testResult.valid ? <CheckIcon /> : <XIcon />}
+                icon={testResult.valid ? <CheckIcon size={20} /> : <XIcon />}
               >
                 {testResult.message}
               </ButlerFormMessage>

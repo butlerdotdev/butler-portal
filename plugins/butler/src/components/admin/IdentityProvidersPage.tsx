@@ -21,9 +21,10 @@ import {
   ButlerPageHeader,
   ButlerStack,
   ButlerStatusBadge,
+  KeyIcon,
   PlusIcon,
+  TrashIcon,
 } from '../ui';
-import { KeyIcon, TrashIcon } from '../ui/formIcons';
 import {
   IdentityProviderIcon,
   formatIdentityProviderAge,

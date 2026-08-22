@@ -26,30 +26,28 @@ import { butlerTokens, rgb, rgba } from '../../theme';
 import {
   AlertTriangleIcon,
   ButlerButton,
+  ButlerCallout,
   ButlerCard,
+  ButlerCheckbox,
   ButlerChip,
   ButlerDialog,
   ButlerEmptyState,
   ButlerErrorState,
-  ButlerInput,
-  ButlerSearchInput,
-  ButlerSpinner,
-  ButlerStack,
-  ButlerStatusBadge,
-} from '../ui';
-import {
-  ButlerCallout,
-  ButlerCheckbox,
   ButlerField,
   ButlerFilePreview,
   ButlerFormRow,
+  ButlerInput,
   ButlerMenu,
   ButlerMenuItem,
   ButlerPreviewToggle,
+  ButlerSearchInput,
   ButlerSelect,
+  ButlerSpinner,
+  ButlerStack,
+  ButlerStatusBadge,
   ButlerTextarea,
   ButlerToggleBar,
-} from '../ui/extras';
+} from '../ui';
 
 // ---------------------------------------------------------------------------
 // Props
@@ -129,9 +127,18 @@ const useStyles = makeStyles(theme => {
       fontSize: 12,
       lineHeight: '16px',
     },
-    chipBlue: { backgroundColor: rgba(p.blue[500], 0.1), color: rgb(p.blue[400]) },
-    chipGreen: { backgroundColor: rgba(p.green[500], 0.1), color: rgb(p.green[400]) },
-    chipViolet: { backgroundColor: rgba(p.violet[500], 0.1), color: rgb(p.violet[400]) },
+    chipBlue: {
+      backgroundColor: rgba(p.blue[500], 0.1),
+      color: rgb(p.blue[400]),
+    },
+    chipGreen: {
+      backgroundColor: rgba(p.green[500], 0.1),
+      color: rgb(p.green[400]),
+    },
+    chipViolet: {
+      backgroundColor: rgba(p.violet[500], 0.1),
+      color: rgb(p.violet[400]),
+    },
     grid: {
       display: 'grid',
       gridTemplateColumns: '1fr',
@@ -217,7 +224,12 @@ const useStyles = makeStyles(theme => {
       color: rgb(p.violet[400]),
       border: `1px solid ${rgba(p.violet[500], 0.2)}`,
     },
-    version: { margin: 0, fontSize: 12, lineHeight: '16px', color: t.text.subtle },
+    version: {
+      margin: 0,
+      fontSize: 12,
+      lineHeight: '16px',
+      color: t.text.subtle,
+    },
     badges: { display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 },
     gitopsPill: {
       padding: '4px 8px',
@@ -270,7 +282,12 @@ const useStyles = makeStyles(theme => {
     },
     chevron: { flexShrink: 0 },
     // Dialog pieces
-    dialogText: { margin: 0, fontSize: 14, lineHeight: '20px', color: t.text.muted },
+    dialogText: {
+      margin: 0,
+      fontSize: 14,
+      lineHeight: '20px',
+      color: t.text.muted,
+    },
     dialogCenter: { margin: 0, color: t.text.muted, textAlign: 'center' },
     strong: { color: rgb(p.neutral[200]), fontWeight: 500 },
     infoBox: {
@@ -336,7 +353,10 @@ type InstalledAddonRow = {
 // Main Component
 // ---------------------------------------------------------------------------
 
-export const AddonsTab = ({ clusterNamespace, clusterName }: AddonsTabProps) => {
+export const AddonsTab = ({
+  clusterNamespace,
+  clusterName,
+}: AddonsTabProps) => {
   const classes = useStyles();
   const api = useApi(butlerApiRef);
   const { isAdmin } = useTeamContext();
@@ -378,17 +398,15 @@ export const AddonsTab = ({ clusterNamespace, clusterName }: AddonsTabProps) => 
 
   // Configure dialog state
   const [configureOpen, setConfigureOpen] = useState(false);
-  const [configureAddon, setConfigureAddon] = useState<InstalledAddonRow | null>(
-    null,
-  );
+  const [configureAddon, setConfigureAddon] =
+    useState<InstalledAddonRow | null>(null);
   const [configureValues, setConfigureValues] = useState('');
   const [configuring, setConfiguring] = useState(false);
 
   // Uninstall dialog state
   const [uninstallOpen, setUninstallOpen] = useState(false);
-  const [uninstallTarget, setUninstallTarget] = useState<InstalledAddonRow | null>(
-    null,
-  );
+  const [uninstallTarget, setUninstallTarget] =
+    useState<InstalledAddonRow | null>(null);
   const [uninstalling, setUninstalling] = useState(false);
 
   // GitOps warning dialog state
@@ -487,7 +505,9 @@ export const AddonsTab = ({ clusterNamespace, clusterName }: AddonsTabProps) => 
   }, [gitOpsStatus, installedAddons]);
 
   const platformAddonNames = useMemo(() => {
-    return new Set(catalog.filter(a => a.platform).map(a => a.name.toLowerCase()));
+    return new Set(
+      catalog.filter(a => a.platform).map(a => a.name.toLowerCase()),
+    );
   }, [catalog]);
 
   const optionalCatalog = useMemo(() => {
@@ -513,7 +533,8 @@ export const AddonsTab = ({ clusterNamespace, clusterName }: AddonsTabProps) => 
       return {
         id: addon.name,
         name: addon.name,
-        displayName: addon.displayName || catalogEntry?.displayName || addon.name,
+        displayName:
+          addon.displayName || catalogEntry?.displayName || addon.name,
         version: addon.installedVersion || addon.version || 'Unknown version',
         status: addon.status,
         category: catalogEntry?.category || 'other',
@@ -671,9 +692,14 @@ export const AddonsTab = ({ clusterNamespace, clusterName }: AddonsTabProps) => 
           // Treat as empty
         }
       }
-      await api.updateAddon(clusterNamespace, clusterName, configureAddon.name, {
-        values,
-      });
+      await api.updateAddon(
+        clusterNamespace,
+        clusterName,
+        configureAddon.name,
+        {
+          values,
+        },
+      );
       setConfigureOpen(false);
       setConfigureAddon(null);
       setConfigureValues('');
@@ -701,7 +727,11 @@ export const AddonsTab = ({ clusterNamespace, clusterName }: AddonsTabProps) => 
     if (!uninstallTarget) return;
     setUninstalling(true);
     try {
-      await api.uninstallAddon(clusterNamespace, clusterName, uninstallTarget.name);
+      await api.uninstallAddon(
+        clusterNamespace,
+        clusterName,
+        uninstallTarget.name,
+      );
       setUninstallOpen(false);
       setUninstallTarget(null);
       await fetchData();
@@ -788,7 +818,9 @@ export const AddonsTab = ({ clusterNamespace, clusterName }: AddonsTabProps) => 
       <section>
         <div className={classes.sectionHead}>
           <h3 className={classes.sectionTitle}>Platform Addons</h3>
-          <span className={clsx(classes.countChip, classes.chipBlue)}>Core</span>
+          <span className={clsx(classes.countChip, classes.chipBlue)}>
+            Core
+          </span>
         </div>
         <p className={classes.sectionDesc}>
           Essential components installed during cluster bootstrap. These cannot
@@ -871,7 +903,8 @@ export const AddonsTab = ({ clusterNamespace, clusterName }: AddonsTabProps) => 
         ) : (
           <ButlerStack gap={32}>
             {optionalCategories.map(category => {
-              const categoryAddons = groupedAvailableCatalog[category.name] || [];
+              const categoryAddons =
+                groupedAvailableCatalog[category.name] || [];
               if (categoryAddons.length === 0) return null;
               return (
                 <div key={category.name} className={classes.categoryGroup}>
@@ -1451,7 +1484,11 @@ function InstallAddonDialog({
       icon={<span className={classes.emoji}>{addon.icon || '\u{1F4E6}'}</span>}
       footer={
         <>
-          <ButlerButton variant="secondary" onClick={onClose} disabled={installing}>
+          <ButlerButton
+            variant="secondary"
+            onClick={onClose}
+            disabled={installing}
+          >
             Cancel
           </ButlerButton>
           <ButlerButton onClick={onInstall} disabled={installing || !version}>
@@ -1536,7 +1573,11 @@ function ConfigureAddonDialog({
       icon={<span className={classes.emoji}>{'⚙️'}</span>}
       footer={
         <>
-          <ButlerButton variant="secondary" onClick={onClose} disabled={configuring}>
+          <ButlerButton
+            variant="secondary"
+            onClick={onClose}
+            disabled={configuring}
+          >
             Cancel
           </ButlerButton>
           <ButlerButton onClick={onConfigure} disabled={configuring}>
@@ -1624,7 +1665,11 @@ function UninstallAddonDialog({
       iconTone="danger"
       footer={
         <>
-          <ButlerButton variant="secondary" onClick={onClose} disabled={uninstalling}>
+          <ButlerButton
+            variant="secondary"
+            onClick={onClose}
+            disabled={uninstalling}
+          >
             Cancel
           </ButlerButton>
           <ButlerButton
@@ -1885,10 +1930,17 @@ function ExportToGitOpsDialog({
       icon={icon}
       footer={
         <>
-          <ButlerButton variant="secondary" onClick={onClose} disabled={exporting}>
+          <ButlerButton
+            variant="secondary"
+            onClick={onClose}
+            disabled={exporting}
+          >
             Cancel
           </ButlerButton>
-          <ButlerButton onClick={handleExport} disabled={exporting || !repository}>
+          <ButlerButton
+            onClick={handleExport}
+            disabled={exporting || !repository}
+          >
             {exporting ? (
               <>
                 <ButlerSpinner small />
@@ -2113,10 +2165,17 @@ function MigrateToGitOpsDialog({
       icon={icon}
       footer={
         <>
-          <ButlerButton variant="secondary" onClick={onClose} disabled={migrating}>
+          <ButlerButton
+            variant="secondary"
+            onClick={onClose}
+            disabled={migrating}
+          >
             Cancel
           </ButlerButton>
-          <ButlerButton onClick={handleMigrate} disabled={migrating || !repository}>
+          <ButlerButton
+            onClick={handleMigrate}
+            disabled={migrating || !repository}
+          >
             {migrating ? (
               <>
                 <ButlerSpinner small />
