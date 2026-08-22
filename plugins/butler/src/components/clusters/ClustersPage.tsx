@@ -18,6 +18,7 @@ import ArrowBackIcon from '@material-ui/icons/ArrowBack';
 import RefreshIcon from '@material-ui/icons/Refresh';
 import { butlerApiRef } from '../../api/ButlerApi';
 import type { Cluster } from '../../api/types/clusters';
+import { useClusterWatch } from '../../hooks/useClusterWatch';
 import { StatusBadge } from '../StatusBadge/StatusBadge';
 
 const useStyles = makeStyles(theme => ({
@@ -95,6 +96,43 @@ export const ClustersPage = () => {
   useEffect(() => {
     fetchClusters();
   }, [fetchClusters]);
+
+  const { subscribe } = useClusterWatch();
+
+  // The server broadcasts every cluster to every client, so unknown clusters
+  // are only appended when they belong to the team this page is scoped to.
+  useEffect(
+    () =>
+      subscribe(event => {
+        if (event.type === 'update') {
+          const { name, namespace } = event.cluster.metadata;
+          setClusters(prev => {
+            const idx = prev.findIndex(
+              c => c.metadata.name === name && c.metadata.namespace === namespace,
+            );
+            if (idx >= 0) {
+              const next = prev.slice();
+              next[idx] = event.cluster;
+              return next;
+            }
+            const clusterTeam = event.cluster.spec?.teamRef?.name;
+            if (team && clusterTeam && clusterTeam !== team) return prev;
+            return [...prev, event.cluster];
+          });
+          return;
+        }
+        setClusters(prev =>
+          prev.filter(
+            c =>
+              !(
+                c.metadata.name === event.name &&
+                c.metadata.namespace === event.namespace
+              ),
+          ),
+        );
+      }),
+    [subscribe, team],
+  );
 
   if (loading) {
     return <Progress />;

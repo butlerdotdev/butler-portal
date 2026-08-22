@@ -3,6 +3,7 @@
 
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { useApi, discoveryApiRef } from '@backstage/core-plugin-api';
+import { buildButlerWsUrl } from '../../api/wsUrl';
 import {
   Dialog,
   DialogTitle,
@@ -107,10 +108,10 @@ export function WorkspaceTerminalDialog({
 
     try {
       const baseUrl = await discoveryApi.getBaseUrl('butler');
-      const wsUrl = baseUrl
-        .replace(/^http/, 'ws')
-        .replace(/\/api\/butler$/, '');
-      const fullWsUrl = `${wsUrl}/api/butler/ws/terminal/workspace/${clusterNamespace}/${clusterName}/${targetPod}`;
+      const fullWsUrl = buildButlerWsUrl(
+        baseUrl,
+        `/ws/terminal/workspace/${clusterNamespace}/${clusterName}/${targetPod}`,
+      );
 
       const ws = new WebSocket(fullWsUrl);
       wsRef.current = ws;
