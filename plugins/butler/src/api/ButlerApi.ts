@@ -48,6 +48,7 @@ import type {
   MigrationResult,
   GitOpsStatus,
 } from './types/gitops';
+import type { PlatformConfig } from './types/config';
 import type {
   ClusterCertificates,
   RotationEvent,
@@ -285,7 +286,7 @@ export interface ButlerApi {
   ): Promise<TestDiscoveryResponse>;
 
   // Settings
-  getSettings(): Promise<any>;
+  getPlatformConfig(): Promise<PlatformConfig>;
 
   // Users
   listUsers(): Promise<any>;
