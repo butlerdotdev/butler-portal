@@ -70,7 +70,7 @@ describe('ClusterDetailPage', () => {
       await screen.findByRole('heading', { name: readyCluster.metadata.name }),
     ).toBeInTheDocument();
     expect(screen.getAllByText('Ready').length).toBeGreaterThan(0);
-    expect(screen.getByText(`v${readyCluster.spec.kubernetesVersion}`)).toBeInTheDocument();
+    expect(screen.getByText(readyCluster.spec.kubernetesVersion as string)).toBeInTheDocument();
     expect(screen.getByText('WorkersReady')).toBeInTheDocument();
     expect(screen.getByText('3 of 3 worker nodes ready')).toBeInTheDocument();
     expect(screen.getByText('Cluster is ready for use')).toBeInTheDocument();

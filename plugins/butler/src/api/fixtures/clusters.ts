@@ -75,7 +75,7 @@ function makeCluster(seed: ClusterSeed): Cluster {
       labels: { 'butler.dev/team': FIXTURE_TEAM },
     },
     spec: {
-      kubernetesVersion: seed.kubernetesVersion ?? '1.33.2',
+      kubernetesVersion: seed.kubernetesVersion ?? 'v1.33.2',
       teamRef: { name: FIXTURE_TEAM },
       providerConfigRef: { name: FIXTURE_PROVIDER, namespace: 'butler-system' },
       controlPlane: { replicas: 3 },
@@ -229,7 +229,7 @@ export const readyCluster: Cluster = makeCluster({
     workerNodesReady: 3,
     workerNodesDesired: 3,
     observedState: {
-      kubernetesVersion: '1.33.2',
+      kubernetesVersion: 'v1.33.2',
       workers: {
         desired: 3,
         ready: 3,
@@ -340,7 +340,7 @@ export const failedCluster: Cluster = makeCluster({
   uid: '0a1b2c3d-0007-4000-8000-000000000007',
   resourceVersion: '512',
   creationTimestamp: '2026-08-21T19:05:00Z',
-  kubernetesVersion: '1.34.0',
+  kubernetesVersion: 'v1.34.0',
   workers: 3,
   status: {
     phase: 'Failed',
