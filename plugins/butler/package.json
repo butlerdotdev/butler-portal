@@ -37,6 +37,8 @@
   "devDependencies": {
     "@backstage/cli": "^0.36.4",
     "@backstage/dev-utils": "^1.1.25",
+    "@backstage/plugin-permission-common": "^0.9.9",
+    "@backstage/plugin-permission-react": "^0.5.3",
     "@backstage/test-utils": "^1.7.20",
     "@testing-library/jest-dom": "^6.0.0",
     "@testing-library/react": "^14.0.0",
