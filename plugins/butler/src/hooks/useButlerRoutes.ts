@@ -51,6 +51,15 @@ export interface ButlerRoutes {
 }
 
 /**
+ * Hosts may register the page as `/butler` or as `/butler/*`, and the
+ * route system hands the registered string back verbatim, wildcard
+ * included. Links must never carry it.
+ */
+export function normalizeMountPath(path: string): string {
+  return path.replace(/\/\*(?=\/|$)/g, '') || '/';
+}
+
+/**
  * Resolves every Butler route against wherever the host app mounted the
  * plugin, so components never need to know the mount path.
  */
@@ -78,24 +87,24 @@ export const useButlerRoutes = (): ButlerRoutes => {
 
   return useMemo(
     () => ({
-      root: () => root(),
-      team: params => team(params),
-      clusters: params => clusters(params),
-      createCluster: params => createCluster(params),
-      clusterDetail: params => clusterDetail(params),
-      teamMembers: params => teamMembers(params),
-      teamSettings: params => teamSettings(params),
-      admin: () => admin(),
-      adminClusters: () => adminClusters(),
-      adminManagement: () => adminManagement(),
-      adminTeams: () => adminTeams(),
-      adminTeamDetail: params => adminTeamDetail(params),
-      adminUsers: () => adminUsers(),
-      adminProviders: () => adminProviders(),
-      adminCreateProvider: () => adminCreateProvider(),
-      adminIdentityProviders: () => adminIdentityProviders(),
-      adminCreateIdentityProvider: () => adminCreateIdentityProvider(),
-      adminSettings: () => adminSettings(),
+      root: () => normalizeMountPath(root()),
+      team: params => normalizeMountPath(team(params)),
+      clusters: params => normalizeMountPath(clusters(params)),
+      createCluster: params => normalizeMountPath(createCluster(params)),
+      clusterDetail: params => normalizeMountPath(clusterDetail(params)),
+      teamMembers: params => normalizeMountPath(teamMembers(params)),
+      teamSettings: params => normalizeMountPath(teamSettings(params)),
+      admin: () => normalizeMountPath(admin()),
+      adminClusters: () => normalizeMountPath(adminClusters()),
+      adminManagement: () => normalizeMountPath(adminManagement()),
+      adminTeams: () => normalizeMountPath(adminTeams()),
+      adminTeamDetail: params => normalizeMountPath(adminTeamDetail(params)),
+      adminUsers: () => normalizeMountPath(adminUsers()),
+      adminProviders: () => normalizeMountPath(adminProviders()),
+      adminCreateProvider: () => normalizeMountPath(adminCreateProvider()),
+      adminIdentityProviders: () => normalizeMountPath(adminIdentityProviders()),
+      adminCreateIdentityProvider: () => normalizeMountPath(adminCreateIdentityProvider()),
+      adminSettings: () => normalizeMountPath(adminSettings()),
     }),
     [
       root,
@@ -125,7 +134,7 @@ export const useButlerRoutes = (): ButlerRoutes => {
  */
 export const useIsAdminRoute = (): boolean => {
   const location = useLocation();
-  const adminPath = useRouteRef(adminRouteRef)();
+  const adminPath = normalizeMountPath(useRouteRef(adminRouteRef)());
   return (
     location.pathname === adminPath ||
     location.pathname.startsWith(`${adminPath}/`)
