@@ -2,168 +2,242 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { useEffect, useState, useCallback } from 'react';
-import { useParams, Link as RouterLink } from 'react-router-dom';
+import type { FormEvent } from 'react';
+import { useParams, useNavigate } from 'react-router-dom';
 import { useApi } from '@backstage/core-plugin-api';
-import {
-  InfoCard,
-  Progress,
-  EmptyState,
-} from '@backstage/core-components';
-import {
-  Grid,
-  Typography,
-  Button,
-  Chip,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
-  TextField,
-  Select,
-  MenuItem,
-  FormControl,
-  InputLabel,
-  Table,
-  TableHead,
-  TableBody,
-  TableRow,
-  TableCell,
-  IconButton,
-  Box,
-  Avatar,
-  Tooltip,
-  makeStyles,
-} from '@material-ui/core';
-import ArrowBackIcon from '@material-ui/icons/ArrowBack';
-import PersonAddIcon from '@material-ui/icons/PersonAdd';
-import DeleteIcon from '@material-ui/icons/Delete';
-import LockIcon from '@material-ui/icons/Lock';
-import GroupIcon from '@material-ui/icons/Group';
-import ArrowUpwardIcon from '@material-ui/icons/ArrowUpward';
+import { makeStyles } from '@material-ui/core/styles';
+import clsx from 'clsx';
 import { butlerApiRef } from '../../api/ButlerApi';
 import { useTeamContext } from '../../hooks/useTeamContext';
 import { useButlerRoutes } from '../../hooks/useButlerRoutes';
+import { butlerTokens, rgb, rgba } from '../../theme';
+import {
+  ButlerButton,
+  ButlerCard,
+  ButlerDialog,
+  ButlerEmptyState,
+  ButlerErrorState,
+  ButlerInput,
+  ButlerLoading,
+  ButlerPageHeader,
+  ButlerStack,
+  PlusIcon,
+} from '../ui';
+import { ButlerCallout } from '../ui/ButlerCallout';
+import { ButlerSelect } from '../ui/ButlerForm';
+import { TrashIcon } from '../ui/formIcons';
+import { UsersIcon } from '../ui/ButlerDashboardIcons';
 
-const useStyles = makeStyles(theme => ({
-  header: {
-    display: 'flex',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: theme.spacing(2),
-  },
-  nameCell: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: theme.spacing(1.5),
-  },
-  avatarDirect: {
-    width: 36,
-    height: 36,
-    fontSize: '0.875rem',
-    backgroundColor: theme.palette.grey[600],
-  },
-  avatarGroup: {
-    width: 36,
-    height: 36,
-    fontSize: '0.875rem',
-    backgroundColor: '#1976d2',
-  },
-  avatarElevated: {
-    width: 36,
-    height: 36,
-    fontSize: '0.875rem',
-    backgroundColor: '#ff9800',
-    border: '2px solid rgba(255, 152, 0, 0.4)',
-  },
-  elevatedChip: {
-    backgroundColor: 'rgba(255, 152, 0, 0.15)',
-    color: '#ff9800',
-    fontWeight: 600,
-    fontSize: '0.625rem',
-    height: 18,
-  },
-  adminChip: {
-    backgroundColor: theme.palette.secondary.main,
-    color: theme.palette.secondary.contrastText,
-  },
-  operatorChip: {
-    backgroundColor: theme.palette.primary.main,
-    color: theme.palette.primary.contrastText,
-  },
-  viewerChip: {
-    backgroundColor: theme.palette.grey[500],
-    color: theme.palette.common.white,
-  },
-  sourceGroup: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: theme.spacing(0.5),
-    color: '#1976d2',
-    fontSize: '0.75rem',
-  },
-  sourceElevated: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: theme.spacing(0.5),
-    color: 'rgba(255, 152, 0, 0.7)',
-    fontSize: '0.75rem',
-  },
-  sourceDirect: {
-    fontSize: '0.75rem',
-    color: theme.palette.text.secondary,
-  },
-  elevationInfo: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: theme.spacing(0.5),
-    color: '#ff9800',
-    fontSize: '0.75rem',
-  },
-  groupBanner: {
-    padding: theme.spacing(2),
-    backgroundColor: 'rgba(25, 118, 210, 0.08)',
-    border: '1px solid rgba(25, 118, 210, 0.2)',
-    borderRadius: theme.shape.borderRadius,
-    marginBottom: theme.spacing(2),
-  },
-  groupBannerChips: {
-    display: 'flex',
-    flexWrap: 'wrap' as const,
-    gap: theme.spacing(1),
-    marginTop: theme.spacing(1),
-  },
-  groupBannerChip: {
-    backgroundColor: 'rgba(25, 118, 210, 0.15)',
-    color: '#1976d2',
-  },
-  legend: {
-    display: 'flex',
-    gap: theme.spacing(3),
-    marginTop: theme.spacing(2),
-    alignItems: 'center',
-  },
-  legendItem: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: theme.spacing(0.5),
-    fontSize: '0.75rem',
-    color: theme.palette.text.secondary,
-  },
-  legendDot: {
-    width: 10,
-    height: 10,
-    borderRadius: '50%',
-  },
-  selfTag: {
-    fontSize: '0.75rem',
-    color: theme.palette.text.secondary,
-    marginLeft: theme.spacing(1),
-  },
-  formField: {
-    marginBottom: theme.spacing(2),
-    minWidth: 200,
-  },
-}));
+const useStyles = makeStyles(theme => {
+  const t = butlerTokens(theme);
+  const p = t.palette;
+  return {
+    groupChips: {
+      display: 'flex',
+      flexWrap: 'wrap',
+      gap: 8,
+      marginTop: 8,
+    },
+    groupChip: {
+      display: 'inline-flex',
+      alignItems: 'center',
+      gap: 6,
+      padding: '4px 8px',
+      borderRadius: t.radius.sm,
+      fontSize: 14,
+      lineHeight: '20px',
+      backgroundColor: rgba(p.blue[500], 0.2),
+      color: rgb(p.blue[200]),
+    },
+    groupChipRole: { color: rgba(p.blue[300], 0.6) },
+    list: {
+      listStyle: 'none',
+      margin: 0,
+      padding: 0,
+      '& > li + li': { borderTop: `1px solid ${t.border}` },
+    },
+    row: {
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      gap: 16,
+      padding: '16px 20px',
+    },
+    identity: {
+      display: 'flex',
+      alignItems: 'center',
+      gap: 12,
+      minWidth: 0,
+    },
+    avatar: {
+      width: 40,
+      height: 40,
+      borderRadius: '50%',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      flexShrink: 0,
+      fontSize: 16,
+      fontWeight: 500,
+      backgroundColor: rgb(p.neutral[700]),
+      color: rgb(p.neutral[300]),
+    },
+    avatarGroup: {
+      backgroundColor: rgba(p.blue[500], 0.2),
+      color: rgb(p.blue[300]),
+    },
+    avatarElevated: {
+      backgroundColor: rgba(p.amber[500], 0.2),
+      color: rgb(p.amber[300]),
+      boxShadow: `0 0 0 2px ${rgba(p.amber[500], 0.3)}`,
+    },
+    nameRow: {
+      display: 'flex',
+      alignItems: 'center',
+      gap: 8,
+    },
+    name: {
+      margin: 0,
+      fontSize: 16,
+      lineHeight: '24px',
+      fontWeight: 500,
+      color: t.text.secondary,
+      overflowWrap: 'anywhere',
+    },
+    you: {
+      marginLeft: 8,
+      fontSize: 12,
+      fontWeight: 400,
+      color: t.text.subtle,
+    },
+    elevatedTag: {
+      padding: '2px 6px',
+      borderRadius: t.radius.sm,
+      fontSize: 10,
+      lineHeight: '14px',
+      fontWeight: 500,
+      backgroundColor: rgba(p.amber[500], 0.2),
+      color: rgb(p.amber[400]),
+    },
+    meta: {
+      display: 'flex',
+      alignItems: 'center',
+      gap: 12,
+      marginTop: 2,
+      fontSize: 12,
+      lineHeight: '16px',
+    },
+    email: {
+      margin: 0,
+      fontSize: 14,
+      lineHeight: '20px',
+      color: t.text.subtle,
+    },
+    source: {
+      display: 'inline-flex',
+      alignItems: 'center',
+      gap: 4,
+      color: t.text.subtle,
+    },
+    sourceGroup: { color: rgb(p.blue[400]) },
+    sourceElevated: { color: rgba(p.amber[400], 0.7) },
+    right: {
+      display: 'flex',
+      alignItems: 'center',
+      gap: 16,
+      flexShrink: 0,
+    },
+    roleWrap: {
+      display: 'flex',
+      alignItems: 'center',
+      gap: 8,
+    },
+    role: {
+      padding: '4px 8px',
+      borderRadius: t.radius.sm,
+      fontSize: 12,
+      lineHeight: '16px',
+      fontWeight: 500,
+    },
+    roleAdmin: {
+      backgroundColor: rgba(p.violet[500], 0.2),
+      color: rgb(p.violet[400]),
+    },
+    roleOperator: {
+      backgroundColor: rgba(p.green[500], 0.2),
+      color: rgb(p.green[400]),
+    },
+    roleViewer: {
+      backgroundColor: rgb(p.neutral[700]),
+      color: rgb(p.neutral[300]),
+    },
+    elevatedFrom: {
+      display: 'inline-flex',
+      alignItems: 'center',
+      gap: 4,
+      fontSize: 12,
+      color: rgb(p.amber[400]),
+    },
+    remove: {
+      display: 'inline-flex',
+      padding: 4,
+      border: 'none',
+      background: 'none',
+      borderRadius: t.radius.md,
+      color: t.text.subtle,
+      cursor: 'pointer',
+      transition: 'color 150ms',
+      '&:hover': { color: rgb(p.red[400]) },
+      '&:focus-visible': {
+        outline: 'none',
+        boxShadow: `0 0 0 2px ${t.accent}`,
+      },
+    },
+    lock: {
+      display: 'inline-flex',
+      padding: 4,
+      color: rgb(p.neutral[600]),
+    },
+    legend: {
+      display: 'flex',
+      alignItems: 'center',
+      gap: 24,
+      fontSize: 12,
+      lineHeight: '16px',
+      color: t.text.subtle,
+      fontFamily: t.fontSans,
+    },
+    legendItem: {
+      display: 'flex',
+      alignItems: 'center',
+      gap: 8,
+    },
+    legendDot: {
+      width: 12,
+      height: 12,
+      borderRadius: '50%',
+      backgroundColor: rgb(p.neutral[700]),
+    },
+    legendGroup: { backgroundColor: rgba(p.blue[500], 0.2) },
+    legendElevated: {
+      backgroundColor: rgba(p.amber[500], 0.2),
+      boxShadow: `0 0 0 1px ${rgba(p.amber[500], 0.3)}`,
+    },
+    confirmText: {
+      margin: 0,
+      fontSize: 16,
+      lineHeight: '24px',
+      color: t.text.muted,
+      '& strong': { color: t.text.secondary, fontWeight: 600 },
+    },
+    confirmNote: {
+      margin: '8px 0 0',
+      fontSize: 14,
+      lineHeight: '20px',
+      color: rgba(p.amber[400], 0.8),
+    },
+  };
+});
 
 interface TeamMember {
   email: string;
@@ -171,7 +245,6 @@ interface TeamMember {
   role: string;
   source: 'direct' | 'group' | 'group-synced' | 'elevated';
   groupName?: string;
-  group?: string;
   groupRole?: string;
   directRole?: string;
   canRemove?: boolean;
@@ -183,57 +256,117 @@ interface TeamGroup {
   role: string;
 }
 
+type Role = 'admin' | 'operator' | 'viewer';
+
+const ROLE_OPTIONS: Array<{ value: Role; label: string }> = [
+  { value: 'viewer', label: 'Viewer' },
+  { value: 'operator', label: 'Operator' },
+  { value: 'admin', label: 'Admin' },
+];
+
+const GroupGlyph = ({ className }: { className?: string }) => (
+  <svg
+    className={className}
+    width={12}
+    height={12}
+    fill="none"
+    stroke="currentColor"
+    viewBox="0 0 24 24"
+    aria-hidden
+  >
+    <path
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      strokeWidth={2}
+      d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"
+    />
+  </svg>
+);
+
+const ArrowUpGlyph = () => (
+  <svg
+    width={12}
+    height={12}
+    fill="currentColor"
+    viewBox="0 0 20 20"
+    aria-hidden
+  >
+    <path
+      fillRule="evenodd"
+      d="M5.293 9.707a1 1 0 010-1.414l4-4a1 1 0 011.414 0l4 4a1 1 0 01-1.414 1.414L11 7.414V15a1 1 0 11-2 0V7.414L6.707 9.707a1 1 0 01-1.414 0z"
+      clipRule="evenodd"
+    />
+  </svg>
+);
+
+const LockGlyph = () => (
+  <svg
+    width={20}
+    height={20}
+    fill="none"
+    stroke="currentColor"
+    viewBox="0 0 24 24"
+    aria-hidden
+  >
+    <path
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      strokeWidth={2}
+      d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"
+    />
+  </svg>
+);
+
+function isGroupSource(member: TeamMember): boolean {
+  return member.source === 'group' || member.source === 'group-synced';
+}
+
 export const TeamMembersPage = () => {
   const classes = useStyles();
   const { team } = useParams<{ team: string }>();
   const api = useApi(butlerApiRef);
   const routes = useButlerRoutes();
-  const { teams } = useTeamContext();
+  const navigate = useNavigate();
+  const { teams, isAdmin } = useTeamContext();
 
   const [members, setMembers] = useState<TeamMember[]>([]);
   const [groups, setGroups] = useState<TeamGroup[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-
-  // Current user for self-modification detection
   const [currentUserEmail, setCurrentUserEmail] = useState<string | null>(null);
 
-  // Add member dialog
   const [addOpen, setAddOpen] = useState(false);
   const [addEmail, setAddEmail] = useState('');
-  const [addRole, setAddRole] = useState<'admin' | 'operator' | 'viewer'>(
-    'viewer',
-  );
+  const [addRole, setAddRole] = useState<Role>('viewer');
   const [adding, setAdding] = useState(false);
   const [addError, setAddError] = useState<string | null>(null);
 
-  // Remove member dialog
-  const [memberToRemove, setMemberToRemove] = useState<TeamMember | null>(
-    null,
-  );
+  const [memberToRemove, setMemberToRemove] = useState<TeamMember | null>(null);
   const [removing, setRemoving] = useState(false);
+  const [removeError, setRemoveError] = useState<string | null>(null);
 
-  // Self-modification warning
   const [selfWarning, setSelfWarning] = useState<string | null>(null);
 
   const currentTeam = teams.find(t => t.name === team);
-  const isTeamAdmin = currentTeam?.role === 'admin';
+  const teamDisplayName = currentTeam?.displayName || team;
+  // The route team is the one being managed; the console gates member
+  // mutation on the viewer's role in that team, and a platform admin
+  // viewing a team they are not a member of keeps the admin affordances.
+  const canManage = currentTeam?.role === 'admin' || isAdmin;
 
   const fetchCurrentUser = useCallback(async () => {
     try {
       const user = await api.getCurrentUser();
       setCurrentUserEmail(user?.email || null);
     } catch {
-      // not critical
+      // Only used to tag "(you)"; not critical.
     }
   }, [api]);
 
   const loadMembers = useCallback(async () => {
     if (!team) return;
-
     setLoading(true);
     setError(null);
-
     try {
       const response = await api.getTeamMembers(team);
       const raw: any[] = response?.members ?? response ?? [];
@@ -245,14 +378,12 @@ export const TeamMembersPage = () => {
         groupName: m.groupName || m.group || undefined,
         groupRole: m.groupRole || undefined,
         directRole: m.directRole || undefined,
-        canRemove: m.canRemove !== undefined ? m.canRemove : m.source !== 'group',
+        canRemove:
+          m.canRemove !== undefined ? m.canRemove : m.source !== 'group',
         removeNote: m.removeNote || undefined,
       }));
       setMembers(normalized);
-
-      // Also extract groups from the response if present
-      const groupsData: TeamGroup[] = response?.groups || [];
-      setGroups(groupsData);
+      setGroups(response?.groups || []);
     } catch (err) {
       setError(
         err instanceof Error ? err.message : 'Failed to load team members',
@@ -267,558 +398,391 @@ export const TeamMembersPage = () => {
     fetchCurrentUser();
   }, [loadMembers, fetchCurrentUser]);
 
-  // --- Handlers ---
-
-  const handleAddMember = async () => {
-    if (!team || !addEmail.trim()) return;
-
-    setAdding(true);
-    setAddError(null);
-
-    try {
-      await api.addTeamMember(team, {
-        email: addEmail.trim(),
-        role: addRole,
-      });
-
-      // Self-modification warning
-      if (addEmail.trim() === currentUserEmail) {
-        setSelfWarning(
-          'You modified your own access. Your permissions may have changed.',
-        );
-        setTimeout(() => setSelfWarning(null), 5000);
-      }
-
-      setAddOpen(false);
-      setAddEmail('');
-      setAddRole('viewer');
-      loadMembers();
-    } catch (err) {
-      setAddError(
-        err instanceof Error ? err.message : 'Failed to add member',
-      );
-    } finally {
-      setAdding(false);
-    }
-  };
-
-  const handleRemoveMember = async () => {
-    if (!team || !memberToRemove) return;
-
-    setRemoving(true);
-
-    try {
-      await api.removeTeamMember(team, memberToRemove.email);
-
-      // Self-modification warning
-      if (memberToRemove.email === currentUserEmail) {
-        setSelfWarning(
-          'You removed your own access. You may lose access to this team.',
-        );
-        setTimeout(() => setSelfWarning(null), 5000);
-      }
-
-      setMemberToRemove(null);
-      loadMembers();
-    } catch {
-      // silent
-    } finally {
-      setRemoving(false);
-    }
+  const flashSelfWarning = (message: string) => {
+    setSelfWarning(message);
+    setTimeout(() => setSelfWarning(null), 5000);
   };
 
   const handleCloseAdd = () => {
+    if (adding) return;
     setAddOpen(false);
     setAddEmail('');
     setAddRole('viewer');
     setAddError(null);
   };
 
-  // --- Helpers ---
-
-  function getAvatarClass(source: string): string {
-    switch (source) {
-      case 'elevated':
-        return classes.avatarElevated;
-      case 'group':
-      case 'group-synced':
-        return classes.avatarGroup;
-      default:
-        return classes.avatarDirect;
+  const handleAddMember = async (e: FormEvent) => {
+    e.preventDefault();
+    const email = addEmail.trim();
+    if (!team || !email) return;
+    setAdding(true);
+    setAddError(null);
+    try {
+      await api.addTeamMember(team, { email, role: addRole });
+      if (email === currentUserEmail) {
+        flashSelfWarning(
+          'You modified your own access. Your permissions may have changed.',
+        );
+      }
+      setAdding(false);
+      handleCloseAdd();
+      loadMembers();
+    } catch (err) {
+      setAddError(err instanceof Error ? err.message : 'Failed to add member');
+      setAdding(false);
     }
-  }
+  };
 
-  function getRoleChipClass(role: string): string | undefined {
-    switch (role) {
-      case 'admin':
-        return classes.adminChip;
-      case 'operator':
-        return classes.operatorChip;
-      case 'viewer':
-        return classes.viewerChip;
-      default:
-        return undefined;
+  const handleRemoveMember = async () => {
+    if (!team || !memberToRemove) return;
+    setRemoving(true);
+    setRemoveError(null);
+    try {
+      await api.removeTeamMember(team, memberToRemove.email);
+      if (memberToRemove.email === currentUserEmail) {
+        flashSelfWarning(
+          'You removed your own access. You may lose access to this team.',
+        );
+      }
+      setMemberToRemove(null);
+      loadMembers();
+    } catch (err) {
+      setRemoveError(
+        err instanceof Error ? err.message : 'Failed to remove member',
+      );
+    } finally {
+      setRemoving(false);
     }
-  }
+  };
 
-  function getSourceLabel(member: TeamMember): string {
-    const groupName = member.groupName || member.group;
-    switch (member.source) {
-      case 'group':
-      case 'group-synced':
-        return groupName ? `via ${groupName}` : 'via group';
-      case 'elevated':
-        return groupName ? `${groupName} + elevated` : 'elevated';
-      default:
-        return 'direct member';
+  const sourceLabel = (member: TeamMember): string => {
+    if (isGroupSource(member)) {
+      return member.groupName ? `via ${member.groupName}` : 'via group';
     }
-  }
+    if (member.source === 'elevated') {
+      return member.groupName ? `${member.groupName} + elevated` : 'elevated';
+    }
+    return 'direct member';
+  };
 
-  function getRemoveLabel(member: TeamMember): string {
-    return member.source === 'elevated'
-      ? 'Remove Elevation'
-      : 'Remove Member';
-  }
-
-  // --- Render ---
+  const removeLabel = (member: TeamMember) =>
+    member.source === 'elevated' ? 'Remove Elevation' : 'Remove Member';
 
   if (!team) {
     return (
-      <EmptyState
+      <ButlerEmptyState
         title="No team selected"
         description="Navigate to a team to manage its members."
-        missing="info"
       />
     );
   }
 
-  if (loading) {
-    return <Progress />;
-  }
+  if (loading) return <ButlerLoading />;
 
   if (error) {
     return (
-      <Box p={2}>
-        <Typography color="error" variant="h6">
-          Failed to load members
-        </Typography>
-        <Typography variant="body2" color="error">
-          {error}
-        </Typography>
-      </Box>
+      <ButlerErrorState
+        message="Failed to load members"
+        detail={error}
+        onRetry={loadMembers}
+      />
     );
   }
 
-  return (
-    <Grid container spacing={3}>
-      <Grid item xs={12}>
-        <Button
-          startIcon={<ArrowBackIcon />}
-          component={RouterLink}
-          to={routes.team({ team: team ?? '' })}
-          style={{ textTransform: 'none', marginBottom: 16 }}
-        >
-          Back to Dashboard
-        </Button>
-      </Grid>
+  const showLegend = members.some(m => m.source !== 'direct');
 
-      <Grid item xs={12}>
-        <div className={classes.header}>
-          <div>
-            <Typography variant="h4">Members</Typography>
-            <Typography variant="body2" color="textSecondary">
-              Manage team members and their roles
-            </Typography>
-          </div>
-          {isTeamAdmin && (
-            <Button
-              variant="contained"
-              color="primary"
-              startIcon={<PersonAddIcon />}
+  return (
+    <ButlerStack>
+      <ButlerPageHeader
+        title="Members"
+        subtitle="Manage team members and their roles"
+        onBack={() => navigate(routes.team({ team }))}
+        actions={
+          canManage && (
+            <ButlerButton
+              startIcon={<PlusIcon />}
               onClick={() => setAddOpen(true)}
             >
               Add Member
-            </Button>
-          )}
-        </div>
-      </Grid>
+            </ButlerButton>
+          )
+        }
+      />
 
-      {/* Self-modification warning */}
       {selfWarning && (
-        <Grid item xs={12}>
-          <Box
-            p={2}
-            style={{
-              backgroundColor: 'rgba(255, 152, 0, 0.1)',
-              border: '1px solid rgba(255, 152, 0, 0.3)',
-              borderRadius: 4,
-            }}
-          >
-            <Typography variant="body2" style={{ color: '#ff9800' }}>
-              {selfWarning}
-            </Typography>
-          </Box>
-        </Grid>
+        <ButlerCallout tone="amber" compact>
+          {selfWarning}
+        </ButlerCallout>
       )}
 
-      {/* Group Access Rules Banner */}
       {groups.length > 0 && (
-        <Grid item xs={12}>
-          <Box className={classes.groupBanner}>
-            <Box display="flex" alignItems="center" gridGap={8}>
-              <GroupIcon style={{ color: '#1976d2' }} fontSize="small" />
-              <Typography
-                variant="subtitle2"
-                style={{ color: '#1976d2' }}
-              >
-                Group Access Rules
-              </Typography>
-            </Box>
-            <Typography
-              variant="body2"
-              color="textSecondary"
-              style={{ marginTop: 4 }}
+        <ButlerCallout
+          tone="info"
+          title={
+            <span
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}
             >
-              Members of these groups automatically have access to this team:
-            </Typography>
-            <div className={classes.groupBannerChips}>
-              {groups.map(group => (
-                <Chip
-                  key={group.name}
-                  label={`${group.name} (${group.role})`}
-                  size="small"
-                  className={classes.groupBannerChip}
-                />
-              ))}
-            </div>
-          </Box>
-        </Grid>
-      )}
-
-      {/* Members Table */}
-      <Grid item xs={12}>
-        {members.length === 0 ? (
-          <EmptyState
-            title="No members"
-            description="This team has no members yet."
-            missing="content"
-          />
-        ) : (
-          <InfoCard title={`Members (${members.length})`}>
-            <Table size="small">
-              <TableHead>
-                <TableRow>
-                  <TableCell>Member</TableCell>
-                  <TableCell>Role</TableCell>
-                  <TableCell>Source</TableCell>
-                  {isTeamAdmin && (
-                    <TableCell align="right">Actions</TableCell>
-                  )}
-                </TableRow>
-              </TableHead>
-              <TableBody>
-                {members.map((member, index) => {
-                  const isElevated = member.source === 'elevated';
-                  const isGroup =
-                    member.source === 'group' ||
-                    member.source === 'group-synced';
-                  const isSelf = member.email === currentUserEmail;
-
-                  return (
-                    <TableRow key={member.email || `member-${index}`}>
-                      <TableCell>
-                        <Box className={classes.nameCell}>
-                          <Avatar className={getAvatarClass(member.source)}>
-                            {(member.name || member.email)
-                              .charAt(0)
-                              .toUpperCase()}
-                          </Avatar>
-                          <Box>
-                            <Box display="flex" alignItems="center">
-                              <Typography
-                                variant="body2"
-                                style={{ fontWeight: 600 }}
-                              >
-                                {member.name || member.email}
-                              </Typography>
-                              {isSelf && (
-                                <span className={classes.selfTag}>
-                                  (you)
-                                </span>
-                              )}
-                              {isElevated && (
-                                <Chip
-                                  label="ELEVATED"
-                                  size="small"
-                                  className={classes.elevatedChip}
-                                  style={{ marginLeft: 8 }}
-                                />
-                              )}
-                            </Box>
-                            {member.name && (
-                              <Typography
-                                variant="caption"
-                                color="textSecondary"
-                              >
-                                {member.email}
-                              </Typography>
-                            )}
-                          </Box>
-                        </Box>
-                      </TableCell>
-                      <TableCell>
-                        <Box display="flex" alignItems="center" gridGap={8}>
-                          <Chip
-                            size="small"
-                            label={member.role}
-                            className={getRoleChipClass(member.role)}
-                          />
-                          {isElevated && member.groupRole && (
-                            <span className={classes.elevationInfo}>
-                              <ArrowUpwardIcon
-                                style={{ fontSize: 12 }}
-                              />
-                              from {member.groupRole}
-                            </span>
-                          )}
-                        </Box>
-                      </TableCell>
-                      <TableCell>
-                        {isGroup ? (
-                          <span className={classes.sourceGroup}>
-                            <GroupIcon style={{ fontSize: 14 }} />
-                            {getSourceLabel(member)}
-                          </span>
-                        ) : isElevated ? (
-                          <span className={classes.sourceElevated}>
-                            <GroupIcon style={{ fontSize: 14 }} />
-                            {getSourceLabel(member)}
-                          </span>
-                        ) : (
-                          <span className={classes.sourceDirect}>
-                            {getSourceLabel(member)}
-                          </span>
-                        )}
-                      </TableCell>
-                      {isTeamAdmin && (
-                        <TableCell align="right">
-                          {member.canRemove !== false &&
-                            !isGroup && (
-                              <Tooltip
-                                title={
-                                  member.removeNote || getRemoveLabel(member)
-                                }
-                              >
-                                <IconButton
-                                  size="small"
-                                  onClick={() => setMemberToRemove(member)}
-                                  style={
-                                    isElevated
-                                      ? { color: '#ff9800' }
-                                      : { color: '#f44336' }
-                                  }
-                                >
-                                  <DeleteIcon fontSize="small" />
-                                </IconButton>
-                              </Tooltip>
-                            )}
-                          {isGroup && !member.canRemove && (
-                            <Tooltip title="Access managed via group membership">
-                              <LockIcon
-                                fontSize="small"
-                                color="disabled"
-                              />
-                            </Tooltip>
-                          )}
-                        </TableCell>
-                      )}
-                    </TableRow>
-                  );
-                })}
-              </TableBody>
-            </Table>
-          </InfoCard>
-        )}
-      </Grid>
-
-      {/* Legend */}
-      {members.some(m => m.source !== 'direct') && (
-        <Grid item xs={12}>
-          <div className={classes.legend}>
-            <div className={classes.legendItem}>
-              <div
-                className={classes.legendDot}
-                style={{ backgroundColor: '#757575' }}
-              />
-              <span>Direct member</span>
-            </div>
-            <div className={classes.legendItem}>
-              <div
-                className={classes.legendDot}
-                style={{ backgroundColor: '#1976d2' }}
-              />
-              <span>Via group</span>
-            </div>
-            <div className={classes.legendItem}>
-              <div
-                className={classes.legendDot}
-                style={{
-                  backgroundColor: '#ff9800',
-                  border: '1px solid rgba(255, 152, 0, 0.4)',
-                }}
-              />
-              <span>Elevated</span>
-            </div>
+              <UsersIcon size={20} />
+              Group Access Rules
+            </span>
+          }
+        >
+          <p>Members of these groups automatically have access to this team:</p>
+          <div className={classes.groupChips}>
+            {groups.map(group => (
+              <span key={group.name} className={classes.groupChip}>
+                <span style={{ fontWeight: 500 }}>{group.name}</span>
+                <span className={classes.groupChipRole}>({group.role})</span>
+              </span>
+            ))}
           </div>
-        </Grid>
+        </ButlerCallout>
       )}
 
-      {/* Add Member Dialog */}
-      <Dialog
+      {members.length === 0 ? (
+        <ButlerEmptyState title="No members yet" />
+      ) : (
+        <ButlerCard flush>
+          <ul className={classes.list} aria-label="Team members">
+            {members.map((member, index) => {
+              const elevated = member.source === 'elevated';
+              const group = isGroupSource(member);
+              const isSelf = member.email === currentUserEmail;
+              const roleClass =
+                member.role === 'admin'
+                  ? classes.roleAdmin
+                  : member.role === 'operator'
+                  ? classes.roleOperator
+                  : classes.roleViewer;
+              return (
+                <li
+                  key={member.email || `member-${index}`}
+                  className={classes.row}
+                >
+                  <div className={classes.identity}>
+                    <div
+                      className={clsx(
+                        classes.avatar,
+                        group && classes.avatarGroup,
+                        elevated && classes.avatarElevated,
+                      )}
+                      aria-hidden
+                    >
+                      {(member.name || member.email).charAt(0).toUpperCase()}
+                    </div>
+                    <div style={{ minWidth: 0 }}>
+                      <div className={classes.nameRow}>
+                        <p className={classes.name}>
+                          {member.name || member.email}
+                          {isSelf && <span className={classes.you}>(you)</span>}
+                        </p>
+                        {elevated && (
+                          <span className={classes.elevatedTag}>ELEVATED</span>
+                        )}
+                      </div>
+                      <div className={classes.meta}>
+                        {member.name && (
+                          <p className={classes.email}>{member.email}</p>
+                        )}
+                        <span
+                          className={clsx(
+                            classes.source,
+                            group && classes.sourceGroup,
+                            elevated && classes.sourceElevated,
+                          )}
+                        >
+                          {(group || elevated) && <GroupGlyph />}
+                          {sourceLabel(member)}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className={classes.right}>
+                    <div className={classes.roleWrap}>
+                      <span className={clsx(classes.role, roleClass)}>
+                        {member.role}
+                      </span>
+                      {elevated && member.groupRole && (
+                        <span
+                          className={classes.elevatedFrom}
+                          title={`Elevated from ${member.groupRole} via ${member.groupName}`}
+                        >
+                          <ArrowUpGlyph />
+                          from {member.groupRole}
+                        </span>
+                      )}
+                    </div>
+                    {canManage && member.canRemove !== false && !group && (
+                      <button
+                        type="button"
+                        className={classes.remove}
+                        title={member.removeNote || removeLabel(member)}
+                        aria-label={`${removeLabel(member)} ${member.email}`}
+                        onClick={() => {
+                          setRemoveError(null);
+                          setMemberToRemove(member);
+                        }}
+                      >
+                        <TrashIcon />
+                      </button>
+                    )}
+                    {group && !member.canRemove && (
+                      <span
+                        className={classes.lock}
+                        title="Access managed via group membership"
+                      >
+                        <LockGlyph />
+                      </span>
+                    )}
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+        </ButlerCard>
+      )}
+
+      {showLegend && (
+        <div className={classes.legend}>
+          <div className={classes.legendItem}>
+            <span className={classes.legendDot} />
+            <span>Direct member</span>
+          </div>
+          <div className={classes.legendItem}>
+            <span className={clsx(classes.legendDot, classes.legendGroup)} />
+            <span>Via group</span>
+          </div>
+          <div className={classes.legendItem}>
+            <span className={clsx(classes.legendDot, classes.legendElevated)} />
+            <span>Elevated</span>
+          </div>
+        </div>
+      )}
+
+      <ButlerDialog
         open={addOpen}
         onClose={handleCloseAdd}
-        maxWidth="sm"
-        fullWidth
+        title="Add Member"
+        busy={adding}
+        footer={
+          <>
+            <ButlerButton
+              variant="secondary"
+              onClick={handleCloseAdd}
+              disabled={adding}
+            >
+              Cancel
+            </ButlerButton>
+            <ButlerButton
+              type="submit"
+              form="butler-add-member-form"
+              disabled={adding || !addEmail.trim()}
+            >
+              {adding ? 'Adding...' : 'Add Member'}
+            </ButlerButton>
+          </>
+        }
       >
-        <DialogTitle>Add Member</DialogTitle>
-        <DialogContent>
+        <form
+          id="butler-add-member-form"
+          onSubmit={handleAddMember}
+          style={{ display: 'flex', flexDirection: 'column', gap: 16 }}
+        >
           {addError && (
-            <Typography color="error" variant="body2" gutterBottom>
+            <ButlerCallout tone="danger" compact role="alert">
               {addError}
-            </Typography>
+            </ButlerCallout>
           )}
           {groups.length > 0 && (
-            <Box
-              mb={2}
-              p={1.5}
-              style={{
-                backgroundColor: 'rgba(25, 118, 210, 0.08)',
-                border: '1px solid rgba(25, 118, 210, 0.2)',
-                borderRadius: 4,
-              }}
-            >
-              <Typography variant="body2" style={{ color: '#1976d2' }}>
-                If this user already has access via a group, you can only add
-                them with a higher role to elevate their permissions.
-              </Typography>
-            </Box>
+            <ButlerCallout tone="info" compact>
+              If this user already has access via a group, you can only add them
+              with a higher role to elevate their permissions.
+            </ButlerCallout>
           )}
-          <TextField
-            className={classes.formField}
+          <ButlerInput
             label="Email"
             type="email"
             value={addEmail}
             onChange={e => setAddEmail(e.target.value)}
-            fullWidth
+            placeholder="user@example.com"
             required
             autoFocus
-            margin="dense"
-            placeholder="user@example.com"
           />
-          <FormControl
-            variant="outlined"
-            size="small"
-            fullWidth
-            className={classes.formField}
+          <ButlerSelect
+            label="Role"
+            value={addRole}
+            onChange={e => setAddRole(e.target.value as Role)}
           >
-            <InputLabel id="add-member-role-label">Role</InputLabel>
-            <Select
-              labelId="add-member-role-label"
-              value={addRole}
-              onChange={e =>
-                setAddRole(
-                  e.target.value as 'admin' | 'operator' | 'viewer',
-                )
-              }
-              label="Role"
-            >
-              <MenuItem value="viewer">Viewer</MenuItem>
-              <MenuItem value="operator">Operator</MenuItem>
-              <MenuItem value="admin">Admin</MenuItem>
-            </Select>
-          </FormControl>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={handleCloseAdd} disabled={adding}>
-            Cancel
-          </Button>
-          <Button
-            onClick={handleAddMember}
-            color="primary"
-            variant="contained"
-            disabled={adding || !addEmail.trim()}
-          >
-            {adding ? 'Adding...' : 'Add Member'}
-          </Button>
-        </DialogActions>
-      </Dialog>
+            {ROLE_OPTIONS.map(o => (
+              <option key={o.value} value={o.value}>
+                {o.label}
+              </option>
+            ))}
+          </ButlerSelect>
+        </form>
+      </ButlerDialog>
 
-      {/* Remove Member Confirmation Dialog */}
-      <Dialog
+      <ButlerDialog
         open={Boolean(memberToRemove)}
         onClose={() => setMemberToRemove(null)}
-        maxWidth="xs"
-        fullWidth
+        title={memberToRemove ? removeLabel(memberToRemove) : ''}
+        busy={removing}
+        footer={
+          <>
+            <ButlerButton
+              variant="secondary"
+              onClick={() => setMemberToRemove(null)}
+              disabled={removing}
+            >
+              Cancel
+            </ButlerButton>
+            <ButlerButton
+              variant="danger"
+              onClick={handleRemoveMember}
+              disabled={removing}
+            >
+              {removing
+                ? 'Removing...'
+                : memberToRemove
+                ? removeLabel(memberToRemove)
+                : ''}
+            </ButlerButton>
+          </>
+        }
       >
-        <DialogTitle>
-          {memberToRemove?.source === 'elevated'
-            ? 'Remove Elevation'
-            : 'Remove Member'}
-        </DialogTitle>
-        <DialogContent>
-          {memberToRemove?.source === 'elevated' ? (
-            <>
-              <Typography variant="body2">
-                Remove elevated access for{' '}
-                <strong>{memberToRemove?.email}</strong>?
-              </Typography>
-              <Typography
-                variant="body2"
-                style={{ color: '#ff9800', marginTop: 8 }}
-              >
-                They will revert to {memberToRemove?.groupRole} access via{' '}
-                {memberToRemove?.groupName || memberToRemove?.group || 'group'}.
-              </Typography>
-            </>
-          ) : (
-            <>
-              <Typography variant="body2">
-                Are you sure you want to remove{' '}
-                <strong>{memberToRemove?.email}</strong> from{' '}
-                <strong>{currentTeam?.displayName || team}</strong>?
-              </Typography>
-              {memberToRemove?.email === currentUserEmail && (
-                <Typography
-                  variant="body2"
-                  style={{ color: '#ff9800', marginTop: 8 }}
-                >
-                  Warning: You are about to remove yourself from this team. You
-                  will lose access.
-                </Typography>
-              )}
-            </>
-          )}
-        </DialogContent>
-        <DialogActions>
-          <Button
-            onClick={() => setMemberToRemove(null)}
-            disabled={removing}
-          >
-            Cancel
-          </Button>
-          <Button
-            onClick={handleRemoveMember}
-            style={{ color: '#f44336' }}
-            disabled={removing}
-          >
-            {removing
-              ? 'Removing...'
-              : memberToRemove?.source === 'elevated'
-                ? 'Remove Elevation'
-                : 'Remove Member'}
-          </Button>
-        </DialogActions>
-      </Dialog>
-    </Grid>
+        {removeError && (
+          <ButlerCallout tone="danger" compact role="alert">
+            {removeError}
+          </ButlerCallout>
+        )}
+        {memberToRemove?.source === 'elevated' ? (
+          <div>
+            <p className={classes.confirmText}>
+              Remove elevated access for <strong>{memberToRemove.email}</strong>
+              ?
+            </p>
+            <p className={classes.confirmNote}>
+              They will revert to {memberToRemove.groupRole} access via{' '}
+              {memberToRemove.groupName || 'group'}.
+            </p>
+          </div>
+        ) : (
+          <div>
+            <p className={classes.confirmText}>
+              Are you sure you want to remove{' '}
+              <strong>{memberToRemove?.email}</strong> from{' '}
+              <strong>{teamDisplayName}</strong>?
+            </p>
+            {memberToRemove?.email === currentUserEmail && (
+              <p className={classes.confirmNote}>
+                Warning: You are about to remove yourself from this team. You
+                will lose access.
+              </p>
+            )}
+          </div>
+        )}
+      </ButlerDialog>
+    </ButlerStack>
   );
 };
