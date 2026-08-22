@@ -26,7 +26,10 @@ import {
 } from '@backstage/backend-plugin-api';
 import { AuthManager } from './service/AuthManager';
 import { PortalSigner } from './service/PortalSigner';
-import { IdentityResolver } from './service/IdentityResolver';
+import {
+  IdentityResolver,
+  UnresolvableIdentityError,
+} from './service/IdentityResolver';
 
 /**
  * applyPortalCarrierSwap is the Stage 2 per-request carrier switch.
@@ -225,7 +228,19 @@ export async function createRouter(options: {
 
   router.get('/_identity', async (req: Request, res: Response) => {
     try {
-      const email = await resolveCallerEmail(req);
+      let email: string | undefined;
+      try {
+        email = await resolveCallerEmail(req);
+      } catch (err) {
+        if (err instanceof UnresolvableIdentityError) {
+          res.status(403).json({
+            error: 'forbidden',
+            reason: 'caller identity could not be resolved to an email',
+          });
+          return;
+        }
+        throw err;
+      }
 
       if (!email) {
         res.json({

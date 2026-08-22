@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import { IdentityResolver } from '../service/IdentityResolver';
+import { IdentityResolver, UnresolvableIdentityError } from '../service/IdentityResolver';
 
 const userCreds = { $$type: '@backstage/BackstageCredentials', principal: { type: 'user' } } as any;
 const serviceCreds = { $$type: '@backstage/BackstageCredentials', principal: { type: 'service' } } as any;
@@ -62,6 +62,23 @@ describe('IdentityResolver', () => {
   it('throws when neither the catalog nor a domain can resolve the user', async () => {
     const r = new IdentityResolver({ userInfo: userInfoFor('user:default/dev'), auth, logger });
     await expect(r.resolveEmail(userCreds)).rejects.toThrow(/cannot resolve an email/);
+  });
+
+  it('remembers an unresolvable user briefly and throws the typed error', async () => {
+    const catalog = { getEntityByRef: jest.fn(async () => undefined) } as any;
+    const r = new IdentityResolver({ userInfo: userInfoFor('user:default/dev'), auth, catalog, logger });
+    await expect(r.resolveEmail(userCreds)).rejects.toBeInstanceOf(UnresolvableIdentityError);
+    await expect(r.resolveEmail(userCreds)).rejects.toBeInstanceOf(UnresolvableIdentityError);
+    expect(catalog.getEntityByRef).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not cache a domain fallback produced by a catalog error', async () => {
+    let fail = true;
+    const catalog = { getEntityByRef: jest.fn(async () => { if (fail) throw new Error('down'); return { spec: { profile: { email: 'real@corp.example' } } }; }) } as any;
+    const r = new IdentityResolver({ userInfo: userInfoFor('user:default/dev'), auth, catalog, emailDomain: 'fallback.example', logger });
+    await expect(r.resolveEmail(userCreds)).resolves.toBe('dev@fallback.example');
+    fail = false;
+    await expect(r.resolveEmail(userCreds)).resolves.toBe('real@corp.example');
   });
 
   it('caches the resolved email per entity ref', async () => {
