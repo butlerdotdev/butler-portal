@@ -1,144 +1,91 @@
 // Copyright 2026 The Butler Authors.
 // SPDX-License-Identifier: Apache-2.0
 
-import { useEffect, useState } from 'react';
-import { useParams } from 'react-router-dom';
-import { Link as RouterLink } from 'react-router-dom';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Link as RouterLink, useParams } from 'react-router-dom';
 import { useApi } from '@backstage/core-plugin-api';
-import {
-  InfoCard,
-  Table,
-  TableColumn,
-  Progress,
-  EmptyState,
-} from '@backstage/core-components';
-import {
-  Grid,
-  Typography,
-  Button,
-  Box,
-  Card as MuiCard,
-  CardContent,
-  makeStyles,
-} from '@material-ui/core';
-import AddIcon from '@material-ui/icons/Add';
-import ArrowBackIcon from '@material-ui/icons/ArrowBack';
-import ListIcon from '@material-ui/icons/List';
-import SettingsIcon from '@material-ui/icons/Settings';
-import CloudIcon from '@material-ui/icons/Cloud';
-
+import { makeStyles } from '@material-ui/core/styles';
+import { butlerTokens, rgb } from '../../theme';
 import { butlerApiRef } from '../../api/ButlerApi';
-import { StatusBadge } from '../StatusBadge/StatusBadge';
 import type { Cluster } from '../../api/types/clusters';
 import { useButlerRoutes } from '../../hooks/useButlerRoutes';
+import {
+  ButlerButton,
+  ButlerEmptyState,
+  ButlerErrorState,
+  ButlerLoading,
+  ButlerPageHeader,
+  ButlerStack,
+  ButlerStatusBadge,
+  PlusIcon,
+  ServerIcon,
+} from '../ui';
+import {
+  ButlerDashboardStat,
+  ButlerStatGrid,
+} from '../ui/ButlerDashboardStats';
+import {
+  ButlerList,
+  ButlerListCard,
+  ButlerListRow,
+} from '../ui/ButlerListCard';
 
-const useStyles = makeStyles(theme => ({
-  statCard: {
-    textAlign: 'center',
-    padding: theme.spacing(2),
-  },
-  statValue: {
-    fontSize: '2rem',
-    fontWeight: 700,
-    lineHeight: 1.2,
-  },
-  statLabel: {
-    color: theme.palette.text.secondary,
-    marginTop: theme.spacing(0.5),
-  },
-  statIcon: {
-    fontSize: '1.75rem',
-    marginBottom: theme.spacing(0.5),
-    color: theme.palette.text.secondary,
-  },
-  actions: {
-    display: 'flex',
-    gap: theme.spacing(1.5),
-    flexWrap: 'wrap',
-  },
-  actionButton: {
-    textTransform: 'none',
-  },
-  headerActions: {
-    display: 'flex',
-    gap: theme.spacing(1),
-    alignItems: 'center',
-  },
-}));
-
-function formatAge(timestamp?: string): string {
-  if (!timestamp) return '-';
-  const created = new Date(timestamp);
-  const now = new Date();
-  const diffMs = now.getTime() - created.getTime();
-  const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
-
-  if (diffDays === 0) {
-    const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
-    if (diffHours === 0) {
-      const diffMinutes = Math.floor(diffMs / (1000 * 60));
-      return `${diffMinutes}m`;
-    }
-    return `${diffHours}h`;
-  }
-  if (diffDays < 30) return `${diffDays}d`;
-  const diffMonths = Math.floor(diffDays / 30);
-  return `${diffMonths}mo`;
-}
-
-interface ClusterRow {
-  id: string;
-  team: string;
-  name: string;
-  namespace: string;
-  phase: string;
-  version: string;
-  workers: number;
-  age: string;
-}
-
-const ClusterNameLink = ({ row }: { row: ClusterRow }) => {
-  const routes = useButlerRoutes();
-  return (
-    <RouterLink
-      to={routes.clusterDetail({
-        team: row.team,
-        namespace: row.namespace,
-        name: row.name,
-      })}
-      style={{ textDecoration: 'none', color: 'inherit', fontWeight: 600 }}
-    >
-      {row.name}
-    </RouterLink>
-  );
-};
-
-const columns: TableColumn<ClusterRow>[] = [
-  {
-    title: 'Name',
-    field: 'name',
-    render: (row: ClusterRow) => <ClusterNameLink row={row} />,
-  },
-  {
-    title: 'Phase',
-    field: 'phase',
-    render: (row: ClusterRow) => <StatusBadge status={row.phase} />,
-  },
-  {
-    title: 'Version',
-    field: 'version',
-  },
-  {
-    title: 'Workers',
-    field: 'workers',
-    type: 'numeric',
-  },
-  {
-    title: 'Age',
-    field: 'age',
-  },
+// Console DashboardPage counts these phases as "Provisioning".
+const PROVISIONING_PHASES = [
+  'provisioning',
+  'pending',
+  'scaling',
+  'installing',
 ];
 
+const useStyles = makeStyles(theme => {
+  const t = butlerTokens(theme);
+  const p = t.palette;
+  return {
+    dot: {
+      width: 10,
+      height: 10,
+      borderRadius: '50%',
+      flexShrink: 0,
+    },
+    dotGreen: { backgroundColor: rgb(p.green[500]) },
+    dotYellow: { backgroundColor: rgb(p.yellow[500]) },
+    dotRed: { backgroundColor: rgb(p.red[500]) },
+    emptyIcon: { color: rgb(p.neutral[600]), marginBottom: 16 },
+    emptyBlock: {
+      padding: '48px 20px',
+      textAlign: 'center',
+    },
+    emptyTitle: {
+      margin: 0,
+      fontSize: 18,
+      lineHeight: '28px',
+      fontWeight: 500,
+      color: rgb(p.neutral[300]),
+    },
+    emptyText: {
+      margin: '8px 0 16px',
+      fontSize: 14,
+      lineHeight: '20px',
+      color: t.text.subtle,
+    },
+  };
+});
+
+function phaseDot(
+  phase: string | undefined,
+): 'dotGreen' | 'dotRed' | 'dotYellow' {
+  const key = (phase || '').toLowerCase();
+  if (key === 'ready') return 'dotGreen';
+  if (key === 'failed') return 'dotRed';
+  return 'dotYellow';
+}
+
+function workersLabel(count: number): string {
+  return `${count} worker${count === 1 ? '' : 's'}`;
+}
+
+/** Console team `DashboardPage`: stats, recent clusters and the create CTA. */
 export const DashboardPage = () => {
   const classes = useStyles();
   const { team } = useParams<{ team: string }>();
@@ -148,239 +95,165 @@ export const DashboardPage = () => {
   const [clusters, setClusters] = useState<Cluster[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [reloadKey, setReloadKey] = useState(0);
+  const retry = useCallback(() => setReloadKey(k => k + 1), []);
 
   useEffect(() => {
-    if (!team) return;
+    if (!team) return undefined;
 
     let cancelled = false;
+    setLoading(true);
+    setError(null);
 
-    const load = async () => {
-      setLoading(true);
-      setError(null);
-
-      try {
-        const response = await api.listClusters({ team });
-        if (!cancelled) {
-          setClusters(response.clusters ?? []);
-        }
-      } catch (err) {
+    api
+      .listClusters({ team })
+      .then(response => {
+        if (!cancelled) setClusters(response.clusters ?? []);
+      })
+      .catch(err => {
         if (!cancelled) {
           setError(
-            err instanceof Error
-              ? err.message
-              : 'Failed to load team clusters',
+            err instanceof Error ? err.message : 'Failed to load team clusters',
           );
         }
-      } finally {
-        if (!cancelled) {
-          setLoading(false);
-        }
-      }
-    };
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
 
-    load();
     return () => {
       cancelled = true;
     };
-  }, [api, team]);
+  }, [api, team, reloadKey]);
+
+  const stats = useMemo(() => {
+    const phase = (c: Cluster) => (c.status?.phase || '').toLowerCase();
+    return {
+      total: clusters.length,
+      ready: clusters.filter(c => phase(c) === 'ready').length,
+      provisioning: clusters.filter(c => PROVISIONING_PHASES.includes(phase(c)))
+        .length,
+      failed: clusters.filter(c => phase(c) === 'failed').length,
+    };
+  }, [clusters]);
+
+  const recentClusters = useMemo(
+    () =>
+      [...clusters]
+        .sort((a, b) => {
+          const aTime = new Date(a.metadata.creationTimestamp || 0).getTime();
+          const bTime = new Date(b.metadata.creationTimestamp || 0).getTime();
+          return bTime - aTime;
+        })
+        .slice(0, 5),
+    [clusters],
+  );
 
   if (!team) {
     return (
-      <EmptyState
+      <ButlerEmptyState
         title="No team selected"
-        description="Navigate to a team to view its dashboard."
-        missing="info"
+        description="Select a team to view its dashboard."
       />
     );
   }
 
-  const readyCount = clusters.filter(
-    c => c.status?.phase?.toLowerCase() === 'ready',
-  ).length;
-  const provisioningCount = clusters.filter(
-    c => c.status?.phase?.toLowerCase() === 'provisioning',
-  ).length;
-  const failedCount = clusters.filter(
-    c => c.status?.phase?.toLowerCase() === 'failed',
-  ).length;
-
-  const tableData: ClusterRow[] = clusters
-    .slice()
-    .sort((a, b) => {
-      const aTime = a.metadata.creationTimestamp || '';
-      const bTime = b.metadata.creationTimestamp || '';
-      return bTime.localeCompare(aTime);
-    })
-    .map(c => ({
-      id: `${c.metadata.namespace}/${c.metadata.name}`,
-      team: team || '',
-      name: c.metadata.name,
-      namespace: c.metadata.namespace,
-      phase: c.status?.phase || 'Unknown',
-      version: c.spec.kubernetesVersion || '-',
-      workers: c.spec.workers?.replicas ?? 0,
-      age: formatAge(c.metadata.creationTimestamp),
-    }));
-
   if (loading) {
-    return <Progress />;
+    return <ButlerLoading />;
   }
 
   if (error) {
     return (
-      <Box p={2}>
-        <Typography color="error" variant="h6">
-          Failed to load dashboard
-        </Typography>
-        <Typography variant="body2" color="error">
-          {error}
-        </Typography>
-      </Box>
+      <ButlerErrorState
+        message="Failed to load dashboard"
+        detail={error}
+        onRetry={retry}
+      />
     );
   }
 
+  const createPath = routes.createCluster({ team });
+
   return (
-    <Grid container spacing={3}>
-            <Grid item xs={12}>
-              <Button
-                startIcon={<ArrowBackIcon />}
-                component={RouterLink}
-                to={routes.root()}
-                style={{ textTransform: 'none', marginBottom: 16 }}
-              >
-                Back to Overview
-              </Button>
-            </Grid>
-            {/* Quick Action Buttons */}
-            <Grid item xs={12}>
-              <Box className={classes.actions}>
-                <Button
-                  variant="contained"
-                  color="primary"
-                  startIcon={<AddIcon />}
-                  className={classes.actionButton}
-                  component={RouterLink}
-                  to={routes.createCluster({ team: team ?? '' })}
-                >
-                  Create Cluster
-                </Button>
-                <Button
-                  variant="outlined"
-                  startIcon={<ListIcon />}
-                  className={classes.actionButton}
-                  component={RouterLink}
-                  to={routes.clusters({ team: team ?? '' })}
-                >
-                  View All Clusters
-                </Button>
-                <Button
-                  variant="outlined"
-                  startIcon={<SettingsIcon />}
-                  className={classes.actionButton}
-                  component={RouterLink}
-                  to={routes.teamSettings({ team: team ?? '' })}
-                >
-                  Team Settings
-                </Button>
-              </Box>
-            </Grid>
+    <ButlerStack>
+      <ButlerPageHeader
+        title="Dashboard"
+        subtitle="Overview of your Kubernetes clusters"
+      />
 
-            {/* Stat cards */}
-            <Grid item xs={6} sm={3}>
-              <MuiCard variant="outlined">
-                <CardContent className={classes.statCard}>
-                  <CloudIcon className={classes.statIcon} />
-                  <Typography className={classes.statValue}>
-                    {clusters.length}
-                  </Typography>
-                  <Typography variant="body2" className={classes.statLabel}>
-                    Total Clusters
-                  </Typography>
-                </CardContent>
-              </MuiCard>
-            </Grid>
-            <Grid item xs={6} sm={3}>
-              <MuiCard variant="outlined">
-                <CardContent className={classes.statCard}>
-                  <Typography
-                    className={classes.statValue}
-                    style={{ color: '#4caf50' }}
-                  >
-                    {readyCount}
-                  </Typography>
-                  <Typography variant="body2" className={classes.statLabel}>
-                    Ready
-                  </Typography>
-                </CardContent>
-              </MuiCard>
-            </Grid>
-            <Grid item xs={6} sm={3}>
-              <MuiCard variant="outlined">
-                <CardContent className={classes.statCard}>
-                  <Typography
-                    className={classes.statValue}
-                    style={{ color: '#2196f3' }}
-                  >
-                    {provisioningCount}
-                  </Typography>
-                  <Typography variant="body2" className={classes.statLabel}>
-                    Provisioning
-                  </Typography>
-                </CardContent>
-              </MuiCard>
-            </Grid>
-            <Grid item xs={6} sm={3}>
-              <MuiCard variant="outlined">
-                <CardContent className={classes.statCard}>
-                  <Typography
-                    className={classes.statValue}
-                    style={{
-                      color: failedCount > 0 ? '#f44336' : undefined,
-                    }}
-                  >
-                    {failedCount}
-                  </Typography>
-                  <Typography variant="body2" className={classes.statLabel}>
-                    Failed
-                  </Typography>
-                </CardContent>
-              </MuiCard>
-            </Grid>
+      <ButlerStatGrid>
+        <ButlerDashboardStat label="Total Clusters" value={stats.total} />
+        <ButlerDashboardStat label="Ready" value={stats.ready} tone="green" />
+        <ButlerDashboardStat
+          label="Provisioning"
+          value={stats.provisioning}
+          tone="yellow"
+        />
+        <ButlerDashboardStat label="Failed" value={stats.failed} tone="red" />
+      </ButlerStatGrid>
 
-            {/* Recent Clusters Table */}
-            <Grid item xs={12}>
-              {clusters.length === 0 ? (
-                <EmptyState
-                  title="No clusters yet"
-                  description="This team does not have any clusters. Create one to get started."
-                  missing="content"
-                  action={
-                    <Button
-                      variant="contained"
-                      color="primary"
-                      startIcon={<AddIcon />}
-                      component={RouterLink}
-                      to={routes.createCluster({ team: team ?? '' })}
-                    >
-                      Create Cluster
-                    </Button>
+      <ButlerListCard
+        title="Recent Clusters"
+        viewAllTo={routes.clusters({ team })}
+      >
+        {recentClusters.length === 0 ? (
+          <div className={classes.emptyBlock}>
+            <ServerIcon size={48} className={classes.emptyIcon} />
+            <h3 className={classes.emptyTitle}>No clusters yet</h3>
+            <p className={classes.emptyText}>
+              Get started by creating your first Kubernetes cluster.
+            </p>
+            <ButlerButton component={RouterLink} to={createPath}>
+              Create Cluster
+            </ButlerButton>
+          </div>
+        ) : (
+          <ButlerList aria-label="Recent clusters">
+            {recentClusters.map(cluster => {
+              const workers = cluster.spec.workers?.replicas ?? 0;
+              return (
+                <ButlerListRow
+                  key={`${cluster.metadata.namespace}/${cluster.metadata.name}`}
+                  to={routes.clusterDetail({
+                    team,
+                    namespace: cluster.metadata.namespace,
+                    name: cluster.metadata.name,
+                  })}
+                  leading={
+                    <span
+                      className={`${classes.dot} ${
+                        classes[phaseDot(cluster.status?.phase)]
+                      }`}
+                      aria-hidden
+                    />
+                  }
+                  primary={cluster.metadata.name}
+                  secondary={`${
+                    cluster.spec.kubernetesVersion
+                  } • ${workersLabel(workers)}`}
+                  trailing={
+                    <ButlerStatusBadge
+                      status={cluster.status?.phase || 'Unknown'}
+                    />
                   }
                 />
-              ) : (
-                <InfoCard title="Recent Clusters">
-                  <Table
-                    columns={columns}
-                    data={tableData}
-                    options={{
-                      paging: tableData.length > 10,
-                      pageSize: 10,
-                      search: tableData.length > 5,
-                      padding: 'dense',
-                    }}
-                  />
-                </InfoCard>
-              )}
-            </Grid>
-    </Grid>
+              );
+            })}
+          </ButlerList>
+        )}
+      </ButlerListCard>
+
+      {recentClusters.length > 0 && (
+        <div>
+          <ButlerButton
+            component={RouterLink}
+            to={createPath}
+            startIcon={<PlusIcon />}
+          >
+            Create Cluster
+          </ButlerButton>
+        </div>
+      )}
+    </ButlerStack>
   );
 };
