@@ -6135,6 +6135,7 @@ __metadata:
     "@backstage/core-components": "npm:^0.18.12"
     "@backstage/core-plugin-api": "npm:^1.12.8"
     "@backstage/dev-utils": "npm:^1.1.25"
+    "@backstage/plugin-auth-react": "npm:^0.1.29"
     "@backstage/plugin-permission-common": "npm:^0.9.9"
     "@backstage/plugin-permission-react": "npm:^0.5.3"
     "@backstage/test-utils": "npm:^1.7.20"

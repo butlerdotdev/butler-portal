@@ -7,6 +7,7 @@ import { Header, Page, Content, Progress } from '@backstage/core-components';
 import { makeStyles } from '@material-ui/core/styles';
 import { Typography } from '@material-ui/core';
 import SecurityIcon from '@material-ui/icons/Security';
+import { CookieAuthRefreshProvider } from '@backstage/plugin-auth-react';
 import { TeamProvider } from '../../contexts/TeamProvider';
 import { TeamSwitcher } from '../TeamSwitcher/TeamSwitcher';
 import {
@@ -256,10 +257,16 @@ const ButlerPageInner = () => {
   );
 };
 
+// Browsers cannot attach the Backstage bearer token to a WebSocket
+// upgrade, so the terminal and cluster relays authenticate with the
+// framework's limited-access cookie instead. The provider obtains and
+// renews that cookie for this plugin's backend before the page renders.
 export const ButlerPage = () => (
-  <TeamProvider>
-    <ClusterWatchProvider>
-      <ButlerPageInner />
-    </ClusterWatchProvider>
-  </TeamProvider>
+  <CookieAuthRefreshProvider pluginId="butler">
+    <TeamProvider>
+      <ClusterWatchProvider>
+        <ButlerPageInner />
+      </ClusterWatchProvider>
+    </TeamProvider>
+  </CookieAuthRefreshProvider>
 );
