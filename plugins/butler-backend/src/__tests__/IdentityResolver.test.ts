@@ -88,4 +88,5 @@ describe('IdentityResolver', () => {
     await r.resolveEmail(userCreds);
     expect(catalog.getEntityByRef).toHaveBeenCalledTimes(1);
   });
+
 });

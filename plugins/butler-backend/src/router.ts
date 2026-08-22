@@ -249,6 +249,7 @@ export async function createRouter(options: {
     auth,
     permissions,
     allowUnmappedRoutes,
+    identityResolver,
   });
   let upgradeHandlerAttached = false;
 
