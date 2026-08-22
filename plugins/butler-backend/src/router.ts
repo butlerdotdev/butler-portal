@@ -538,8 +538,14 @@ export function createButlerUpgradeHandler(deps: {
     if (!pathname.startsWith('/api/butler/ws/')) {
       return;
     }
+    // allowLimitedAccess: a browser WebSocket carries no Authorization
+    // header; the caller is identified by the backstage-auth cookie the
+    // frontend obtains from this plugin's cookie endpoint.
     httpAuth
-      .credentials(request as any, { allow: ['user', 'service'] })
+      .credentials(request as any, {
+        allow: ['user', 'service'],
+        allowLimitedAccess: true,
+      })
       .then(async credentials => {
         // Resolve the acting user's email when the Stage 2 carrier is
         // configured AND the credentials principal is a user. This mirrors

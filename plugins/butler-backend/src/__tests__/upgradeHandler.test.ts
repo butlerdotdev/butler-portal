@@ -178,3 +178,24 @@ describe('createButlerUpgradeHandler', () => {
     expect(socket.ended).toBe(false);
   });
 });
+
+describe('createButlerUpgradeHandler credential options', () => {
+  it('accepts limited-access (cookie) credentials on the upgrade request', async () => {
+    const credentials = jest.fn(async () => ({ principal: { type: 'user' } }));
+    const handler = createButlerUpgradeHandler({
+      httpAuth: { credentials } as any,
+      wss: { handleUpgrade: jest.fn() } as any,
+      targetUrl: 'http://butler',
+      authManager: { getToken: async () => 't' } as any,
+      logger: { info: jest.fn(), warn: jest.fn(), error: jest.fn(), debug: jest.fn() } as any,
+    });
+    const socket = { end: jest.fn() } as any;
+    handler({ url: '/api/butler/ws/clusters', headers: {} } as any, socket, Buffer.alloc(0));
+    await new Promise(r => setTimeout(r, 0));
+    expect(credentials).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ allowLimitedAccess: true }),
+    );
+  });
+});
+

@@ -3,6 +3,7 @@
 
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { useApi, discoveryApiRef } from '@backstage/core-plugin-api';
+import { CookieAuthRefreshProvider } from '@backstage/plugin-auth-react';
 import {
   Dialog,
   DialogTitle,
@@ -28,7 +29,18 @@ interface WorkspaceTerminalDialogProps {
   onClose: () => void;
 }
 
-export function WorkspaceTerminalDialog({
+// The dialog is also rendered by the Chambers (workspaces) plugin outside
+// the Butler page tree, so it carries its own cookie provider: the relay
+// authenticates WebSocket upgrades with the limited-access cookie.
+export function WorkspaceTerminalDialog(props: WorkspaceTerminalDialogProps) {
+  return (
+    <CookieAuthRefreshProvider pluginId="butler">
+      <WorkspaceTerminalDialogInner {...props} />
+    </CookieAuthRefreshProvider>
+  );
+}
+
+function WorkspaceTerminalDialogInner({
   open,
   target,
   clusterNamespace,
