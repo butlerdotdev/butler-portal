@@ -18,6 +18,7 @@ import { MockButlerApi } from '../../api/MockButlerApi';
 import {
   FIXTURE_NAMESPACE,
   FIXTURE_TEAM,
+  fixtureTeams,
   readyCluster,
   failedCluster,
   degradedCluster,
@@ -106,6 +107,26 @@ describe('ClusterDetailPage', () => {
         .length,
     ).toBe(3);
     expect(screen.getByText('AddonDegraded')).toBeInTheDocument();
+  });
+
+  it('hides the destructive action from a team viewer', async () => {
+    const api = new MockButlerApi({
+      identity: {
+        isPlatformAdmin: false,
+        teams: fixtureTeams
+          .filter(t => t.name === FIXTURE_TEAM)
+          .map(t => ({ ...t, role: 'viewer' })),
+      },
+    });
+    await renderDetail(api, readyCluster.metadata.name);
+    await screen.findByRole('heading', { name: readyCluster.metadata.name });
+
+    expect(
+      screen.queryByRole('button', { name: 'Delete' }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: 'Export YAML' }),
+    ).toBeInTheDocument();
   });
 
   it('shows the error state when getCluster fails', async () => {

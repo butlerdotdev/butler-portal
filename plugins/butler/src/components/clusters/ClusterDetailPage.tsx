@@ -18,6 +18,7 @@ import type {
   LoadBalancerRequest,
 } from '../../api/types/machines';
 import { useClusterWatch } from '../../hooks/useClusterWatch';
+import { useTeamContext } from '../../hooks/useTeamContext';
 import { AddonsTab } from './AddonsTab';
 import { GitOpsTab } from './GitOpsTab';
 import { CertificatesTab } from './CertificatesTab';
@@ -357,6 +358,13 @@ export const ClusterDetailPage = () => {
     }
   }, [api, alertApi, namespace, name]);
 
+  // The server refuses cluster mutations to viewers only, so an operator
+  // and a team admin keep the destructive action the console hides from
+  // them. Offering it to a viewer would be a dead control.
+  const { isAdmin, activeTeamRole } = useTeamContext();
+  const canOperate =
+    isAdmin || activeTeamRole === 'admin' || activeTeamRole === 'operator';
+
   const { subscribe } = useClusterWatch();
   const [deletedRemotely, setDeletedRemotely] = useState(false);
   // Read through a ref so the subscription does not churn on every poll.
@@ -615,9 +623,14 @@ export const ClusterDetailPage = () => {
             >
               {downloading ? 'Downloading...' : 'Download Kubeconfig'}
             </ButlerButton>
-            <ButlerButton variant="danger" onClick={() => setDeleteOpen(true)}>
-              Delete
-            </ButlerButton>
+            {canOperate && (
+              <ButlerButton
+                variant="danger"
+                onClick={() => setDeleteOpen(true)}
+              >
+                Delete
+              </ButlerButton>
+            )}
           </>
         }
       />
