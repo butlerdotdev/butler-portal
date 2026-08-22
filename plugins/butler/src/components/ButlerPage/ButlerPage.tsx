@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import React from 'react';
-import { Routes, Route } from 'react-router-dom';
+import { Routes, Route, useLocation } from 'react-router-dom';
 import { Header, Page, Content, Progress } from '@backstage/core-components';
 import { makeStyles } from '@material-ui/core/styles';
 import { Typography } from '@material-ui/core';
@@ -29,6 +29,7 @@ import {
   adminSettingsRouteRef,
 } from '../../routes';
 import { useIsAdminRoute } from '../../hooks/useButlerRoutes';
+import { ButlerErrorBoundary } from '../ErrorBoundary/ErrorBoundary';
 
 // Lazy-load pages
 const OverviewPage = React.lazy(() =>
@@ -162,11 +163,14 @@ const useStyles = makeStyles(() => ({
 
 const ButlerContent = () => {
   const classes = useStyles();
+  const location = useLocation();
   return (
     <Content>
       <div className={classes.watermark} />
       <div className={classes.contentInner}>
       <React.Suspense fallback={<Progress />}>
+        {/* Keyed on the path so navigating away clears a previous error. */}
+        <ButlerErrorBoundary key={location.pathname}>
         <Routes>
           <Route path="/" element={<OverviewPage />} />
           <Route path={teamRouteRef.path} element={<DashboardPage />} />
@@ -205,6 +209,7 @@ const ButlerContent = () => {
           />
           <Route path={adminSettingsRouteRef.path} element={<SettingsPage />} />
         </Routes>
+        </ButlerErrorBoundary>
       </React.Suspense>
       </div>
     </Content>

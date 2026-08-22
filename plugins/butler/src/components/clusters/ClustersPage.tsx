@@ -1,7 +1,6 @@
 // Copyright 2026 The Butler Authors.
 // SPDX-License-Identifier: Apache-2.0
 
-import { useEffect, useState, useCallback } from 'react';
 import { useParams, Link as RouterLink } from 'react-router-dom';
 import { useApi } from '@backstage/core-plugin-api';
 import {
@@ -18,6 +17,7 @@ import ArrowBackIcon from '@material-ui/icons/ArrowBack';
 import RefreshIcon from '@material-ui/icons/Refresh';
 import { butlerApiRef } from '../../api/ButlerApi';
 import type { Cluster } from '../../api/types/clusters';
+import { useButlerResource } from '../../hooks/useButlerResource';
 import { StatusBadge } from '../StatusBadge/StatusBadge';
 import { useButlerRoutes } from '../../hooks/useButlerRoutes';
 
@@ -77,40 +77,29 @@ export const ClustersPage = () => {
   const api = useApi(butlerApiRef);
   const routes = useButlerRoutes();
   const { team } = useParams<{ team: string }>();
-  const [clusters, setClusters] = useState<Cluster[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<Error | undefined>();
-
-  const fetchClusters = useCallback(async () => {
-    setLoading(true);
-    setError(undefined);
-    try {
+  const state = useButlerResource<Cluster[]>(
+    async () => {
       const response = await api.listClusters({ team: team || undefined });
-      setClusters(response.clusters || []);
-    } catch (e) {
-      setError(e instanceof Error ? e : new Error(String(e)));
-    } finally {
-      setLoading(false);
-    }
-  }, [api, team]);
+      return response.clusters || [];
+    },
+    { deps: [api, team] },
+  );
 
-  useEffect(() => {
-    fetchClusters();
-  }, [fetchClusters]);
-
-  if (loading) {
+  if (state.status === 'loading') {
     return <Progress />;
   }
 
-  if (error) {
+  if (state.status === 'error') {
     return (
       <EmptyState
         title="Failed to load clusters"
-        description={error.message}
+        description={state.error.message}
         missing="info"
       />
     );
   }
+
+  const clusters = state.data;
 
   const columns: TableColumn<ClusterRow>[] = [
     {
@@ -182,7 +171,7 @@ export const ClustersPage = () => {
             variant="outlined"
             size="small"
             startIcon={<RefreshIcon />}
-            onClick={fetchClusters}
+            onClick={() => state.refresh()}
           >
             Refresh
           </Button>
