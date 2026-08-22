@@ -196,6 +196,14 @@ butlerAuth:
 #
 # Leave butlerSigning.existingSecret empty (the default) to keep the
 # legacy carrier byte-identical. The chart does not require this field.
+# Maps a Backstage user to the butler-server email when the user is not a
+# catalog User entity with spec.profile.email. The shipped Google sign-in
+# resolver issues user:default/<local-part> refs, so deployments relying
+# on it set the mail domain here. Unset means only catalog-resolvable
+# users can use Butler; everyone else is refused at the proxy.
+butlerIdentity:
+  emailDomain: ""
+
 butlerSigning:
   # Name of an existing Secret in the release namespace holding the
   # Ed25519 private key in PEM (PKCS#8) form. The Secret is mounted as a

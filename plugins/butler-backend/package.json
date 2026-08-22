@@ -20,6 +20,7 @@
     "@backstage/backend-defaults": "^0.17.5",
     "@backstage/backend-plugin-api": "^1.9.3",
     "@backstage/config": "^1.3.8",
+    "@backstage/plugin-catalog-node": "^2.2.3",
     "@backstage/plugin-permission-common": "^0.9.9",
     "@internal/plugin-butler-common": "workspace:^",
     "express": "^4.21.0",

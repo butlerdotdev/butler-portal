@@ -19,7 +19,9 @@ import {
   createBackendPlugin,
 } from '@backstage/backend-plugin-api';
 import { butlerPermissions } from '@internal/plugin-butler-common';
+import { catalogServiceRef } from '@backstage/plugin-catalog-node';
 import { AuthManager } from './service/AuthManager';
+import { IdentityResolver } from './service/IdentityResolver';
 import { loadPortalSigner } from './service/PortalSigner';
 import { createRouter } from './router';
 import { validateButlerAuth } from './validation';
@@ -65,6 +67,7 @@ export const butlerPlugin = createBackendPlugin({
         lifecycle: coreServices.lifecycle,
         permissions: coreServices.permissions,
         permissionsRegistry: coreServices.permissionsRegistry,
+        catalog: catalogServiceRef,
       },
       async init({
         config,
@@ -76,6 +79,7 @@ export const butlerPlugin = createBackendPlugin({
         lifecycle,
         permissions,
         permissionsRegistry,
+        catalog,
       }) {
         // Registering the permissions publishes them on the plugin's
         // permission metadata endpoint, which is how RBAC discovers them
@@ -133,6 +137,17 @@ export const butlerPlugin = createBackendPlugin({
           logger: logger.child({ service: 'butler-portal-signer' }),
         });
 
+        // Identity mapping from Backstage user to butler-server email. The
+        // catalog User entity's profile email is preferred; the configured
+        // domain covers sign-in resolvers that issue local-part-only refs.
+        const identityResolver = new IdentityResolver({
+          userInfo,
+          auth,
+          catalog,
+          emailDomain: config.getOptionalString('butler.identity.emailDomain'),
+          logger: logger.child({ service: 'butler-identity' }),
+        });
+
         // Create the proxy router
         const router = await createRouter({
           baseUrl,
@@ -146,6 +161,7 @@ export const butlerPlugin = createBackendPlugin({
           allowUnmappedRoutes:
             config.getOptionalBoolean('butler.authorization.allowUnmappedRoutes') ??
             false,
+          identityResolver,
         });
 
         // Router is mounted under Backstage's default-deny auth gate.

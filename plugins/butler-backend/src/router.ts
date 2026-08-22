@@ -30,6 +30,10 @@ import { AuthorizeResult } from '@backstage/plugin-permission-common';
 import { resolveRoutePermission } from '@internal/plugin-butler-common';
 import { AuthManager } from './service/AuthManager';
 import { PortalSigner } from './service/PortalSigner';
+import {
+  IdentityResolver,
+  UnresolvableIdentityError,
+} from './service/IdentityResolver';
 
 /**
  * Outcome of the proxy-side authorization check for one request.
@@ -196,11 +200,18 @@ export async function createRouter(options: {
   // butler-server route cannot reach the service-account credential
   // without being classified first.
   allowUnmappedRoutes?: boolean;
+  // Resolves the butler-server identity of the Backstage caller. When
+  // omitted (tests exercising only the relay) one is built from userInfo
+  // and auth without catalog or domain fallback.
+  identityResolver?: IdentityResolver;
 }): Promise<Router> {
   const { baseUrl, authManager, httpAuth, userInfo, auth, logger } = options;
   const portalSigner = options.portalSigner ?? null;
   const permissions = options.permissions;
   const allowUnmappedRoutes = options.allowUnmappedRoutes ?? false;
+  const identityResolver =
+    options.identityResolver ??
+    new IdentityResolver({ userInfo, auth, logger });
   const targetUrl = baseUrl.replace(/\/+$/, '');
 
   const router = Router();
@@ -254,35 +265,15 @@ export async function createRouter(options: {
   });
 
   /**
-   * Resolves the Backstage user's email from the request credentials.
-   * Returns undefined if the user is not authenticated or is a guest.
+   * Resolves the caller's butler-server email. Undefined for service
+   * principals; throws when an authenticated user cannot be mapped to an
+   * email, so nothing is forwarded under a guessed identity.
    */
-  async function resolveUserEmail(req: Request): Promise<string | undefined> {
-    try {
-      const credentials = await httpAuth.credentials(req, {
-        allow: ['user'],
-      });
-
-      if (auth.isPrincipal(credentials, 'user')) {
-        const info = await userInfo.getUserInfo(credentials);
-        // userEntityRef is like "user:default/abagan"
-        const entityRef = info.userEntityRef;
-        // For now, we don't have a catalog lookup — derive email from the
-        // entity name + configured domain. The entity name comes from the
-        // email local part set in our sign-in resolver.
-        const name = entityRef.split('/').pop();
-        if (name && name.includes('@')) {
-          return name;
-        }
-        // If the entity ref doesn't contain @, this is a local-part-only ref.
-        // We can't derive the full email without more context.
-        // Return the name so the frontend at least has the identity.
-        return name || undefined;
-      }
-    } catch {
-      // Not authenticated or guest user — fall through
-    }
-    return undefined;
+  async function resolveCallerEmail(req: Request): Promise<string | undefined> {
+    const credentials = await httpAuth.credentials(req, {
+      allow: ['user', 'service'],
+    });
+    return identityResolver.resolveEmail(credentials);
   }
 
   /**
@@ -352,9 +343,21 @@ export async function createRouter(options: {
 
   router.get('/_identity', async (req: Request, res: Response) => {
     try {
-      const userLocalPart = await resolveUserEmail(req);
+      let email: string | undefined;
+      try {
+        email = await resolveCallerEmail(req);
+      } catch (err) {
+        if (err instanceof UnresolvableIdentityError) {
+          res.status(403).json({
+            error: 'forbidden',
+            reason: 'caller identity could not be resolved to an email',
+          });
+          return;
+        }
+        throw err;
+      }
 
-      if (!userLocalPart) {
+      if (!email) {
         res.json({
           authenticated: false,
           email: null,
@@ -365,25 +368,13 @@ export async function createRouter(options: {
         return;
       }
 
-      // Try to find the user in butler-server by listing all users
-      // and matching on email
+      // Find the user in butler-server by exact email.
       const usersResponse = await butlerFetch('/users');
       const users = usersResponse?.users ?? [];
-
-      // Match on email or username
-      let matchedUser: any = null;
-      for (const u of users) {
-        const userEmail = u.email || u.metadata?.name || '';
-        const userName = u.username || u.metadata?.name || '';
-        if (
-          userEmail.toLowerCase().startsWith(userLocalPart.toLowerCase() + '@') ||
-          userEmail.toLowerCase() === userLocalPart.toLowerCase() ||
-          userName.toLowerCase() === userLocalPart.toLowerCase()
-        ) {
-          matchedUser = u;
-          break;
-        }
-      }
+      const matchedUser: any =
+        users.find(
+          (u: any) => String(u.email || '').toLowerCase() === email,
+        ) ?? null;
 
       const isPlatformAdmin = matchedUser?.isPlatformAdmin === true ||
         matchedUser?.isAdmin === true ||
@@ -403,13 +394,7 @@ export async function createRouter(options: {
         const members = membersResponse?.members ?? [];
 
         for (const member of members) {
-          const memberEmail = member.email || '';
-          const memberName = member.username || member.name || '';
-          if (
-            memberEmail.toLowerCase().startsWith(userLocalPart.toLowerCase() + '@') ||
-            memberEmail.toLowerCase() === userLocalPart.toLowerCase() ||
-            memberName.toLowerCase() === userLocalPart.toLowerCase()
-          ) {
+          if (String(member.email || '').toLowerCase() === email) {
             userTeams.push({
               ...team,
               role: member.role || 'viewer',
@@ -419,24 +404,16 @@ export async function createRouter(options: {
         }
       }
 
-      // Construct the canonical email. This MUST match what we send as
-      // X-Butler-User-Email in proxy requests so workspace ownership,
-      // SSH key resolution, and dashboard filtering all use the same email.
-      const canonicalEmail = userLocalPart.includes('@')
-        ? userLocalPart
-        : `${userLocalPart}@butlerlabs.dev`;
-
       logger.info('Resolved Backstage user identity', {
-        user: userLocalPart,
-        email: canonicalEmail,
+        email,
         isPlatformAdmin,
         teamCount: userTeams.length,
       });
 
       res.json({
         authenticated: true,
-        email: canonicalEmail,
-        displayName: matchedUser?.name || matchedUser?.displayName || userLocalPart,
+        email,
+        displayName: matchedUser?.name || matchedUser?.displayName || email,
         isPlatformAdmin,
         teams: userTeams,
       });
@@ -479,17 +456,24 @@ export async function createRouter(options: {
         Authorization: `Bearer ${token}`,
       };
 
-      // Extract Backstage user email and forward it.
-      // The sign-in resolver creates entity refs from the email local part
-      // (e.g., abagan@butlerlabs.dev → user:default/abagan), so we may
-      // only get the local part. Reconstruct the full email for the server
-      // to use as the effective user identity.
-      const userEmail = await resolveUserEmail(req);
+      // The caller's identity travels either as the legacy
+      // X-Butler-User-Email header or, when the signer is active, inside
+      // the portal proof. An authenticated user that cannot be resolved is
+      // refused rather than forwarded as the service account.
       let fullEmail: string | undefined;
-      if (userEmail) {
-        fullEmail = userEmail.includes('@')
-          ? userEmail
-          : `${userEmail}@butlerlabs.dev`;
+      try {
+        fullEmail = await resolveCallerEmail(req);
+      } catch (err) {
+        logger.warn('Refusing proxy request: caller identity unresolvable', {
+          error: String(err),
+        });
+        res.status(403).json({
+          error: 'forbidden',
+          reason: 'caller identity could not be resolved to an email',
+        });
+        return;
+      }
+      if (fullEmail) {
         forwardHeaders['X-Butler-User-Email'] = fullEmail;
       }
 
@@ -511,10 +495,15 @@ export async function createRouter(options: {
         forwardHeaders['Accept'] = req.headers['accept'] as string;
       }
 
-      // Forward X-Butler-Team header for team-scoped requests
+      // Forward the team and environment scope headers (ADR-009).
       if (req.headers['x-butler-team']) {
         forwardHeaders['X-Butler-Team'] = req.headers[
           'x-butler-team'
+        ] as string;
+      }
+      if (req.headers['x-butler-environment']) {
+        forwardHeaders['X-Butler-Environment'] = req.headers[
+          'x-butler-environment'
         ] as string;
       }
 
@@ -529,7 +518,7 @@ export async function createRouter(options: {
         method: req.method,
         incomingPath: req.path,
         targetPath,
-        userEmail: userEmail || 'anonymous',
+        userEmail: fullEmail || 'service',
       });
 
       // Determine the request body.
@@ -653,6 +642,7 @@ export function createButlerUpgradeHandler(deps: {
   auth?: AuthService;
   permissions?: PermissionsService;
   allowUnmappedRoutes?: boolean;
+  identityResolver?: IdentityResolver;
 }): (request: IncomingMessage, socket: Duplex, head: Buffer) => void {
   const {
     httpAuth,
@@ -661,11 +651,14 @@ export function createButlerUpgradeHandler(deps: {
     authManager,
     logger,
     portalSigner,
-    userInfo,
-    auth,
     permissions,
     allowUnmappedRoutes,
   } = deps;
+  const identityResolver =
+    deps.identityResolver ??
+    (deps.userInfo && deps.auth
+      ? new IdentityResolver({ userInfo: deps.userInfo, auth: deps.auth, logger })
+      : undefined);
   const refuse = (socket: Duplex, status: string) => {
     socket.end(
       `HTTP/1.1 ${status}\r\n` +
@@ -701,31 +694,24 @@ export function createButlerUpgradeHandler(deps: {
             return;
           }
         }
-        // Resolve the acting user's email when the Stage 2 carrier is
-        // configured AND the credentials principal is a user. This mirrors
-        // the HTTP proxy's resolveUserEmail: entity ref local part with
-        // butlerlabs.dev domain fallback. When portalSigner is null or
-        // the upgrade is a service-principal call, subEmail stays
-        // undefined and handleWsRelay falls back to the legacy carrier.
+        // With the signer active the relay carries a proof for the acting
+        // user, so the identity must resolve; an unresolvable user is
+        // refused rather than relayed under the service account.
         let subEmail: string | undefined;
-        if (
-          portalSigner &&
-          userInfo &&
-          auth &&
-          auth.isPrincipal(credentials, 'user')
-        ) {
+        if (portalSigner && identityResolver) {
           try {
-            const info = await userInfo.getUserInfo(credentials);
-            const name = info.userEntityRef.split('/').pop();
-            if (name) {
-              subEmail = name.includes('@')
-                ? name
-                : `${name}@butlerlabs.dev`;
-            }
-          } catch {
-            // Identity resolution failure falls through to the legacy
-            // carrier rather than rejecting the upgrade. Same posture as
-            // the HTTP path's resolveUserEmail catch.
+            subEmail = await identityResolver.resolveEmail(credentials);
+          } catch (err) {
+            logger.warn('WebSocket upgrade refused: caller identity unresolvable', {
+              error: String(err),
+            });
+            socket.end(
+              'HTTP/1.1 403 Forbidden\r\n' +
+                'Connection: close\r\n' +
+                'Content-Length: 0\r\n' +
+                '\r\n',
+            );
+            return;
           }
         }
         wss.handleUpgrade(request, socket as any, head, clientWs => {
