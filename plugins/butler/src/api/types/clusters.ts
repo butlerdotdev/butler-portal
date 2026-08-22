@@ -6,10 +6,15 @@ export interface Cluster {
     name: string;
     namespace: string;
     uid?: string;
+    resourceVersion?: string;
     creationTimestamp?: string;
+    labels?: Record<string, string>;
   };
   spec: {
     kubernetesVersion: string;
+    controlPlane?: {
+      replicas?: number;
+    };
     providerConfigRef?: {
       name: string;
       namespace?: string;
@@ -59,13 +64,23 @@ export interface Cluster {
   status?: {
     phase?: string;
     tenantNamespace?: string;
+    controlPlaneEndpoint?: string;
+    observedGeneration?: number;
+    lastTransitionTime?: string;
     workerNodesReady?: number;
     workerNodesDesired?: number;
     observedState?: {
+      kubernetesVersion?: string;
+      workers?: {
+        desired: number;
+        ready: number;
+        nodes?: string[];
+      };
       addons?: Array<{
         name: string;
         status: string;
         version?: string;
+        managedBy?: string;
       }>;
     };
     conditions?: Array<{
@@ -73,6 +88,7 @@ export interface Cluster {
       status: string;
       reason?: string;
       message?: string;
+      lastTransitionTime?: string;
     }>;
   };
 }
