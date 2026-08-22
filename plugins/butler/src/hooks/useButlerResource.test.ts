@@ -208,6 +208,32 @@ describe('useButlerResource', () => {
     }
   });
 
+  it('re-arms polling after a failed silent poll', async () => {
+    const fetcher = jest
+      .fn()
+      .mockResolvedValueOnce('one')
+      .mockRejectedValueOnce(new Error('blip'))
+      .mockResolvedValueOnce('two');
+    const { result } = renderHook(() =>
+      useButlerResource(fetcher, { deps: [], pollIntervalMs: 1000 }),
+    );
+    await flush();
+    expect(result.current).toMatchObject({ status: 'ready', data: 'one' });
+
+    await act(async () => {
+      jest.advanceTimersByTime(1000);
+    });
+    await flush();
+    expect(result.current).toMatchObject({ status: 'error', data: 'one' });
+
+    await act(async () => {
+      jest.advanceTimersByTime(1000);
+    });
+    await flush();
+    expect(result.current).toMatchObject({ status: 'ready', data: 'two' });
+    expect(fetcher).toHaveBeenCalledTimes(3);
+  });
+
   it('surfaces the initial load error without data', async () => {
     const fetcher = jest.fn().mockRejectedValue(new Error('nope'));
     const { result } = renderHook(() =>

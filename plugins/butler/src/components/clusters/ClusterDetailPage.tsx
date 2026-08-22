@@ -136,13 +136,17 @@ const CLUSTER_POLL_MS = 5000;
 export function clusterPollInterval(
   cluster: Cluster | undefined,
 ): number | null {
-  if (!cluster) return null;
-  const status = cluster.status;
-  if (!status) return CLUSTER_POLL_MS;
-  const converging =
-    status.workerNodesReady !== status.workerNodesDesired ||
-    status.phase !== 'Ready';
-  return converging ? CLUSTER_POLL_MS : null;
+  // Mirrors the console rule: poll only while the status block says the
+  // cluster is still converging. A missing status or missing counters is
+  // not treated as converging.
+  if (!cluster?.status) return null;
+  const { workerNodesReady, workerNodesDesired, phase } = cluster.status;
+  const workersConverging =
+    workerNodesReady !== undefined &&
+    workerNodesDesired !== undefined &&
+    workerNodesReady !== workerNodesDesired;
+  const notReady = Boolean(phase) && phase !== 'Ready';
+  return workersConverging || notReady ? CLUSTER_POLL_MS : null;
 }
 
 function errorMessage(e: unknown, prefix: string): string {

@@ -91,6 +91,7 @@ export function useButlerResource<T>(
   // previous generation are ignored when they resolve.
   const generationRef = useRef(0);
   const inFlightRef = useRef<Promise<void> | null>(null);
+  const lastDataRef = useRef<T | undefined>(undefined);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const clearTimer = () => {
@@ -113,6 +114,7 @@ export function useButlerResource<T>(
         const data = await fetcherRef.current();
         if (generation !== generationRef.current) return;
         dispatch({ type: 'success', data });
+        lastDataRef.current = data;
         const next = resolveInterval(intervalRef.current, data);
         if (next !== null) {
           timerRef.current = setTimeout(() => {
@@ -123,6 +125,17 @@ export function useButlerResource<T>(
       } catch (e) {
         if (generation !== generationRef.current) return;
         dispatch({ type: 'failure', error: toError(e) });
+        // A failed silent poll re-arms on the last known data so a
+        // transient error does not freeze the page on a stale state.
+        if (silent) {
+          const next = resolveInterval(intervalRef.current, lastDataRef.current);
+          if (next !== null) {
+            timerRef.current = setTimeout(() => {
+              timerRef.current = null;
+              void run(true);
+            }, next);
+          }
+        }
       } finally {
         if (generation === generationRef.current) {
           inFlightRef.current = null;
