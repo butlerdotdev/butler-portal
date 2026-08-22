@@ -1,0 +1,112 @@
+// Copyright 2026 The Butler Authors.
+// SPDX-License-Identifier: Apache-2.0
+
+import { ButlerApiClient } from './ButlerApiClient';
+
+type FetchCall = { url: string; init: RequestInit | undefined };
+
+function makeClient(responder: (url: string) => Partial<Response>) {
+  const calls: FetchCall[] = [];
+  const fetchFn = jest.fn(async (url: string, init?: RequestInit) => {
+    calls.push({ url, init });
+    return responder(url) as Response;
+  });
+  const client = new ButlerApiClient({
+    discoveryApi: { getBaseUrl: async () => 'http://localhost/api/butler' },
+    fetchApi: { fetch: fetchFn as unknown as typeof fetch },
+  });
+  return { client, calls };
+}
+
+function jsonResponse(body: unknown, status = 200): Partial<Response> {
+  return {
+    ok: status >= 200 && status < 300,
+    status,
+    statusText: 'OK',
+    json: async () => body,
+    text: async () => JSON.stringify(body),
+  };
+}
+
+describe('ButlerApiClient cluster detail reads', () => {
+  it('fetches machine requests from the machines path', async () => {
+    const { client, calls } = makeClient(() =>
+      jsonResponse({ machineRequests: [{ metadata: { name: 'm-1' } }] }),
+    );
+    const result = await client.getClusterMachineRequests('ns', 'c1');
+    expect(calls[0].url).toBe(
+      'http://localhost/api/butler/clusters/ns/c1/machines',
+    );
+    expect(result.machineRequests).toHaveLength(1);
+  });
+
+  it('fetches load balancer requests from the load-balancers path', async () => {
+    const { client, calls } = makeClient(() =>
+      jsonResponse({ loadBalancerRequests: [] }),
+    );
+    const result = await client.getClusterLoadBalancerRequests('ns', 'c1');
+    expect(calls[0].url).toBe(
+      'http://localhost/api/butler/clusters/ns/c1/load-balancers',
+    );
+    expect(result.loadBalancerRequests).toEqual([]);
+  });
+
+  it('fetches the tenant control plane projection', async () => {
+    const { client, calls } = makeClient(() =>
+      jsonResponse({
+        name: 'c1',
+        namespace: 'tenant-c1',
+        specVersion: 'v1.31.0',
+        status: { phase: 'Ready', replicas: 2, readyReplicas: 2 },
+      }),
+    );
+    const result = await client.getClusterTenantControlPlane('ns', 'c1');
+    expect(calls[0].url).toBe(
+      'http://localhost/api/butler/clusters/ns/c1/tenantcontrolplane',
+    );
+    expect(result.status?.readyReplicas).toBe(2);
+  });
+
+  it('exports YAML as text with a yaml Accept header', async () => {
+    const yaml = 'apiVersion: butler.butlerlabs.dev/v1alpha1\nkind: TenantCluster\n';
+    const { client, calls } = makeClient(() => ({
+      ok: true,
+      status: 200,
+      statusText: 'OK',
+      text: async () => yaml,
+      json: async () => {
+        throw new Error('not json');
+      },
+    }));
+    const result = await client.exportClusterYAML('ns', 'c1');
+    expect(result).toBe(yaml);
+    expect(calls[0].url).toBe(
+      'http://localhost/api/butler/clusters/ns/c1/export',
+    );
+    const headers = calls[0].init?.headers as Record<string, string>;
+    expect(headers.Accept).toBe('application/x-yaml');
+    expect(headers['Content-Type']).toBeUndefined();
+  });
+
+  it('sends the team context header on the text path', async () => {
+    const { client, calls } = makeClient(() => ({
+      ok: true,
+      status: 200,
+      statusText: 'OK',
+      text: async () => 'kind: TenantCluster\n',
+    }));
+    client.setTeamContext('platform');
+    await client.exportClusterYAML('ns', 'c1');
+    const headers = calls[0].init?.headers as Record<string, string>;
+    expect(headers['X-Butler-Team']).toBe('platform');
+  });
+
+  it('throws the standard error shape when export fails', async () => {
+    const { client } = makeClient(() =>
+      jsonResponse({ error: 'cluster not found' }, 404),
+    );
+    await expect(client.exportClusterYAML('ns', 'missing')).rejects.toThrow(
+      'Butler API error (404): cluster not found',
+    );
+  });
+});

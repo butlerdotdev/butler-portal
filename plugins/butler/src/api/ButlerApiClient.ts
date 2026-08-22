@@ -26,6 +26,11 @@ import type {
 } from './types/providers';
 import type { TeamInfo } from './types/teams';
 import type {
+  MachineRequestListResponse,
+  LoadBalancerRequestListResponse,
+} from './types/machines';
+import type { TenantControlPlaneSummary } from './types/steward';
+import type {
   AddonDefinition,
   InstalledAddon,
   CatalogResponse,
@@ -135,6 +140,34 @@ export class ButlerApiClient implements ButlerApi {
     }
 
     return response.json() as Promise<T>;
+  }
+
+  private async requestText(path: string, accept: string): Promise<string> {
+    const baseUrl = await this.getBaseUrl();
+    const url = `${baseUrl}${path}`;
+
+    const headers: Record<string, string> = { Accept: accept };
+    if (this.teamContext) {
+      headers['X-Butler-Team'] = this.teamContext;
+    }
+
+    const response = await this.fetchApi.fetch(url, { method: 'GET', headers });
+
+    if (!response.ok) {
+      let errorMessage: string;
+      try {
+        const errorBody = await response.json();
+        errorMessage =
+          errorBody.message || errorBody.error || response.statusText;
+      } catch {
+        errorMessage = response.statusText;
+      }
+      throw new Error(
+        `Butler API error (${response.status}): ${errorMessage}`,
+      );
+    }
+
+    return response.text();
   }
 
   private get<T>(path: string): Promise<T> {
@@ -264,6 +297,40 @@ export class ButlerApiClient implements ButlerApi {
   ): Promise<{ events: ClusterEvent[] }> {
     return this.get<{ events: ClusterEvent[] }>(
       `/clusters/${namespace}/${name}/events`,
+    );
+  }
+
+  async getClusterMachineRequests(
+    namespace: string,
+    name: string,
+  ): Promise<MachineRequestListResponse> {
+    return this.get<MachineRequestListResponse>(
+      `/clusters/${namespace}/${name}/machines`,
+    );
+  }
+
+  async getClusterLoadBalancerRequests(
+    namespace: string,
+    name: string,
+  ): Promise<LoadBalancerRequestListResponse> {
+    return this.get<LoadBalancerRequestListResponse>(
+      `/clusters/${namespace}/${name}/load-balancers`,
+    );
+  }
+
+  async getClusterTenantControlPlane(
+    namespace: string,
+    name: string,
+  ): Promise<TenantControlPlaneSummary> {
+    return this.get<TenantControlPlaneSummary>(
+      `/clusters/${namespace}/${name}/tenantcontrolplane`,
+    );
+  }
+
+  async exportClusterYAML(namespace: string, name: string): Promise<string> {
+    return this.requestText(
+      `/clusters/${namespace}/${name}/export`,
+      'application/x-yaml',
     );
   }
 

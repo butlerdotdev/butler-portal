@@ -25,6 +25,11 @@ import type {
 } from './types/providers';
 import type { TeamInfo } from './types/teams';
 import type {
+  MachineRequestListResponse,
+  LoadBalancerRequestListResponse,
+} from './types/machines';
+import type { TenantControlPlaneSummary } from './types/steward';
+import type {
   AddonDefinition,
   InstalledAddon,
   CatalogResponse,
@@ -124,6 +129,19 @@ export interface ButlerApi {
     namespace: string,
     name: string,
   ): Promise<{ events: ClusterEvent[] }>;
+  getClusterMachineRequests(
+    namespace: string,
+    name: string,
+  ): Promise<MachineRequestListResponse>;
+  getClusterLoadBalancerRequests(
+    namespace: string,
+    name: string,
+  ): Promise<LoadBalancerRequestListResponse>;
+  getClusterTenantControlPlane(
+    namespace: string,
+    name: string,
+  ): Promise<TenantControlPlaneSummary>;
+  exportClusterYAML(namespace: string, name: string): Promise<string>;
   toggleClusterWorkspaces(
     namespace: string,
     name: string,
