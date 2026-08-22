@@ -149,6 +149,11 @@ export class IdentityResolver {
       };
     }
 
+    // A catalog outage with no domain fallback is not a verdict about the
+    // user; surface it without remembering it so the next request retries.
+    if (catalogFailed) {
+      throw new Error(`catalog lookup failed for ${entityRef} and no email domain is configured`);
+    }
     throw new UnresolvableIdentityError(entityRef);
   }
 }
