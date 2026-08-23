@@ -633,6 +633,8 @@ export const fixtureIdentity = {
   email: 'ada@example.com',
   displayName: 'Ada Lovelace',
   isPlatformAdmin: true,
+  /** 'admin', 'viewer' or empty, as the server reports it. */
+  platformRole: 'admin',
   teams: fixtureTeams,
 };
 
