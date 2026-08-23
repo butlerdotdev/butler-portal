@@ -249,7 +249,9 @@ export const AdminClustersPage = () => {
   const api = useApi(butlerApiRef);
   const routes = useButlerRoutes();
   const navigate = useNavigate();
-  const { isAdmin } = useTeamContext();
+  // Reading the estate needs the read right; creating needs the platform
+  // role, so the two are separate here.
+  const { isAdmin, canAccessAdmin } = useTeamContext();
 
   const [clusters, setClusters] = useState<Cluster[]>([]);
   const [management, setManagement] = useState<ManagementCluster | null>(null);
@@ -316,8 +318,8 @@ export const AdminClustersPage = () => {
   }, [api]);
 
   useEffect(() => {
-    if (isAdmin) fetchData();
-  }, [fetchData, isAdmin]);
+    if (canAccessAdmin) fetchData();
+  }, [fetchData, canAccessAdmin]);
 
   const namespaces = useMemo(
     () => [...new Set(clusters.map(c => c.metadata.namespace))].sort(),
