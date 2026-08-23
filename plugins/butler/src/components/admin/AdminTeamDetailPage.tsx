@@ -15,6 +15,7 @@ import { butlerTokens, rgb, rgba } from '../../theme';
 import {
   ButlerButton,
   ButlerCallout,
+  ButlerAccessDenied,
   ButlerCard,
   ButlerDialog,
   ButlerErrorState,
@@ -674,6 +675,19 @@ export const AdminTeamDetailPage = () => {
       setDeletingTeam(false);
     }
   };
+
+  // Mutating controls on this page are not individually gated yet, so a
+  // platform viewer is told plainly rather than shown actions that would
+  // be refused.
+  if (!isAdmin) {
+    return (
+      <ButlerAccessDenied
+        resourceType="team"
+        message="Platform administrator access is required to manage a team."
+        homeTo={routes.admin()}
+      />
+    );
+  }
 
   if (loading) {
     return <ButlerLoading />;

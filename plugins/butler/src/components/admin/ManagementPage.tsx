@@ -32,6 +32,7 @@ import { butlerTokens, rgb, rgba } from '../../theme';
 import {
   ButlerBanner,
   ButlerButton,
+  ButlerAccessDenied,
   ButlerCard,
   ButlerCheckbox,
   ButlerChip,
@@ -485,6 +486,19 @@ export const ManagementPage = () => {
     setPodsLoaded(false);
     setAddonsLoaded(false);
   };
+
+  // Mutating controls on this page are not individually gated yet, so a
+  // platform viewer is told plainly rather than shown actions that would
+  // be refused.
+  if (!isAdmin) {
+    return (
+      <ButlerAccessDenied
+        resourceType="page"
+        message="Platform administrator access is required to view the management cluster."
+        homeTo={routes.admin()}
+      />
+    );
+  }
 
   if (loading) {
     return <ButlerLoading />;

@@ -777,12 +777,14 @@ export const AdminClustersPage = () => {
         title="All Clusters"
         subtitle="View and manage clusters across all teams"
         actions={
-          <ButlerButton
-            startIcon={<PlusIcon />}
-            onClick={() => setShowCreate(true)}
-          >
-            Create Cluster
-          </ButlerButton>
+          isAdmin ? (
+            <ButlerButton
+              startIcon={<PlusIcon />}
+              onClick={() => setShowCreate(true)}
+            >
+              Create Cluster
+            </ButlerButton>
+          ) : undefined
         }
       />
       {body}

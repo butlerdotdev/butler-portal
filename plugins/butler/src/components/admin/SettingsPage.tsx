@@ -15,6 +15,7 @@ import { useTeamContext } from '../../hooks/useTeamContext';
 import { butlerTokens, rgb } from '../../theme';
 import {
   ButlerBanner,
+  ButlerAccessDenied,
   ButlerCard,
   ButlerErrorState,
   ButlerInput,
@@ -183,6 +184,19 @@ export const SettingsPage = () => {
   }, [isAdmin, load]);
 
   let body: React.ReactNode;
+  // Mutating controls on this page are not individually gated yet, so a
+  // platform viewer is told plainly rather than shown actions that would
+  // be refused.
+  if (!isAdmin) {
+    return (
+      <ButlerAccessDenied
+        resourceType="page"
+        message="Platform administrator access is required to view platform settings."
+        homeTo={routes.admin()}
+      />
+    );
+  }
+
   if (loading) {
     body = <ButlerLoading />;
   } else if (error || !config) {

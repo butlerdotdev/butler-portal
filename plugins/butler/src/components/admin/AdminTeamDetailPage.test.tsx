@@ -153,15 +153,16 @@ describe('AdminTeamDetailPage', () => {
     expect(screen.getByRole('button', { name: 'Retry' })).toBeInTheDocument();
   });
 
-  it('reads as a platform viewer without offering mutations', async () => {
-    // The server grants admin reads to the viewer role, so the page must
-    // render rather than deny, with the mutating controls withheld.
+  it('tells a platform viewer this page needs the admin role', async () => {
+    // The mutating controls here are not individually gated yet, so a
+    // viewer is told plainly instead of being shown actions the server
+    // would refuse. Read-only access to team administration is a recorded gap.
     await renderPage(
       new MockButlerApi({
         identity: { isPlatformAdmin: false, platformRole: 'viewer' },
       }),
     );
 
-    expect(screen.queryByText('Access Denied')).not.toBeInTheDocument();
+    expect(await screen.findByText('Access Denied')).toBeInTheDocument();
   });
 });

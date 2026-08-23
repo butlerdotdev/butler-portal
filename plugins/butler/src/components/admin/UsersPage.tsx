@@ -11,6 +11,7 @@ import { butlerTokens, rgb, rgba } from '../../theme';
 import {
   ButlerButton,
   ButlerCallout,
+  ButlerAccessDenied,
   ButlerCard,
   ButlerChip,
   ButlerDialog,
@@ -514,6 +515,19 @@ export const UsersPage = () => {
   ];
 
   let body: React.ReactNode;
+  // Mutating controls on this page are not individually gated yet, so a
+  // platform viewer is told plainly rather than shown actions that would
+  // be refused.
+  if (!isAdmin) {
+    return (
+      <ButlerAccessDenied
+        resourceType="page"
+        message="Platform administrator access is required to manage users."
+        homeTo={routes.admin()}
+      />
+    );
+  }
+
   if (loading) {
     body = <ButlerLoading />;
   } else if (loadError) {
