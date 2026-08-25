@@ -16,6 +16,9 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 const APP = process.env.BUTLER_APP_URL ?? 'http://localhost:3000';
+// The identity list comes from the backend directly; the app port serves
+// the SPA and would answer this with HTML.
+const API = process.env.BUTLER_API_URL ?? 'http://localhost:7007';
 const OUT = process.env.BUTLER_ROLE_SHOTS ?? 'screenshots';
 const WIDTH = Number(process.env.BUTLER_ROLE_WIDTH ?? 1280);
 const TEAM = process.env.BUTLER_ROLE_TEAM ?? 'platform-engineering';
@@ -34,11 +37,21 @@ const ROUTES = [
   ['users', '/butler/admin/users'],
 ];
 
+/** Backstage guest sign-in, if the card is showing. */
+async function signIn(page) {
+  await page.goto(`${APP}/`, { waitUntil: 'networkidle' });
+  const guest = page.getByRole('button', { name: /enter/i });
+  if (await guest.count()) {
+    await guest.first().click();
+    await page.waitForLoadState('networkidle');
+  }
+}
+
 async function main() {
   const only = process.argv[2];
   const routes = only ? [['route', only]] : ROUTES;
 
-  const res = await fetch(`${APP}/api/butler/_dev/identities`);
+  const res = await fetch(`${API}/api/butler/_dev/identities`);
   if (!res.ok) {
     throw new Error(
       `The portal at ${APP} is not serving the role harness (${res.status}). ` +
@@ -57,12 +70,18 @@ async function main() {
         colorScheme: theme,
       });
       const page = await context.newPage();
+      // A Backstage session first, then the identity this session reviews.
+      // Without the sign-in every capture is just the sign-in card.
+      await signIn(page);
       await page.goto(
-        `${APP}/api/butler/_dev/act-as/${identity.key}?to=/butler`,
+        `${API}/api/butler/_dev/act-as/${identity.key}?to=/butler`,
         {
           waitUntil: 'domcontentloaded',
         },
       );
+      // The theme belongs to the app origin, not the backend's.
+      await page.goto(`${APP}/butler`, { waitUntil: 'domcontentloaded' });
+      await signIn(page);
       await page.evaluate(t => localStorage.setItem('theme', t), theme);
       const dir = join(OUT, identity.key);
       mkdirSync(dir, { recursive: true });

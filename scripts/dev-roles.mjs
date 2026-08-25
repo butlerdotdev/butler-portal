@@ -27,6 +27,9 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 
 const APP = process.env.BUTLER_APP_URL ?? 'http://localhost:3000';
+// The identity list comes from the backend directly; the app port serves
+// the SPA and would answer this with HTML.
+const API = process.env.BUTLER_API_URL ?? 'http://localhost:7007';
 const PROFILES =
   process.env.BUTLER_ROLE_PROFILES ?? join(tmpdir(), 'butler-role-review');
 const SHOTS = process.env.BUTLER_ROLE_SHOTS ?? 'screenshots/role-review';
@@ -43,7 +46,7 @@ const LAYOUT = [
 ];
 
 async function loadIdentities() {
-  const res = await fetch(`${APP}/api/butler/_dev/identities`);
+  const res = await fetch(`${API}/api/butler/_dev/identities`);
   if (!res.ok) {
     throw new Error(
       `The portal at ${APP} is not serving the role harness (${res.status}). ` +
@@ -78,7 +81,7 @@ async function main() {
     const page = context.pages()[0] ?? (await context.newPage());
     // Binding through the backend sets the cookie for this profile only.
     await page.goto(
-      `${APP}/api/butler/_dev/act-as/${identity.key}?to=${encodeURIComponent(
+      `${API}/api/butler/_dev/act-as/${identity.key}?to=${encodeURIComponent(
         startRoute,
       )}`,
       { waitUntil: 'domcontentloaded' },
@@ -92,7 +95,7 @@ async function main() {
     process.stdout.write(
       `  ${label(s).padEnd(16)} ${s.identity.email.padEnd(
         38,
-      )} ${APP}/api/butler/_dev/act-as/${s.identity.key}\n`,
+      )} ${API}/api/butler/_dev/act-as/${s.identity.key}\n`,
     );
   }
   process.stdout.write(

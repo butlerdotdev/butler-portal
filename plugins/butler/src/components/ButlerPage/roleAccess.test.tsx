@@ -131,3 +131,30 @@ describe('a platform role keeps its scope visible inside a team', () => {
     20000,
   );
 });
+
+describe('the navigation only offers destinations a role can use', () => {
+  it('offers a platform admin the surfaces it can administer', async () => {
+    await renderAs('platformAdmin', '/butler/admin');
+    await waitFor(() => {
+      expect(screen.getByText('Admin Mode')).toBeInTheDocument();
+    });
+    for (const label of ['All Clusters', 'Teams', 'Users', 'Settings']) {
+      expect(screen.getByRole('link', { name: label })).toBeInTheDocument();
+    }
+  });
+
+  it('does not send a platform viewer to pages that only refuse it', async () => {
+    await renderAs('platformViewer', '/butler/admin');
+    await waitFor(() => {
+      expect(screen.getByText('Shadow Mode')).toBeInTheDocument();
+    });
+    expect(
+      screen.getByRole('link', { name: 'All Clusters' }),
+    ).toBeInTheDocument();
+    for (const label of ['Teams', 'Users', 'Management Cluster', 'Settings']) {
+      expect(
+        screen.queryByRole('link', { name: label }),
+      ).not.toBeInTheDocument();
+    }
+  });
+});

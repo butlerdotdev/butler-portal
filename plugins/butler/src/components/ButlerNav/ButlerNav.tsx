@@ -201,6 +201,49 @@ export const ButlerNav = () => {
       label: 'Mode',
       value: isAdmin ? 'Platform administration' : 'Platform (read only)',
     };
+    // Teams, Users, Management and Settings still answer a platform viewer
+    // with the admin-required card, so listing them would offer a
+    // destination that only refuses. They return here as each is made
+    // genuinely read-only.
+    if (!isAdmin) {
+      sections = [
+        {
+          items: [
+            {
+              to: routes.admin(),
+              label: 'Overview',
+              icon: <DashboardNavIcon />,
+              end: true,
+            },
+            {
+              to: routes.adminClusters(),
+              label: 'All Clusters',
+              icon: <ClustersNavIcon />,
+            },
+          ],
+        },
+        {
+          label: 'Infrastructure',
+          items: [
+            {
+              to: routes.adminProviders(),
+              label: 'Providers',
+              icon: <ProvidersNavIcon />,
+            },
+          ],
+        },
+        {
+          label: 'Platform',
+          items: [
+            {
+              to: routes.adminIdentityProviders(),
+              label: 'Identity Providers',
+              icon: <IdentityNavIcon />,
+            },
+          ],
+        },
+      ];
+    }
   } else if (activeTeam) {
     const team = activeTeam;
     sections = [
@@ -242,7 +285,7 @@ export const ButlerNav = () => {
 
   const active = mode === 'admin' ? classes.activeAdmin : classes.activeTeam;
   const footer =
-    mode === 'admin' && canAccessAdmin
+    mode === 'admin' && isAdmin
       ? { to: routes.adminSettings(), label: 'Settings' }
       : activeTeam
       ? { to: routes.teamSettings({ team: activeTeam }), label: 'Settings' }
