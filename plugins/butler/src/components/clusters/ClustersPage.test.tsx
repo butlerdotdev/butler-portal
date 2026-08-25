@@ -14,14 +14,22 @@ import {
   failedCluster,
 } from '../../api/fixtures/clusters';
 import { rootRouteRef } from '../../routes';
+import { TeamProvider } from '../../contexts/TeamProvider';
+import {
+  teamAdminIdentity,
+  teamOperatorIdentity,
+  teamViewerIdentity,
+} from '../../api/fixtures/identities';
 import { ClustersPage } from './ClustersPage';
 
 function renderList(api: MockButlerApi) {
   return renderInTestApp(
     <TestApiProvider apis={[[butlerApiRef, api]]}>
-      <Routes>
-        <Route path="/butler/t/:team/clusters" element={<ClustersPage />} />
-      </Routes>
+      <TeamProvider>
+        <Routes>
+          <Route path="/butler/t/:team/clusters" element={<ClustersPage />} />
+        </Routes>
+      </TeamProvider>
     </TestApiProvider>,
     {
       routeEntries: [`/butler/t/${FIXTURE_TEAM}/clusters`],
@@ -94,5 +102,22 @@ describe('ClustersPage', () => {
     ).toBeInTheDocument();
     expect(screen.getByText('boom')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Retry' })).toBeInTheDocument();
+  });
+});
+
+describe('ClustersPage create action follows the server rule', () => {
+  // checkOperatePermission refuses viewers, so offering them the action
+  // would be a control that always fails.
+  it.each([
+    ['team admin', teamAdminIdentity, true],
+    ['team operator', teamOperatorIdentity, true],
+    ['team viewer', teamViewerIdentity, false],
+  ])('%s offered create: %s', async (_name, identity, offered) => {
+    await renderList(new MockButlerApi({ identity }));
+    await screen.findByRole('heading', { name: 'Clusters' });
+
+    const link = screen.queryByRole('link', { name: 'Create Cluster' });
+    if (offered) expect(link).toBeInTheDocument();
+    else expect(link).not.toBeInTheDocument();
   });
 });

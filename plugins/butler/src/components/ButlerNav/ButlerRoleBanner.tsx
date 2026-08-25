@@ -146,6 +146,10 @@ export const ButlerRoleBanner = () => {
   let variant: Variant | null = null;
   if (mode === 'admin' && isAdmin) variant = 'admin';
   else if (mode === 'admin' && canAccessAdmin) variant = 'shadow';
+  // A platform role browsing a team it does not belong to still carries
+  // platform reach, and was previously shown no scope at all there.
+  else if (isAdmin) variant = 'admin';
+  else if (canAccessAdmin && !activeTeamRole) variant = 'shadow';
   else if (activeTeam && activeTeamRole === 'admin') variant = 'team-admin';
   else if (activeTeam && activeTeamRole === 'operator')
     variant = 'team-operator';

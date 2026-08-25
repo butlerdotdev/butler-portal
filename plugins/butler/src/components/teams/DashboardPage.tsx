@@ -9,6 +9,7 @@ import { butlerTokens, rgb } from '../../theme';
 import { butlerApiRef } from '../../api/ButlerApi';
 import type { Cluster } from '../../api/types/clusters';
 import { useButlerRoutes } from '../../hooks/useButlerRoutes';
+import { useCanOperateTeam } from '../../hooks/useCanOperateTeam';
 import {
   ButlerButton,
   ButlerDashboardStat,
@@ -169,6 +170,8 @@ export const DashboardPage = () => {
   }
 
   const createPath = routes.createCluster({ team });
+  // Viewers cannot create clusters, so the action is not offered to them.
+  const canOperate = useCanOperateTeam(team);
 
   return (
     <ButlerStack>
@@ -199,9 +202,11 @@ export const DashboardPage = () => {
             <p className={classes.emptyText}>
               Get started by creating your first Kubernetes cluster.
             </p>
-            <ButlerButton component={RouterLink} to={createPath}>
-              Create Cluster
-            </ButlerButton>
+            {canOperate && (
+              <ButlerButton component={RouterLink} to={createPath}>
+                Create Cluster
+              </ButlerButton>
+            )}
           </div>
         ) : (
           <ButlerList aria-label="Recent clusters">
@@ -239,7 +244,7 @@ export const DashboardPage = () => {
         )}
       </ButlerListCard>
 
-      {recentClusters.length > 0 && (
+      {recentClusters.length > 0 && canOperate && (
         <div>
           <ButlerButton
             component={RouterLink}

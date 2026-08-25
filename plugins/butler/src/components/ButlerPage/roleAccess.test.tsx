@@ -115,3 +115,19 @@ describe('platform surfaces are closed to team roles', () => {
     },
   );
 });
+
+describe('a platform role keeps its scope visible inside a team', () => {
+  it.each([
+    ['platformAdmin', 'Admin Mode'],
+    ['platformViewer', 'Shadow Mode'],
+  ] as const)(
+    '%s sees %s on a team route',
+    async (role, banner) => {
+      await renderAs(role, `/butler/t/${FIXTURE_TEAM}/clusters`);
+      await waitFor(() => {
+        expect(screen.getByText(banner)).toBeInTheDocument();
+      });
+    },
+    20000,
+  );
+});

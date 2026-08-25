@@ -9,6 +9,7 @@ import type { Cluster } from '../../api/types/clusters';
 import { useButlerResource } from '../../hooks/useButlerResource';
 import { useClusterWatch } from '../../hooks/useClusterWatch';
 import { useButlerRoutes } from '../../hooks/useButlerRoutes';
+import { useCanOperateTeam } from '../../hooks/useCanOperateTeam';
 import { formatAge } from '../../utils/formatAge';
 import {
   ButlerButton,
@@ -136,7 +137,10 @@ export const ClustersPage = () => {
   }, [clusters, search, phaseFilter]);
 
   const createPath = routes.createCluster({ team: team ?? '' });
-  const createButton = (
+  // The server refuses cluster creation to viewers, so the action is only
+  // offered to the roles that can complete it.
+  const canOperate = useCanOperateTeam(team);
+  const createButton = canOperate ? (
     <ButlerButton
       component={RouterLink}
       to={createPath}
@@ -144,7 +148,7 @@ export const ClustersPage = () => {
     >
       Create Cluster
     </ButlerButton>
-  );
+  ) : undefined;
 
   let body: React.ReactNode;
   if (state.status === 'loading') {
