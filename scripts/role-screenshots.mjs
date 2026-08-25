@@ -69,6 +69,18 @@ async function main() {
         viewport: { width: WIDTH, height: 900 },
         colorScheme: theme,
       });
+      // Seed the identity before any page loads. Relying only on the act-as
+      // redirect leaves a race: the first /_identity call can go out before
+      // the cookie is readable, and the session then resolves as the guest
+      // identity for the rest of its life.
+      await context.addCookies([
+        {
+          name: 'butler-dev-identity',
+          value: identity.key,
+          domain: 'localhost',
+          path: '/',
+        },
+      ]);
       const page = await context.newPage();
       // A Backstage session first, then the identity this session reviews.
       // Without the sign-in every capture is just the sign-in card.

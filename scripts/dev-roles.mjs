@@ -78,6 +78,16 @@ async function main() {
         ],
       },
     );
+    // Seed the identity before the first load so the session cannot race
+    // its own cookie and resolve as the guest identity instead.
+    await context.addCookies([
+      {
+        name: 'butler-dev-identity',
+        value: identity.key,
+        domain: 'localhost',
+        path: '/',
+      },
+    ]);
     const page = context.pages()[0] ?? (await context.newPage());
     // Binding through the backend sets the cookie for this profile only.
     await page.goto(

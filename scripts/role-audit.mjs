@@ -53,6 +53,16 @@ const ACTIONS = [
   'Create Team',
 ];
 
+/** Backstage guest sign-in, if the card is showing. */
+async function signIn(page) {
+  await page.goto(`${APP}/`, { waitUntil: 'networkidle' });
+  const guest = page.getByRole('button', { name: /enter/i });
+  if (await guest.count()) {
+    await guest.first().click();
+    await page.waitForLoadState('networkidle');
+  }
+}
+
 async function main() {
   const { identities } = await (
     await fetch(`${API}/api/butler/_dev/identities`)
@@ -63,32 +73,56 @@ async function main() {
     const context = await browser.newContext({
       viewport: { width: 1280, height: 900 },
     });
+    // Seed the identity before any page loads. Relying only on the act-as
+    // redirect leaves a race: the first /_identity call can go out before
+    // the cookie is readable, and the session then resolves as the guest
+    // identity for the rest of its life.
+    await context.addCookies([
+      {
+        name: 'butler-dev-identity',
+        value: identity.key,
+        domain: 'localhost',
+        path: '/',
+      },
+    ]);
     const page = await context.newPage();
-    await page.goto(`${APP}/`, { waitUntil: 'networkidle' });
-    const guest = page.getByRole('button', { name: /enter/i });
-    if (await guest.count()) {
-      await guest.first().click();
-      await page.waitForLoadState('networkidle');
-    }
+    await signIn(page);
     await page.goto(
       `${API}/api/butler/_dev/act-as/${identity.key}?to=/butler`,
       {
         waitUntil: 'domcontentloaded',
       },
     );
+    // Binding happens on the backend origin, so come back to the app and
+    // confirm the Backstage session is still established. Without this the
+    // session can fall back to the configured guest identity, and the audit
+    // then quietly reports that identity's answers under another role's name.
+    await signIn(page);
     for (const [name, path] of ROUTES) {
       await page
         .goto(`${APP}${path}`, { waitUntil: 'networkidle' })
         .catch(() => {});
       // Identity resolves before the route guards decide, so wait for the
       // role banner the resolved session renders rather than a fixed pause.
-      await page
-        .getByText(
-          /ADMIN MODE|SHADOW MODE|TEAM ADMIN|TEAM OPERATOR|TEAM VIEWER/,
-        )
-        .first()
-        .waitFor({ timeout: 15000 })
-        .catch(() => {});
+      // The dev server recompiles while it is being used, and a page that
+      // loads inside that window can come up before the plugin does. Give
+      // the session's own banner time to appear and reload once if it does
+      // not, so a recompile cannot be recorded as a role's real answer.
+      const banner = () =>
+        page
+          .getByText(
+            /ADMIN MODE|SHADOW MODE|TEAM ADMIN|TEAM OPERATOR|TEAM VIEWER/,
+          )
+          .first()
+          .waitFor({ timeout: 20000 })
+          .then(
+            () => true,
+            () => false,
+          );
+      if (!(await banner())) {
+        await page.reload({ waitUntil: 'networkidle' }).catch(() => {});
+        await banner();
+      }
       await page.waitForTimeout(2500);
       const landed = new URL(page.url()).pathname;
       const main = (
