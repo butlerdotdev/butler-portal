@@ -13,14 +13,22 @@ import {
   readyCluster,
 } from '../../api/fixtures/clusters';
 import { rootRouteRef } from '../../routes';
+import { TeamProvider } from '../../contexts/TeamProvider';
+import {
+  teamAdminIdentity,
+  teamViewerIdentity,
+} from '../../api/fixtures/identities';
 import { DashboardPage } from './DashboardPage';
 
 function renderDashboard(api: MockButlerApi) {
   return renderInTestApp(
     <TestApiProvider apis={[[butlerApiRef, api]]}>
-      <Routes>
-        <Route path="/butler/t/:team" element={<DashboardPage />} />
-      </Routes>
+      {/* The create action depends on the caller's role in this team. */}
+      <TeamProvider>
+        <Routes>
+          <Route path="/butler/t/:team" element={<DashboardPage />} />
+        </Routes>
+      </TeamProvider>
     </TestApiProvider>,
     {
       routeEntries: [`/butler/t/${FIXTURE_TEAM}`],
@@ -31,7 +39,7 @@ function renderDashboard(api: MockButlerApi) {
 
 describe('DashboardPage', () => {
   it('renders team stats, recent clusters and the create action', async () => {
-    await renderDashboard(new MockButlerApi());
+    await renderDashboard(new MockButlerApi({ identity: teamAdminIdentity }));
 
     expect(
       await screen.findByRole('heading', { name: 'Dashboard' }),
@@ -74,5 +82,16 @@ describe('DashboardPage', () => {
     expect(
       screen.getByRole('link', { name: 'Create Cluster' }),
     ).toBeInTheDocument();
+  });
+});
+
+describe('DashboardPage create action follows the server rule', () => {
+  it('does not offer a team viewer an action the server refuses', async () => {
+    await renderDashboard(new MockButlerApi({ identity: teamViewerIdentity }));
+    await screen.findByRole('heading', { name: 'Dashboard' });
+
+    expect(
+      screen.queryByRole('link', { name: 'Create Cluster' }),
+    ).not.toBeInTheDocument();
   });
 });
