@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { DiscoveryApi, FetchApi } from '@backstage/core-plugin-api';
+import { devIdentityHeader } from './devIdentity';
 import { ButlerApi } from './ButlerApi';
 
 import type {
@@ -109,6 +110,7 @@ export class ButlerApiClient implements ButlerApi {
 
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
+      ...devIdentityHeader(),
     };
 
     if (this.teamContext) {
@@ -145,7 +147,10 @@ export class ButlerApiClient implements ButlerApi {
     const baseUrl = await this.getBaseUrl();
     const url = `${baseUrl}${path}`;
 
-    const headers: Record<string, string> = { Accept: accept };
+    const headers: Record<string, string> = {
+      Accept: accept,
+      ...devIdentityHeader(),
+    };
     if (this.teamContext) {
       headers['X-Butler-Team'] = this.teamContext;
     }

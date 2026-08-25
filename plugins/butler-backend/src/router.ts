@@ -34,6 +34,7 @@ import {
   IdentityResolver,
   UnresolvableIdentityError,
 } from './service/IdentityResolver';
+import { DevIdentities, DEV_IDENTITY_COOKIE } from './service/DevIdentities';
 
 /**
  * Outcome of the proxy-side authorization check for one request.
@@ -209,11 +210,17 @@ export async function createRouter(options: {
   // omitted (tests exercising only the relay) one is built from userInfo
   // and auth without catalog or domain fallback.
   identityResolver?: IdentityResolver;
+  // Local review only. When present, a session may name one of the
+  // configured dev identities and the proxy acts as that butler-server
+  // user. Authorization still happens in butler-server; this only stands
+  // in for the Backstage sign-in step. Never constructed in production.
+  devIdentities?: DevIdentities | null;
 }): Promise<Router> {
   const { baseUrl, authManager, httpAuth, userInfo, auth, logger } = options;
   const portalSigner = options.portalSigner ?? null;
   const permissions = options.permissions;
   const allowUnmappedRoutes = options.allowUnmappedRoutes ?? false;
+  const devIdentities = options.devIdentities ?? null;
   const identityResolver =
     options.identityResolver ??
     new IdentityResolver({ userInfo, auth, logger });
@@ -255,6 +262,7 @@ export async function createRouter(options: {
     permissions,
     allowUnmappedRoutes,
     identityResolver,
+    devIdentities,
   });
   let upgradeHandlerAttached = false;
 
@@ -276,6 +284,12 @@ export async function createRouter(options: {
    * email, so nothing is forwarded under a guessed identity.
    */
   async function resolveCallerEmail(req: Request): Promise<string | undefined> {
+    // Local review sessions name the user they act as. The email still
+    // travels the normal path below, so butler-server authorizes it.
+    const devEmail = devIdentities?.emailFor(req);
+    if (devEmail) {
+      return devEmail;
+    }
     const credentials = await httpAuth.credentials(req, {
       allow: ['user', 'service'],
     });
@@ -346,6 +360,55 @@ export async function createRouter(options: {
       res.status(503).json({ status: 'degraded', ...snapshot });
     }
   });
+
+  // ---- Local role review (dev only) -------------------------------
+  // These routes exist only when DevIdentities loaded, which cannot
+  // happen in production. They select which butler-server user this
+  // browser session acts as; every authorization decision still belongs
+  // to butler-server.
+  if (devIdentities) {
+    router.get('/_dev/identities', (_req: Request, res: Response) => {
+      res.json({
+        identities: devIdentities.list().map(i => ({
+          key: i.key,
+          email: i.email,
+          label: i.label ?? i.key,
+        })),
+      });
+    });
+
+    router.get('/_dev/act-as/:key', (req: Request, res: Response) => {
+      const key = String(req.params.key);
+      const identity = devIdentities.get(key);
+      if (!identity) {
+        res.status(404).json({ error: `unknown dev identity '${key}'` });
+        return;
+      }
+      // Session cookie: it dies with the browser context, so a review
+      // window cannot outlive the review.
+      res.cookie(DEV_IDENTITY_COOKIE, key, {
+        httpOnly: false,
+        sameSite: 'lax',
+        path: '/',
+      });
+      logger.info('Local role review session bound', {
+        key,
+        email: identity.email,
+      });
+      const to = typeof req.query.to === 'string' ? req.query.to : '/butler';
+      // Only same-site paths, so this cannot be aimed at another origin.
+      const target =
+        to.startsWith('/') && !to.startsWith('//') ? to : '/butler';
+      res.redirect(target);
+    });
+
+    router.get('/_dev/whoami', async (req: Request, res: Response) => {
+      res.json({
+        actingAs: devIdentities.emailFor(req) ?? null,
+        via: 'local role review',
+      });
+    });
+  }
 
   router.get('/_identity', async (req: Request, res: Response) => {
     try {
@@ -663,6 +726,7 @@ export function createButlerUpgradeHandler(deps: {
   permissions?: PermissionsService;
   allowUnmappedRoutes?: boolean;
   identityResolver?: IdentityResolver;
+  devIdentities?: DevIdentities | null;
 }): (request: IncomingMessage, socket: Duplex, head: Buffer) => void {
   const {
     httpAuth,
@@ -673,6 +737,7 @@ export function createButlerUpgradeHandler(deps: {
     portalSigner,
     permissions,
     allowUnmappedRoutes,
+    devIdentities,
   } = deps;
   const identityResolver =
     deps.identityResolver ??
@@ -730,7 +795,11 @@ export function createButlerUpgradeHandler(deps: {
         let subEmail: string | undefined;
         if (portalSigner && identityResolver) {
           try {
-            subEmail = await identityResolver.resolveEmail(credentials);
+            // Same review-session override as the proxy, so a relayed
+            // terminal acts as the user the session is reviewing.
+            subEmail =
+              devIdentities?.emailFor(request as unknown as Request) ??
+              (await identityResolver.resolveEmail(credentials));
           } catch (err) {
             logger.warn(
               'WebSocket upgrade refused: caller identity unresolvable',

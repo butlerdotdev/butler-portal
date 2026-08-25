@@ -1,0 +1,37 @@
+# Local role review only. Layer this on top of app-config.local.yaml:
+#
+#   yarn dev:roles
+#
+# It lets one running portal serve five browser sessions, each acting as a
+# different butler-server user, so the whole product can be reviewed through
+# every authorization perspective at once.
+#
+# This only stands in for the Backstage sign-in step. Every authorization
+# decision still belongs to butler-server: the portal mints a proof for the
+# chosen user and the server answers for that user's real roles. Selecting an
+# identity here cannot grant a capability the user does not have.
+#
+# DevIdentities refuses to load when NODE_ENV is production, so this file
+# cannot take effect in a shipped process.
+#
+# The emails below are the canonical review identities on butler-beta. Point
+# them at your own butler-server users if you run a different backend.
+butler:
+  devAuth:
+    enabled: true
+    identities:
+      - key: platform-admin
+        label: Platform Admin
+        email: e2e-parity-padmin@butlerlabs.dev
+      - key: platform-viewer
+        label: Platform Viewer
+        email: e2e-parity-pviewer@butlerlabs.dev
+      - key: team-admin
+        label: Team Admin
+        email: e2e-parity-tadmin@butlerlabs.dev
+      - key: team-operator
+        label: Team Operator
+        email: e2e-parity-operator@butlerlabs.dev
+      - key: team-viewer
+        label: Team Viewer
+        email: e2e-parity-viewer@butlerlabs.dev

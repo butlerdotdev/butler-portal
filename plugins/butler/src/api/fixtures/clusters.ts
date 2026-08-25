@@ -10,6 +10,7 @@
  */
 
 import type { PlatformConfig } from '../types/config';
+import type { ButlerIdentity } from './identities';
 import type {
   Cluster,
   Node,
@@ -628,7 +629,7 @@ export const fixtureGroupSyncs = [
   { name: 'eng-readonly', role: 'viewer', identityProvider: 'corp-oidc' },
 ];
 
-export const fixtureIdentity = {
+export const fixtureIdentity: ButlerIdentity = {
   authenticated: true,
   email: 'ada@example.com',
   displayName: 'Ada Lovelace',

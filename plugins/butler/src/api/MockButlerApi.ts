@@ -29,6 +29,7 @@ import type {
 } from './types/machines';
 import type { TenantControlPlaneSummary } from './types/steward';
 import type { ButlerApi } from './ButlerApi';
+import type { ButlerIdentity } from './fixtures/identities';
 import type {
   Cluster,
   ClusterListResponse,
@@ -147,7 +148,7 @@ export interface MockButlerApiOptions {
   /** Override the initial cluster set. Defaults to the fixture clusters. */
   clusters?: Cluster[];
   /** Override the resolved caller identity. Defaults to the fixture identity. */
-  identity?: Partial<typeof fixtureIdentity>;
+  identity?: Partial<ButlerIdentity>;
 }
 
 function clone<T>(value: T): T {
@@ -162,7 +163,7 @@ function notFound(kind: string, id: string): Error {
 
 export class MockButlerApi implements ButlerApi {
   private clusters: Cluster[];
-  private identity: typeof fixtureIdentity;
+  private identity: ButlerIdentity;
   private readonly failures: Partial<Record<ButlerApiMethod, Error>>;
   private readonly latencyMs: number;
   private teamContext: string | null = null;
