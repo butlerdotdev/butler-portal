@@ -54,13 +54,27 @@ const ACTIONS = [
 ];
 
 /** Backstage guest sign-in, if the card is showing. */
+/**
+ * The guest card has to be gone before the audit reads a page, otherwise
+ * a role is recorded from the sign-in screen. Clicking once and hoping is
+ * what made earlier runs unreliable.
+ */
 async function signIn(page) {
-  await page.goto(`${APP}/`, { waitUntil: 'networkidle' });
-  const guest = page.getByRole('button', { name: /enter/i });
-  if (await guest.count()) {
-    await guest.first().click();
-    await page.waitForLoadState('networkidle');
+  for (let attempt = 0; attempt < 6; attempt++) {
+    await page.goto(`${APP}/`, { waitUntil: 'networkidle' }).catch(() => {});
+    const guest = page.getByRole('button', { name: /^enter$/i });
+    if ((await guest.count()) === 0) return true;
+    await guest
+      .first()
+      .click()
+      .catch(() => {});
+    await page.waitForTimeout(1200);
+    await page.waitForLoadState('networkidle').catch(() => {});
+    if ((await page.getByRole('button', { name: /^enter$/i }).count()) === 0) {
+      return true;
+    }
   }
+  return false;
 }
 
 async function main() {

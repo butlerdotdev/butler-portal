@@ -15,6 +15,8 @@ import { chromium } from 'playwright';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
+const DEV_IDENTITY_HEADER = 'x-butler-dev-identity';
+
 const APP = process.env.BUTLER_APP_URL ?? 'http://localhost:3000';
 // The identity list comes from the backend directly; the app port serves
 // the SPA and would answer this with HTML.
@@ -35,16 +37,31 @@ const ROUTES = [
   ['create-cluster', `/butler/t/${TEAM}/clusters/new`],
   ['members', `/butler/t/${TEAM}/members`],
   ['users', '/butler/admin/users'],
+  ['admin-networks', '/butler/admin/networks'],
 ];
 
-/** Backstage guest sign-in, if the card is showing. */
+/**
+ * Backstage guest sign-in. The card has to be gone before anything is
+ * captured, otherwise the run quietly produces a directory of sign-in
+ * pages. Clicking once and hoping is what made earlier runs unreliable,
+ * so this confirms the card is dismissed before returning.
+ */
 async function signIn(page) {
-  await page.goto(`${APP}/`, { waitUntil: 'networkidle' });
-  const guest = page.getByRole('button', { name: /enter/i });
-  if (await guest.count()) {
-    await guest.first().click();
-    await page.waitForLoadState('networkidle');
+  for (let attempt = 0; attempt < 6; attempt++) {
+    await page.goto(`${APP}/`, { waitUntil: 'networkidle' }).catch(() => {});
+    const guest = page.getByRole('button', { name: /^enter$/i });
+    if ((await guest.count()) === 0) return true;
+    await guest
+      .first()
+      .click()
+      .catch(() => {});
+    await page.waitForTimeout(1200);
+    await page.waitForLoadState('networkidle').catch(() => {});
+    if ((await page.getByRole('button', { name: /^enter$/i }).count()) === 0) {
+      return true;
+    }
   }
+  return false;
 }
 
 async function main() {
@@ -82,9 +99,18 @@ async function main() {
         },
       ]);
       const page = await context.newPage();
+      // Every identity the app puts on a butler request. A capture that
+      // did not send the identity under review is not evidence about it,
+      // so the run reports that rather than presenting the screenshot.
+      const claimed = new Set();
+      page.on('request', r => {
+        if (!r.url().includes('/api/butler/')) return;
+        const header = r.headers()[DEV_IDENTITY_HEADER];
+        if (header) claimed.add(header);
+      });
       // A Backstage session first, then the identity this session reviews.
       // Without the sign-in every capture is just the sign-in card.
-      await signIn(page);
+      const signedIn = await signIn(page);
       await page.goto(
         `${API}/api/butler/_dev/act-as/${identity.key}?to=/butler`,
         {
@@ -115,6 +141,9 @@ async function main() {
           path: new URL(page.url()).pathname,
           heading: heading.slice(0, 60),
           denied: denied > 0,
+          signedIn,
+          sentIdentity: [...claimed].join(',') || 'none',
+          verified: signedIn && claimed.size === 1 && claimed.has(identity.key),
         });
       }
       await context.close();
@@ -127,12 +156,19 @@ async function main() {
     join(OUT, 'role-matrix.json'),
     JSON.stringify(summary, null, 1),
   );
+  const unverified = summary.filter(row => !row.verified);
   process.stdout.write(
     `\n  ${summary.length} screenshots, summary in ${join(
       OUT,
       'role-matrix.json',
     )}\n`,
   );
+  if (unverified.length) {
+    process.stdout.write(
+      `  ${unverified.length} capture(s) did not send the identity under ` +
+        'review and should not be read as evidence about that role\n',
+    );
+  }
 }
 
 main().catch(err => {
