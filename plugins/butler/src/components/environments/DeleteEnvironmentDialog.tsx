@@ -127,9 +127,15 @@ export const DeleteEnvironmentDialog = ({
     >
       <p className={classes.lead}>
         {clusterCount > 0
-          ? `${clusterCount} cluster${
-              clusterCount === 1 ? '' : 's'
-            } still carry this environment. They keep running, but they will point at an environment that no longer exists and will stop counting against any per-environment limit.`
+          ? `${clusterCount} ${
+              clusterCount === 1
+                ? 'cluster still carries'
+                : 'clusters still carry'
+            } this environment. ${
+              clusterCount === 1 ? 'It keeps' : 'They keep'
+            } running, but ${
+              clusterCount === 1 ? 'it will' : 'they will'
+            } point at an environment that no longer exists and stop counting against any per-environment limit.`
           : 'No clusters currently use this environment.'}
       </p>
 

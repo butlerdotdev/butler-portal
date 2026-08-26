@@ -62,18 +62,23 @@ function formatLimit(value: number | undefined): string {
  * Every role that can read the team can read this page, because the
  * server serves the environments to all of them. Creating, editing and
  * deleting are offered to team admins and platform admins, matching the
- * authority the admission webhook enforces on environment limits.
+ * authority the admission webhook enforces on environment limits. The
+ * server itself does not gate the other environment fields at all, which
+ * is recorded as a server defect rather than relied on here.
  */
 export const TeamEnvironmentsPage = () => {
   const classes = useStyles();
   const api = useApi(butlerApiRef);
   const params = useParams();
-  const { activeTeam, activeTeamDisplayName, isTeamAdmin, canAccessAdmin } =
+  const { activeTeam, activeTeamDisplayName, isTeamAdmin, isAdmin } =
     useTeamContext();
   const team = params.team ?? activeTeam ?? '';
 
   const { environments, loading, error, refresh } = useTeamEnvironments(team);
-  const canEdit = isTeamAdmin || canAccessAdmin;
+  // A team admin owns the team's environments and a platform admin may
+  // act anywhere. A platform viewer reads the estate and changes nothing,
+  // so it is shown the page without the actions.
+  const canEdit = isTeamAdmin || isAdmin;
 
   const [clusters, setClusters] = useState<Cluster[]>([]);
   const [clustersLoaded, setClustersLoaded] = useState(false);

@@ -176,7 +176,6 @@ describe('team environments, by role', () => {
   it.each([
     ['a team admin', teamAdminIdentity],
     ['a platform admin', platformAdminIdentity],
-    ['a platform viewer', platformViewerIdentity],
   ])('offers management to %s', async (_label, identity) => {
     await render(new MockButlerApi({ identity }));
 
@@ -189,6 +188,8 @@ describe('team environments, by role', () => {
   it.each([
     ['a team operator', teamOperatorIdentity],
     ['a team viewer', teamViewerIdentity],
+    // A platform viewer reads the whole estate and changes none of it.
+    ['a platform viewer', platformViewerIdentity],
   ])('shows %s the environments without management', async (_l, identity) => {
     await render(new MockButlerApi({ identity }));
 
