@@ -25,6 +25,10 @@ function renderPage(api: MockButlerApi) {
             path="/butler/t/:team/clusters"
             element={<p>Clusters list</p>}
           />
+          <Route
+            path="/butler/t/:team/clusters/:namespace/:name"
+            element={<p>Cluster detail</p>}
+          />
         </Routes>
       </TeamProvider>
     </TestApiProvider>,
@@ -119,8 +123,10 @@ describe('CreateClusterPage', () => {
     });
     fireEvent.click(screen.getByRole('button', { name: 'Create Cluster' }));
 
+    // Creation is accepted and provisioning starts afterwards, so the
+    // form hands over to the new cluster's own page.
     await waitFor(() =>
-      expect(screen.getByText('Clusters list')).toBeVisible(),
+      expect(screen.getByText('Cluster detail')).toBeVisible(),
     );
     expect(spy).toHaveBeenCalledWith(
       expect.objectContaining({

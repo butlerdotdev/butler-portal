@@ -229,10 +229,12 @@ describe('change environment', () => {
   const withEnvironments = (api: MockButlerApi) => {
     // The environments page and this dialog read the same client method,
     // so stubbing it here is stubbing the one source both consume.
-    jest.spyOn(api, 'listTeamEnvironments').mockResolvedValue([
-      { name: 'staging', limits: { maxClusters: 10 } },
-      { name: 'production', limits: { maxClusters: 4 } },
-    ]);
+    jest.spyOn(api, 'getTeamClusterContext').mockResolvedValue({
+      environments: [
+        { name: 'staging', limits: { maxClusters: 10 } },
+        { name: 'production', limits: { maxClusters: 4 } },
+      ],
+    });
     return api;
   };
 

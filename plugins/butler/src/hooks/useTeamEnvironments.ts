@@ -4,10 +4,15 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useApi } from '@backstage/core-plugin-api';
 import { butlerApiRef } from '../api/ButlerApi';
-import type { TeamEnvironment } from '../api/types/environments';
+import type {
+  EnvironmentClusterDefaults,
+  TeamEnvironment,
+} from '../api/types/environments';
 
 export interface TeamEnvironmentsState {
   environments: TeamEnvironment[];
+  /** Defaults the team applies to new clusters, from the same read. */
+  teamClusterDefaults?: EnvironmentClusterDefaults;
   loading: boolean;
   error: Error | null;
   /** Re-read from the server. Callers use this after a mutation. */
@@ -28,6 +33,9 @@ export function useTeamEnvironments(
 ): TeamEnvironmentsState {
   const api = useApi(butlerApiRef);
   const [environments, setEnvironments] = useState<TeamEnvironment[]>([]);
+  const [teamClusterDefaults, setTeamClusterDefaults] = useState<
+    EnvironmentClusterDefaults | undefined
+  >(undefined);
   const [loading, setLoading] = useState<boolean>(Boolean(team));
   const [error, setError] = useState<Error | null>(null);
   // A slow read for a team the user has already navigated away from must
@@ -37,19 +45,22 @@ export function useTeamEnvironments(
   const load = useCallback(async () => {
     if (!team) {
       setEnvironments([]);
+      setTeamClusterDefaults(undefined);
       setLoading(false);
       setError(null);
       return;
     }
     setLoading(true);
     try {
-      const envs = await api.listTeamEnvironments(team);
+      const context = await api.getTeamClusterContext(team);
       if (currentTeam.current !== team) return;
-      setEnvironments(envs);
+      setEnvironments(context.environments);
+      setTeamClusterDefaults(context.clusterDefaults);
       setError(null);
     } catch (err) {
       if (currentTeam.current !== team) return;
       setEnvironments([]);
+      setTeamClusterDefaults(undefined);
       setError(err instanceof Error ? err : new Error(String(err)));
     } finally {
       if (currentTeam.current === team) setLoading(false);
@@ -61,5 +72,5 @@ export function useTeamEnvironments(
     void load();
   }, [load, team]);
 
-  return { environments, loading, error, refresh: load };
+  return { environments, teamClusterDefaults, loading, error, refresh: load };
 }

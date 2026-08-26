@@ -121,10 +121,13 @@ describe('ButlerApiClient team environments', () => {
       }),
     );
 
-    const envs = await client.listTeamEnvironments('platform');
+    const context = await client.getTeamClusterContext('platform');
 
     expect(calls[0].url).toBe('http://localhost/api/butler/teams/platform');
-    expect(envs.map(e => e.name)).toEqual(['production', 'staging']);
+    expect(context.environments.map(e => e.name)).toEqual([
+      'production',
+      'staging',
+    ]);
   });
 
   it('reads a raw spec when the response carries one', async () => {
@@ -132,15 +135,36 @@ describe('ButlerApiClient team environments', () => {
       jsonResponse({ spec: { environments: [{ name: 'dev' }] } }),
     );
 
-    expect(await client.listTeamEnvironments('platform')).toEqual([
-      { name: 'dev' },
-    ]);
+    expect(
+      (await client.getTeamClusterContext('platform')).environments,
+    ).toEqual([{ name: 'dev' }]);
   });
 
   it('treats a team without the field as having none', async () => {
     const { client } = makeClient(() => jsonResponse({ name: 'platform' }));
 
-    expect(await client.listTeamEnvironments('platform')).toEqual([]);
+    expect(
+      (await client.getTeamClusterContext('platform')).environments,
+    ).toEqual([]);
+  });
+
+  it('reads the team cluster defaults from the same call', async () => {
+    const { client, calls } = makeClient(() =>
+      jsonResponse({
+        name: 'platform',
+        environments: [{ name: 'dev' }],
+        clusterDefaults: { kubernetesVersion: 'v1.31.0', workerCount: 3 },
+      }),
+    );
+
+    const context = await client.getTeamClusterContext('platform');
+
+    // One read, so the environments and the defaults cannot disagree.
+    expect(calls).toHaveLength(1);
+    expect(context.clusterDefaults).toEqual({
+      kubernetesVersion: 'v1.31.0',
+      workerCount: 3,
+    });
   });
 
   it('escapes a team and environment name in the path', async () => {

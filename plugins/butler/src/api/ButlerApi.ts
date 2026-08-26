@@ -1,7 +1,11 @@
 // Copyright 2026 The Butler Authors.
 // SPDX-License-Identifier: Apache-2.0
 
-import type { EnvironmentRequest, TeamEnvironment } from './types/environments';
+import type {
+  EnvironmentRequest,
+  TeamClusterContext,
+  TeamEnvironment,
+} from './types/environments';
 import { createApiRef } from '@backstage/core-plugin-api';
 
 import type {
@@ -336,7 +340,7 @@ export interface ButlerApi {
   // Team environments (ADR-009). Environments live in
   // Team.spec.environments[], so the read is a team read and the three
   // mutations are the only way to change that list.
-  listTeamEnvironments(team: string): Promise<TeamEnvironment[]>;
+  getTeamClusterContext(team: string): Promise<TeamClusterContext>;
   createTeamEnvironment(
     team: string,
     request: EnvironmentRequest,

@@ -4,7 +4,12 @@
 import { DiscoveryApi, FetchApi } from '@backstage/core-plugin-api';
 import { devIdentityHeader } from './devIdentity';
 import { ButlerApiError } from './ButlerApiError';
-import type { EnvironmentRequest, TeamEnvironment } from './types/environments';
+import type {
+  EnvironmentClusterDefaults,
+  EnvironmentRequest,
+  TeamClusterContext,
+  TeamEnvironment,
+} from './types/environments';
 import type {
   NetworkPool,
   NetworkPoolListResponse,
@@ -830,13 +835,27 @@ export class ButlerApiClient implements ButlerApi {
    * defined" rather than an error, and a raw spec is accepted for the
    * same reason.
    */
-  async listTeamEnvironments(team: string): Promise<TeamEnvironment[]> {
+  /**
+   * The environments a team defines and the defaults it applies to new
+   * clusters, which arrive on the same team read. Keeping them in one
+   * call means the create form cannot show an environment whose defaults
+   * it has not seen.
+   */
+  async getTeamClusterContext(team: string): Promise<TeamClusterContext> {
     const detail = (await this.get(`/teams/${encodeURIComponent(team)}`)) as {
       environments?: TeamEnvironment[];
-      spec?: { environments?: TeamEnvironment[] };
+      clusterDefaults?: EnvironmentClusterDefaults;
+      spec?: {
+        environments?: TeamEnvironment[];
+        clusterDefaults?: EnvironmentClusterDefaults;
+      };
     };
     const envs = detail?.environments ?? detail?.spec?.environments ?? [];
-    return [...envs].sort((a, b) => a.name.localeCompare(b.name));
+    return {
+      environments: [...envs].sort((a, b) => a.name.localeCompare(b.name)),
+      clusterDefaults:
+        detail?.clusterDefaults ?? detail?.spec?.clusterDefaults ?? undefined,
+    };
   }
 
   async createTeamEnvironment(

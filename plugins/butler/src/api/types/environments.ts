@@ -88,3 +88,9 @@ export function validateEnvironmentName(value: string): string | null {
   }
   return null;
 }
+
+/** A team's environments and the defaults it gives new clusters. */
+export interface TeamClusterContext {
+  environments: TeamEnvironment[];
+  clusterDefaults?: EnvironmentClusterDefaults;
+}

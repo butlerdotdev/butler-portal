@@ -1,24 +1,37 @@
 // Copyright 2026 The Butler Authors.
 // SPDX-License-Identifier: Apache-2.0
 
-import { useEffect, useState, useCallback, useId } from 'react';
+import { useCallback, useEffect, useId, useMemo, useState } from 'react';
 import type { FormEvent, InputHTMLAttributes, ReactNode } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useApi } from '@backstage/core-plugin-api';
 import { makeStyles } from '@material-ui/core/styles';
 import clsx from 'clsx';
 import { butlerApiRef } from '../../api/ButlerApi';
+import { ButlerApiError, extractWebhookDenial } from '../../api/ButlerApiError';
 import type {
   Provider,
   ImageInfo,
   NetworkInfo,
+  PolicyMetadata,
 } from '../../api/types/providers';
 import { useButlerRoutes } from '../../hooks/useButlerRoutes';
 import { useTeamContext } from '../../hooks/useTeamContext';
 import { useTeamEnvironments } from '../../hooks/useTeamEnvironments';
+import { useCanOperateTeam } from '../../hooks/useCanOperateTeam';
+import {
+  SERVER_DEFAULT_KUBERNETES_VERSION,
+  SUPPORTED_KUBERNETES_VERSIONS,
+  providerNetworkMode,
+  requiresManualAddresses,
+  resolveClusterDefaults,
+} from '../../utils/clusterDefaults';
+import { buildCreateClusterRequest } from '../../utils/createClusterRequest';
 import { butlerTokens, rgb } from '../../theme';
 import {
   ButlerButton,
+  ButlerAccessDenied,
+  ButlerCallout,
   ButlerCard,
   ButlerField,
   ButlerFormFooter,
@@ -26,10 +39,12 @@ import {
   ButlerFormRow,
   ButlerFormSection,
   ButlerInput,
+  ButlerInsetPanel,
   ButlerLoading,
   ButlerPageHeader,
   ButlerSelect,
   ButlerSpinner,
+  ButlerStack,
   ButlerSwitch,
 } from '../ui';
 
@@ -55,16 +70,21 @@ interface CreateClusterFormState {
   proxmoxStorage: string;
   proxmoxTemplateID: string;
   workspacesEnabled: boolean;
+  ingressEnabled: boolean;
+  timeServers: string;
+  cpApiServerCpuRequest: string;
+  cpApiServerMemoryRequest: string;
+  cpApiServerCpuLimit: string;
+  cpApiServerMemoryLimit: string;
+  cpControllerManagerCpuRequest: string;
+  cpControllerManagerMemoryRequest: string;
+  cpControllerManagerCpuLimit: string;
+  cpControllerManagerMemoryLimit: string;
+  cpSchedulerCpuRequest: string;
+  cpSchedulerMemoryRequest: string;
+  cpSchedulerCpuLimit: string;
+  cpSchedulerMemoryLimit: string;
 }
-
-const KUBERNETES_VERSIONS = [
-  '1.32.0',
-  '1.31.4',
-  '1.31.3',
-  '1.30.8',
-  '1.30.7',
-  '1.29.12',
-];
 
 const useStyles = makeStyles(theme => {
   const t = butlerTokens(theme);
@@ -102,13 +122,81 @@ const useStyles = makeStyles(theme => {
       lineHeight: '20px',
       color: rgb(p.red[400]),
     },
+    advancedNote: {
+      margin: '0 0 12px',
+      fontSize: 12,
+      lineHeight: '16px',
+      color: t.text.subtle,
+    },
+    advancedLabel: {
+      margin: '12px 0 6px',
+      fontSize: 13,
+      fontWeight: 500,
+      color: t.text.muted,
+    },
   };
 });
+
+/**
+ * Server field names as the controls that carry them. The server answers
+ * validation failures with its own request field names, which mostly but
+ * not always match the form.
+ */
+const SERVER_FIELD_TO_CONTROL: Record<string, string> = {
+  name: 'name',
+  namespace: 'namespace',
+  kubernetesVersion: 'kubernetesVersion',
+  providerConfigRef: 'providerConfigRef',
+  workerReplicas: 'workerReplicas',
+  workerCPU: 'workerCPU',
+  workerMemory: 'workerMemory',
+  workerDiskSize: 'workerDiskSize',
+  loadBalancerStart: 'loadBalancerStart',
+  loadBalancerEnd: 'loadBalancerEnd',
+  harvesterNetworkName: 'harvesterNetworkName',
+  harvesterImageName: 'harvesterImageName',
+  nutanixClusterUUID: 'nutanixClusterUUID',
+  nutanixSubnetUUID: 'nutanixSubnetUUID',
+  nutanixImageUUID: 'nutanixImageUUID',
+  proxmoxNode: 'proxmoxNode',
+  proxmoxStorage: 'proxmoxStorage',
+  osType: 'harvesterImageName',
+  timeServers: 'timeServers',
+};
+
+/**
+ * What a ClusterCreationPolicy did to a list of options.
+ *
+ * The server applied the rule before answering, so this explains a list
+ * that is already shorter or already reordered rather than offering a
+ * choice. Saying nothing would leave a filtered list looking like the
+ * provider simply has less to offer.
+ */
+const PolicyNote = ({
+  policy,
+  noun,
+}: {
+  policy: PolicyMetadata;
+  noun: string;
+}) => {
+  const explanation =
+    policy.mode === 'pin' || policy.mode === 'allowList'
+      ? `Only the ${noun} options your platform allows are listed.`
+      : policy.mode === 'recommended'
+      ? `Recommended ${noun} options are listed first.`
+      : `Your platform suggests a default ${noun}.`;
+  return (
+    <ButlerCallout tone="violet" compact title={`Policy: ${policy.name}`}>
+      {explanation}
+      {policy.recommendedReason ? ` ${policy.recommendedReason}` : ''}
+    </ButlerCallout>
+  );
+};
 
 const initialFormState: CreateClusterFormState = {
   name: '',
   namespace: '',
-  kubernetesVersion: '1.31.4',
+  kubernetesVersion: SERVER_DEFAULT_KUBERNETES_VERSION,
   providerConfigRef: '',
   workerReplicas: 3,
   workerCPU: 4,
@@ -127,6 +215,20 @@ const initialFormState: CreateClusterFormState = {
   proxmoxStorage: 'local-lvm',
   proxmoxTemplateID: '',
   workspacesEnabled: true,
+  ingressEnabled: true,
+  timeServers: '',
+  cpApiServerCpuRequest: '',
+  cpApiServerMemoryRequest: '',
+  cpApiServerCpuLimit: '',
+  cpApiServerMemoryLimit: '',
+  cpControllerManagerCpuRequest: '',
+  cpControllerManagerMemoryRequest: '',
+  cpControllerManagerCpuLimit: '',
+  cpControllerManagerMemoryLimit: '',
+  cpSchedulerCpuRequest: '',
+  cpSchedulerMemoryRequest: '',
+  cpSchedulerCpuLimit: '',
+  cpSchedulerMemoryLimit: '',
 };
 
 interface TextFieldProps extends InputHTMLAttributes<HTMLInputElement> {
@@ -184,7 +286,8 @@ export const CreateClusterPage = () => {
   const { teams } = useTeamContext();
   // The environments this team defines. When it defines none the section
   // is not shown at all, which is the state most teams are in.
-  const { environments } = useTeamEnvironments(team);
+  const { environments, teamClusterDefaults } = useTeamEnvironments(team);
+  const canCreate = useCanOperateTeam(team);
   const [environment, setEnvironment] = useState('');
   const activeTeam = teams.find(t => t.name === team);
   const teamDisplayName = activeTeam?.displayName || team;
@@ -209,6 +312,15 @@ export const CreateClusterPage = () => {
   const [providersLoading, setProvidersLoading] = useState(true);
   const [images, setImages] = useState<ImageInfo[]>([]);
   const [networks, setNetworks] = useState<NetworkInfo[]>([]);
+  // What a ClusterCreationPolicy did to each list. The server has already
+  // filtered or reordered; this is only so the form can say so and honour
+  // the suggested default.
+  const [imagePolicy, setImagePolicy] = useState<PolicyMetadata | null>(null);
+  const [networkPolicy, setNetworkPolicy] = useState<PolicyMetadata | null>(
+    null,
+  );
+  // Only meaningful where the platform allocates addresses.
+  const [overrideAllocation, setOverrideAllocation] = useState(false);
   const [resourcesLoading, setResourcesLoading] = useState(false);
 
   const [submitting, setSubmitting] = useState(false);
@@ -238,6 +350,38 @@ export const CreateClusterPage = () => {
       `${p.metadata.namespace}/${p.metadata.name}` === form.providerConfigRef,
   );
   const providerType = selectedProvider?.spec.provider || '';
+  const networkMode = providerNetworkMode(selectedProvider?.spec.network?.mode);
+  const needsAddresses = requiresManualAddresses(
+    networkMode,
+    overrideAllocation,
+  );
+
+  // A team sets defaults for its clusters and an environment may narrow
+  // them, so both are resolved together and the form says which layer a
+  // prefilled value came from.
+  const selectedEnvironment = environments.find(e => e.name === environment);
+  const defaults = useMemo(
+    () =>
+      resolveClusterDefaults(
+        teamClusterDefaults,
+        selectedEnvironment?.clusterDefaults,
+      ),
+    [teamClusterDefaults, selectedEnvironment?.clusterDefaults],
+  );
+
+  // Applied only to fields the user has not touched, so switching
+  // environment updates untouched values without discarding edits.
+  const [touched, setTouched] = useState<Record<string, boolean>>({});
+  useEffect(() => {
+    setForm(prev => {
+      const next = { ...prev };
+      for (const [key, value] of Object.entries(defaults.values)) {
+        if (value === undefined || touched[key]) continue;
+        (next as Record<string, unknown>)[key] = value;
+      }
+      return next;
+    });
+  }, [defaults, touched]);
 
   const fetchProviderResources = useCallback(async () => {
     if (!selectedProvider) {
@@ -259,9 +403,13 @@ export const CreateClusterPage = () => {
       ]);
       setImages(imagesRes.images || []);
       setNetworks(networksRes.networks || []);
+      setImagePolicy(imagesRes.policy ?? null);
+      setNetworkPolicy(networksRes.policy ?? null);
     } catch {
       setImages([]);
       setNetworks([]);
+      setImagePolicy(null);
+      setNetworkPolicy(null);
     } finally {
       setResourcesLoading(false);
     }
@@ -278,6 +426,8 @@ export const CreateClusterPage = () => {
     value: string | number | boolean,
   ) => {
     setForm(prev => ({ ...prev, [field]: value }));
+    // Once a field is edited, a change of environment must not overwrite it.
+    setTouched(prev => (prev[field] ? prev : { ...prev, [field]: true }));
     setValidationErrors(prev => {
       if (!(field in prev)) return prev;
       const updated = { ...prev };
@@ -338,11 +488,16 @@ export const CreateClusterPage = () => {
       errors.workerCPU = 'CPU must be at least 1';
     }
 
-    if (!form.loadBalancerStart.trim()) {
-      errors.loadBalancerStart = 'Load balancer start IP is required';
-    }
-    if (!form.loadBalancerEnd.trim()) {
-      errors.loadBalancerEnd = 'Load balancer end IP is required';
+    // Only where the caller is the one supplying the range. In ipam mode
+    // the platform allocates and demanding a range would block the normal
+    // path; a cloud provider owns addressing outright.
+    if (needsAddresses) {
+      if (!form.loadBalancerStart.trim()) {
+        errors.loadBalancerStart = 'Load balancer start IP is required';
+      }
+      if (!form.loadBalancerEnd.trim()) {
+        errors.loadBalancerEnd = 'Load balancer end IP is required';
+      }
     }
 
     // A team that defines environments places every new cluster in one;
@@ -364,51 +519,81 @@ export const CreateClusterPage = () => {
     }
     setSubmitting(true);
     try {
-      await api.createCluster(
-        {
-          name: form.name,
-          namespace: form.namespace || undefined,
-          kubernetesVersion: form.kubernetesVersion,
-          providerConfigRef: form.providerConfigRef,
-          workerReplicas: form.workerReplicas,
-          workerCPU: form.workerCPU,
-          workerMemory: form.workerMemory,
-          workerDiskSize: form.workerDiskSize,
-          loadBalancerStart: form.loadBalancerStart,
-          loadBalancerEnd: form.loadBalancerEnd,
-          teamRef: team || undefined,
-          workspacesEnabled: form.workspacesEnabled || undefined,
-          ...(providerType === 'harvester' && {
-            harvesterNamespace: form.harvesterNamespace,
-            harvesterNetworkName: form.harvesterNetworkName,
-            harvesterImageName: form.harvesterImageName,
-          }),
-          ...(providerType === 'nutanix' && {
-            nutanixClusterUUID: form.nutanixClusterUUID,
-            nutanixSubnetUUID: form.nutanixSubnetUUID,
-            nutanixImageUUID: form.nutanixImageUUID,
-            nutanixStorageContainerUUID:
-              form.nutanixStorageContainerUUID || undefined,
-          }),
-          ...(providerType === 'proxmox' && {
-            proxmoxNode: form.proxmoxNode,
-            proxmoxStorage: form.proxmoxStorage,
-            proxmoxTemplateID:
-              parseInt(form.proxmoxTemplateID, 10) || undefined,
-          }),
-        },
+      const created = await api.createCluster(
+        buildCreateClusterRequest({
+          form,
+          providerType,
+          networkMode,
+          overrideAllocation,
+          team: team || undefined,
+          images,
+        }),
         environment ? { environment } : undefined,
       );
+      // The server has accepted the resource; the controller provisions it
+      // afterwards, so the cluster is requested rather than ready. Land on
+      // its detail page so that progress is what the user sees next.
+      const namespace = created?.metadata?.namespace || form.namespace;
+      if (namespace && created?.metadata?.name) {
+        navigate(
+          routes.clusterDetail({
+            team: team ?? '',
+            namespace,
+            name: created.metadata.name,
+          }),
+        );
+        return;
+      }
       navigate(routes.clusters({ team: team ?? '' }));
     } catch (err) {
+      // A field the server names is shown against that control; anything
+      // it cannot attribute stays at the top of the form.
+      if (err instanceof ButlerApiError && err.fieldErrors.length > 0) {
+        const mapped: Record<string, string> = {};
+        for (const fieldError of err.fieldErrors) {
+          const control = SERVER_FIELD_TO_CONTROL[fieldError.field];
+          if (control) mapped[control] = fieldError.reason;
+        }
+        setValidationErrors(prev => ({ ...prev, ...mapped }));
+        const unmapped = err.fieldErrors.filter(
+          f => !SERVER_FIELD_TO_CONTROL[f.field],
+        );
+        setSubmitError(
+          unmapped.length > 0
+            ? unmapped.map(f => `${f.field}: ${f.reason}`).join('; ')
+            : err.message,
+        );
+        setSubmitting(false);
+        return;
+      }
       setSubmitError(
-        err instanceof Error ? err.message : 'Failed to create cluster',
+        err instanceof Error
+          ? extractWebhookDenial(err.message)
+          : 'Failed to create cluster',
       );
       setSubmitting(false);
     }
   };
 
   const cancel = () => navigate(routes.clusters({ team: team ?? '' }));
+
+  // butler-server refuses creation to a viewer of either kind, so the
+  // form is not offered to them: filling it in only to be refused is
+  // worse than being told plainly. The server still decides.
+  if (!canCreate) {
+    return (
+      <ButlerStack>
+        <ButlerPageHeader
+          title="Create Cluster"
+          subtitle={teamDisplayName ? `Team ${teamDisplayName}` : undefined}
+        />
+        <ButlerAccessDenied
+          message="Your role on this team can read clusters but not create them. A team admin can create one, or grant you the operator role."
+          resourceType="cluster"
+        />
+      </ButlerStack>
+    );
+  }
 
   if (providersLoading) {
     return <ButlerLoading />;
@@ -630,11 +815,15 @@ export const CreateClusterPage = () => {
                 value={form.kubernetesVersion}
                 onChange={e => updateField('kubernetesVersion', e.target.value)}
                 error={validationErrors.kubernetesVersion}
-                help="Worker kubelet version is determined by the OS image."
+                help={
+                  defaults.sources.kubernetesVersion
+                    ? `Default from this ${defaults.sources.kubernetesVersion}. Worker kubelet version comes from the OS image.`
+                    : 'Worker kubelet version is determined by the OS image.'
+                }
               >
-                {KUBERNETES_VERSIONS.map(version => (
+                {SUPPORTED_KUBERNETES_VERSIONS.map(version => (
                   <option key={version} value={version}>
-                    v{version}
+                    {version}
                   </option>
                 ))}
               </ButlerSelect>
@@ -697,6 +886,7 @@ export const CreateClusterPage = () => {
 
           {selectedProvider && (
             <ButlerFormSection title={`Infrastructure (${providerType})`}>
+              {imagePolicy && <PolicyNote policy={imagePolicy} noun="image" />}
               {renderProviderFields()}
             </ButlerFormSection>
           )}
@@ -751,31 +941,170 @@ export const CreateClusterPage = () => {
 
           <ButlerFormSection
             title="Networking"
-            description="IP range for MetalLB load balancer services in the tenant cluster."
+            description={
+              networkMode === 'cloud'
+                ? `Load balancer addresses are managed by ${providerType} itself.`
+                : 'Addresses for load balancer services inside the tenant cluster.'
+            }
           >
-            <ButlerFormRow>
-              <TextField
-                label="Load Balancer Start IP"
-                required
-                value={form.loadBalancerStart}
-                onChange={e => updateField('loadBalancerStart', e.target.value)}
-                placeholder="10.40.1.100"
-                error={validationErrors.loadBalancerStart}
-                mono
-              />
-              <TextField
-                label="Load Balancer End IP"
-                required
-                value={form.loadBalancerEnd}
-                onChange={e => updateField('loadBalancerEnd', e.target.value)}
-                placeholder="10.40.1.150"
-                error={validationErrors.loadBalancerEnd}
-                mono
-              />
-            </ButlerFormRow>
+            {networkPolicy && (
+              <PolicyNote policy={networkPolicy} noun="network" />
+            )}
+            {networkMode === 'cloud' ? (
+              <ButlerCallout tone="info" compact>
+                This provider manages load balancers and their addresses, so
+                there is no range to choose here.
+              </ButlerCallout>
+            ) : (
+              <>
+                {networkMode === 'ipam' && (
+                  <ButlerCallout tone="info" compact>
+                    The platform allocates this cluster's addresses from a
+                    network pool. You do not need to pick a range.
+                    <ButlerSwitch
+                      checked={overrideAllocation}
+                      onChange={setOverrideAllocation}
+                      label="Choose the addresses myself"
+                      help="Only if this cluster must use a specific range."
+                    />
+                  </ButlerCallout>
+                )}
+                {needsAddresses && (
+                  <ButlerFormRow>
+                    <TextField
+                      label="Load Balancer Start IP"
+                      required
+                      value={form.loadBalancerStart}
+                      onChange={e =>
+                        updateField('loadBalancerStart', e.target.value)
+                      }
+                      placeholder="10.40.1.100"
+                      error={validationErrors.loadBalancerStart}
+                      mono
+                    />
+                    <TextField
+                      label="Load Balancer End IP"
+                      required
+                      value={form.loadBalancerEnd}
+                      onChange={e =>
+                        updateField('loadBalancerEnd', e.target.value)
+                      }
+                      placeholder="10.40.1.150"
+                      error={validationErrors.loadBalancerEnd}
+                      mono
+                    />
+                  </ButlerFormRow>
+                )}
+              </>
+            )}
+          </ButlerFormSection>
+
+          <ButlerFormSection
+            title="Advanced"
+            description="Optional. Every field here is left to the platform default when blank."
+            collapsible
+          >
+            <TextField
+              label="Time servers"
+              value={form.timeServers}
+              onChange={e => updateField('timeServers', e.target.value)}
+              placeholder="pool.ntp.org, time.cloudflare.com"
+              error={validationErrors.timeServers}
+              help="Comma separated NTP servers for the worker nodes. Overrides the provider and platform defaults."
+              mono
+            />
+            <ButlerInsetPanel title="Control plane resources">
+              <p className={classes.advancedNote}>
+                Leaving a box empty keeps the platform default for that
+                component.
+              </p>
+              {(
+                [
+                  ['API server', 'cpApiServer'],
+                  ['Controller manager', 'cpControllerManager'],
+                  ['Scheduler', 'cpScheduler'],
+                ] as const
+              ).map(([label, prefix]) => (
+                <div key={prefix}>
+                  <p className={classes.advancedLabel}>{label}</p>
+                  <ButlerFormRow>
+                    <TextField
+                      label="CPU request"
+                      value={
+                        form[
+                          `${prefix}CpuRequest` as keyof CreateClusterFormState
+                        ] as string
+                      }
+                      onChange={e =>
+                        updateField(
+                          `${prefix}CpuRequest` as keyof CreateClusterFormState,
+                          e.target.value,
+                        )
+                      }
+                      placeholder="500m"
+                      mono
+                    />
+                    <TextField
+                      label="Memory request"
+                      value={
+                        form[
+                          `${prefix}MemoryRequest` as keyof CreateClusterFormState
+                        ] as string
+                      }
+                      onChange={e =>
+                        updateField(
+                          `${prefix}MemoryRequest` as keyof CreateClusterFormState,
+                          e.target.value,
+                        )
+                      }
+                      placeholder="512Mi"
+                      mono
+                    />
+                    <TextField
+                      label="CPU limit"
+                      value={
+                        form[
+                          `${prefix}CpuLimit` as keyof CreateClusterFormState
+                        ] as string
+                      }
+                      onChange={e =>
+                        updateField(
+                          `${prefix}CpuLimit` as keyof CreateClusterFormState,
+                          e.target.value,
+                        )
+                      }
+                      placeholder="1"
+                      mono
+                    />
+                    <TextField
+                      label="Memory limit"
+                      value={
+                        form[
+                          `${prefix}MemoryLimit` as keyof CreateClusterFormState
+                        ] as string
+                      }
+                      onChange={e =>
+                        updateField(
+                          `${prefix}MemoryLimit` as keyof CreateClusterFormState,
+                          e.target.value,
+                        )
+                      }
+                      placeholder="2Gi"
+                      mono
+                    />
+                  </ButlerFormRow>
+                </div>
+              ))}
+            </ButlerInsetPanel>
           </ButlerFormSection>
 
           <ButlerFormSection title="Features">
+            <ButlerSwitch
+              checked={form.ingressEnabled}
+              onChange={checked => updateField('ingressEnabled', checked)}
+              label="Install ingress controller"
+              help="Traefik, installed by default. Turning it off frees one load balancer address."
+            />
             <ButlerSwitch
               checked={form.workspacesEnabled}
               onChange={checked => updateField('workspacesEnabled', checked)}

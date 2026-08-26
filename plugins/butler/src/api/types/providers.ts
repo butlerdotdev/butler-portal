@@ -25,6 +25,16 @@ export interface Provider {
       insecure?: boolean;
       nodes?: string[];
     };
+    /**
+     * How addresses are handed out. `ipam` means the platform allocates
+     * from a pool, `cloud` means the cloud owns addressing; anything else
+     * expects the caller to name a range.
+     */
+    network?: {
+      mode?: string;
+      subnet?: string;
+      gateway?: string;
+    };
   };
   status?: {
     validated?: boolean;
@@ -75,8 +85,28 @@ export interface ImageInfo {
   os?: string;
 }
 
+/**
+ * How a ClusterCreationPolicy shaped an option list (ADR-018).
+ *
+ * The server has already applied the rule before answering: `pin` and
+ * `allowList` mean the list arrives filtered, `recommended` means it
+ * arrives reordered with the recommended entries first, and `default`
+ * leaves the list alone and only names a suggestion. So this is what the
+ * platform decided, not a control the caller gets to set.
+ */
+export type PolicyMode = 'pin' | 'allowList' | 'recommended' | 'default';
+
+export interface PolicyMetadata {
+  name: string;
+  mode: PolicyMode | string;
+  values?: string[];
+  default?: string;
+  recommendedReason?: string;
+}
+
 export interface ImageListResponse {
   images: ImageInfo[];
+  policy?: PolicyMetadata;
 }
 
 export interface NetworkInfo {
@@ -88,4 +118,5 @@ export interface NetworkInfo {
 
 export interface NetworkListResponse {
   networks: NetworkInfo[];
+  policy?: PolicyMetadata;
 }

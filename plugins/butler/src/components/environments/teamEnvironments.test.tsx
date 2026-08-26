@@ -117,7 +117,7 @@ describe('team environments page', () => {
   it('reports a failed read instead of showing an empty team', async () => {
     const api = new MockButlerApi({ identity: teamAdminIdentity });
     jest
-      .spyOn(api, 'listTeamEnvironments')
+      .spyOn(api, 'getTeamClusterContext')
       .mockRejectedValue(new Error('server unavailable'));
 
     await render(api);
@@ -369,7 +369,7 @@ describe('deleting an environment', () => {
   it('treats an environment that is already gone as deleted', async () => {
     const user = userEvent.setup();
     const api = new MockButlerApi({ identity: teamAdminIdentity });
-    const refreshed = jest.spyOn(api, 'listTeamEnvironments');
+    const refreshed = jest.spyOn(api, 'getTeamClusterContext');
     jest
       .spyOn(api, 'deleteTeamEnvironment')
       .mockRejectedValue(

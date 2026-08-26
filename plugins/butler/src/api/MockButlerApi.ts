@@ -41,7 +41,12 @@ import type {
 } from './types/networks';
 import { fixturePools, fixtureAllocations } from './fixtures/networks';
 import { fixtureEnvironments } from './fixtures/environments';
-import type { EnvironmentRequest, TeamEnvironment } from './types/environments';
+import type {
+  EnvironmentClusterDefaults,
+  EnvironmentRequest,
+  TeamClusterContext,
+  TeamEnvironment,
+} from './types/environments';
 import type {
   Cluster,
   ClusterListResponse,
@@ -156,6 +161,8 @@ export type ButlerApiMethod = {
 export interface MockButlerApiOptions {
   /** Team environments the mock starts with. */
   environments?: TeamEnvironment[];
+  /** Defaults the team applies to new clusters. */
+  teamClusterDefaults?: EnvironmentClusterDefaults;
   /** Methods that should reject with the given error instead of running. */
   failures?: Partial<Record<ButlerApiMethod, Error>>;
   /** Artificial delay applied to every call, in milliseconds. */
@@ -186,6 +193,7 @@ export class MockButlerApi implements ButlerApi {
   private pools: NetworkPool[];
   private allocations: IPAllocation[];
   private environments: TeamEnvironment[];
+  private teamClusterDefaults: EnvironmentClusterDefaults | undefined;
   private readonly failures: Partial<Record<ButlerApiMethod, Error>>;
   private readonly latencyMs: number;
   private teamContext: string | null = null;
@@ -209,6 +217,9 @@ export class MockButlerApi implements ButlerApi {
     this.pools = clone(options.pools ?? fixturePools);
     this.allocations = clone(options.allocations ?? fixtureAllocations);
     this.environments = clone(options.environments ?? fixtureEnvironments);
+    this.teamClusterDefaults = options.teamClusterDefaults
+      ? clone(options.teamClusterDefaults)
+      : undefined;
     this.failures = options.failures ?? {};
     this.latencyMs = options.latencyMs ?? 0;
   }
@@ -448,8 +459,9 @@ export class MockButlerApi implements ButlerApi {
           },
           networking: {
             loadBalancerPool: {
-              start: data.loadBalancerStart,
-              end: data.loadBalancerEnd,
+              // Empty when the platform allocates the range itself.
+              start: data.loadBalancerStart ?? '',
+              end: data.loadBalancerEnd ?? '',
             },
           },
           workspaces: { enabled: data.workspacesEnabled ?? false },
@@ -1704,10 +1716,15 @@ export class MockButlerApi implements ButlerApi {
     });
   }
 
-  listTeamEnvironments(_team: string): Promise<TeamEnvironment[]> {
-    return this.run('listTeamEnvironments', () =>
-      clone(this.environments).sort((a, b) => a.name.localeCompare(b.name)),
-    );
+  getTeamClusterContext(_team: string): Promise<TeamClusterContext> {
+    return this.run('getTeamClusterContext', () => ({
+      environments: clone(this.environments).sort((a, b) =>
+        a.name.localeCompare(b.name),
+      ),
+      clusterDefaults: this.teamClusterDefaults
+        ? clone(this.teamClusterDefaults)
+        : undefined,
+    }));
   }
 
   createTeamEnvironment(

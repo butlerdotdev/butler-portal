@@ -59,7 +59,8 @@ function renderAt(api: MockButlerApi, path: string, element: JSX.Element) {
 describe('one environment model across the plugin', () => {
   it('offers the cluster move the same environments the page manages', async () => {
     const api = new MockButlerApi({ identity: teamAdminIdentity });
-    const fromPage = await api.listTeamEnvironments(FIXTURE_TEAM);
+    const fromPage = (await api.getTeamClusterContext(FIXTURE_TEAM))
+      .environments;
 
     await renderAt(
       api,

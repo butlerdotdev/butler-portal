@@ -128,8 +128,13 @@ export interface CreateClusterRequest {
   workerCPU?: number;
   workerMemory?: string;
   workerDiskSize?: string;
-  loadBalancerStart: string;
-  loadBalancerEnd: string;
+  /**
+   * Only sent when the caller supplies the range. A provider in `ipam`
+   * mode allocates from a pool and a `cloud` provider owns addressing
+   * outright, so in both cases there is nothing for the caller to name.
+   */
+  loadBalancerStart?: string;
+  loadBalancerEnd?: string;
   teamRef?: string;
 
   // Harvester-specific
@@ -150,6 +155,42 @@ export interface CreateClusterRequest {
 
   // Workspaces
   workspacesEnabled?: boolean;
+
+  /**
+   * OS the worker machines run, taken from the selected image rather than
+   * chosen separately. The server writes it to
+   * `workers.machineTemplate.os.type`.
+   */
+  osType?: string;
+
+  /**
+   * Traefik. The server installs it unless this is explicitly false, so
+   * the field is only ever sent to turn it off, and turning it off saves
+   * a load balancer address.
+   */
+  ingressEnabled?: boolean;
+
+  /** NTP servers for the worker nodes, overriding provider defaults. */
+  timeServers?: string[];
+
+  /** Optional control plane resource overrides. */
+  controlPlaneResources?: ControlPlaneResourcesRequest;
+}
+
+export interface ResourceQuantitiesRequest {
+  cpu?: string;
+  memory?: string;
+}
+
+export interface ComponentResourcesRequest {
+  requests?: ResourceQuantitiesRequest;
+  limits?: ResourceQuantitiesRequest;
+}
+
+export interface ControlPlaneResourcesRequest {
+  apiServer?: ComponentResourcesRequest;
+  controllerManager?: ComponentResourcesRequest;
+  scheduler?: ComponentResourcesRequest;
 }
 
 export interface ScaleRequest {
