@@ -173,6 +173,7 @@ export const butlerPlugin = createBackendPlugin({
             ) ?? false,
           identityResolver,
           devIdentities,
+          appBaseUrl: config.getOptionalString('app.baseUrl'),
         });
 
         // Router is mounted under Backstage's default-deny auth gate.

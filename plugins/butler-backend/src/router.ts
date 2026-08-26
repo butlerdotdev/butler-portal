@@ -210,6 +210,8 @@ export async function createRouter(options: {
   // omitted (tests exercising only the relay) one is built from userInfo
   // and auth without catalog or domain fallback.
   identityResolver?: IdentityResolver;
+  // App origin the dev act-as route redirects a bound session back to.
+  appBaseUrl?: string;
   // Local review only. When present, a session may name one of the
   // configured dev identities and the proxy acts as that butler-server
   // user. Authorization still happens in butler-server; this only stands
@@ -221,6 +223,11 @@ export async function createRouter(options: {
   const permissions = options.permissions;
   const allowUnmappedRoutes = options.allowUnmappedRoutes ?? false;
   const devIdentities = options.devIdentities ?? null;
+  // Where the dev-only act-as route sends a session once it is bound.
+  const appBaseUrl = (options.appBaseUrl ?? 'http://localhost:3000').replace(
+    /\/+$/,
+    '',
+  );
   const identityResolver =
     options.identityResolver ??
     new IdentityResolver({ userInfo, auth, logger });
@@ -396,10 +403,11 @@ export async function createRouter(options: {
         email: identity.email,
       });
       const to = typeof req.query.to === 'string' ? req.query.to : '/butler';
-      // Only same-site paths, so this cannot be aimed at another origin.
-      const target =
-        to.startsWith('/') && !to.startsWith('//') ? to : '/butler';
-      res.redirect(target);
+      // Only a path, so this cannot be aimed at another origin. The path
+      // belongs to the app rather than to this backend, so it resolves
+      // against the app's base URL.
+      const path = to.startsWith('/') && !to.startsWith('//') ? to : '/butler';
+      res.redirect(`${appBaseUrl}${path}`);
     });
 
     router.get('/_dev/whoami', async (req: Request, res: Response) => {

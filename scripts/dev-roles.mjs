@@ -89,13 +89,17 @@ async function main() {
       },
     ]);
     const page = context.pages()[0] ?? (await context.newPage());
-    // Binding through the backend sets the cookie for this profile only.
-    await page.goto(
-      `${API}/api/butler/_dev/act-as/${identity.key}?to=${encodeURIComponent(
-        startRoute,
-      )}`,
-      { waitUntil: 'domcontentloaded' },
-    );
+    // The cookie above is what binds the session, so go straight to the
+    // app. Signing in first, because a fresh profile has no session.
+    await page.goto(`${APP}/`, { waitUntil: 'networkidle' }).catch(() => {});
+    const guest = page.getByRole('button', { name: /enter/i });
+    if (await guest.count()) {
+      await guest.first().click();
+      await page.waitForLoadState('networkidle').catch(() => {});
+    }
+    await page
+      .goto(`${APP}${startRoute}`, { waitUntil: 'domcontentloaded' })
+      .catch(() => {});
     sessions.push({ identity, context, page });
   }
 
@@ -138,6 +142,20 @@ async function main() {
       process.stdout.write(`  ${file}\n`);
     }
   };
+
+  // With no terminal attached (started from a tool or a wrapper), readline
+  // would see stdin close immediately and take the five windows down with
+  // it. In that case just hold them open and let the browser be the
+  // interface.
+  if (!process.stdin.isTTY) {
+    process.stdout.write(
+      '  Not attached to a terminal, so the windows stay open and the\n' +
+        '  route prompt is unavailable. Drive them in the browser, or run\n' +
+        '  `yarn dev:roles` from a terminal for the prompt. Ctrl-C to close.\n\n',
+    );
+    await new Promise(() => {});
+    return;
+  }
 
   const rl = createInterface({ input: process.stdin, output: process.stdout });
   rl.setPrompt('roles> ');
