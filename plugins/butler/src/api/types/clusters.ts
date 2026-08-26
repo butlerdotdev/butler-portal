@@ -9,6 +9,7 @@ export interface Cluster {
     resourceVersion?: string;
     creationTimestamp?: string;
     labels?: Record<string, string>;
+    annotations?: Record<string, string>;
   };
   spec: {
     kubernetesVersion: string;
@@ -226,4 +227,32 @@ export interface ManagementPod {
   ready: string;
   restarts: number;
   age: string;
+}
+
+/** Fields butler-server accepts on PUT /clusters/{namespace}/{name}. */
+export interface UpdateClusterRequest {
+  /** Required: the server rejects an edit without it. */
+  resourceVersion: string;
+  kubernetesVersion?: string;
+  controlPlane?: {
+    replicas?: number;
+    resources?: Record<string, unknown>;
+  };
+  workers?: {
+    replicas?: number;
+    machineTemplate?: Record<string, unknown>;
+  };
+  /** Platform admin only; the server refuses it for anyone else. */
+  infrastructureOverride?: Record<string, unknown>;
+  /** Required when taking control plane replicas from three to one. */
+  acknowledgeDowngrade?: boolean;
+}
+
+/** An environment a team may place clusters in. */
+export interface TeamEnvironment {
+  name: string;
+  displayName?: string;
+  description?: string;
+  maxClusters?: number;
+  maxClustersPerMember?: number;
 }

@@ -3,6 +3,8 @@
 
 import { DiscoveryApi, FetchApi } from '@backstage/core-plugin-api';
 import { devIdentityHeader } from './devIdentity';
+import { ButlerApiError } from './ButlerApiError';
+import type { ButlerFieldError } from './ButlerApiError';
 import { ButlerApi } from './ButlerApi';
 
 import type {
@@ -16,6 +18,7 @@ import type {
   ManagementCluster,
   ManagementNode,
   ManagementPod,
+  UpdateClusterRequest,
 } from './types/clusters';
 import type {
   Provider,
@@ -125,14 +128,26 @@ export class ButlerApiClient implements ButlerApi {
 
     if (!response.ok) {
       let errorMessage: string;
+      let fieldErrors: ButlerFieldError[] = [];
+      let body: unknown;
       try {
         const errorBody = await response.json();
+        body = errorBody;
         errorMessage =
           errorBody.message || errorBody.error || response.statusText;
+        if (Array.isArray(errorBody.errors)) {
+          fieldErrors = errorBody.errors as ButlerFieldError[];
+        }
       } catch {
         errorMessage = response.statusText;
       }
-      throw new Error(`Butler API error (${response.status}): ${errorMessage}`);
+      throw new ButlerApiError({
+        status: response.status,
+        // The prefix is kept because existing callers and tests match on it.
+        message: `Butler API error (${response.status}): ${errorMessage}`,
+        fieldErrors,
+        body,
+      });
     }
 
     // Handle 204 No Content
@@ -255,6 +270,24 @@ export class ButlerApiClient implements ButlerApi {
 
   async deleteCluster(namespace: string, name: string): Promise<void> {
     return this.del(`/clusters/${namespace}/${name}`);
+  }
+
+  async updateCluster(
+    namespace: string,
+    name: string,
+    request: UpdateClusterRequest,
+  ): Promise<Cluster> {
+    return this.put<Cluster>(`/clusters/${namespace}/${name}`, request);
+  }
+
+  async changeClusterEnvironment(
+    namespace: string,
+    name: string,
+    environment: string,
+  ): Promise<Cluster> {
+    return this.put<Cluster>(`/clusters/${namespace}/${name}/environment`, {
+      environment,
+    });
   }
 
   async scaleCluster(

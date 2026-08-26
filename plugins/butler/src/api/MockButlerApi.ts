@@ -29,6 +29,9 @@ import type {
 } from './types/machines';
 import type { TenantControlPlaneSummary } from './types/steward';
 import type { ButlerApi } from './ButlerApi';
+import { ButlerApiError } from './ButlerApiError';
+import { ENVIRONMENT_LABEL, compareVersions } from '../utils/environment';
+import type { ButlerFieldError } from './ButlerApiError';
 import type { ButlerIdentity } from './fixtures/identities';
 import type {
   Cluster,
@@ -41,6 +44,7 @@ import type {
   ManagementCluster,
   ManagementNode,
   ManagementPod,
+  UpdateClusterRequest,
 } from './types/clusters';
 import type {
   Provider,
@@ -457,6 +461,149 @@ export class MockButlerApi implements ButlerApi {
       );
       this.pendingDelete.set(this.key(namespace, name), 0);
       this.bump(cluster);
+    });
+  }
+
+  /**
+   * Mirrors the server's PUT /clusters/{ns}/{name}: optimistic concurrency,
+   * the stable-phase gate, and the field validation, so a test exercises the
+   * rules the product will actually meet.
+   */
+  updateCluster(
+    namespace: string,
+    name: string,
+    request: UpdateClusterRequest,
+  ): Promise<Cluster> {
+    return this.run('updateCluster', () => {
+      const cluster = this.findCluster(namespace, name);
+      if (!request.resourceVersion) {
+        throw new ButlerApiError({
+          status: 400,
+          message:
+            'Butler API error (400): resourceVersion is required for optimistic concurrency',
+        });
+      }
+      if (request.resourceVersion !== cluster.metadata.resourceVersion) {
+        throw new ButlerApiError({
+          status: 409,
+          message:
+            'Butler API error (409): the cluster changed since it was loaded',
+        });
+      }
+      const phase = cluster.status?.phase ?? '';
+      if (phase && phase !== 'Ready' && phase !== 'Pending') {
+        throw new ButlerApiError({
+          status: 409,
+          message: `Butler API error (409): cluster is in ${phase} phase; wait for it to stabilize`,
+        });
+      }
+      const errors: ButlerFieldError[] = [];
+      if (request.kubernetesVersion !== undefined) {
+        const current = cluster.spec.kubernetesVersion ?? '';
+        if (compareVersions(request.kubernetesVersion, current) < 0) {
+          errors.push({
+            field: 'spec.kubernetesVersion',
+            reason: 'downgrades are not supported',
+            current,
+          });
+        }
+      }
+      const cpReplicas = request.controlPlane?.replicas;
+      if (cpReplicas !== undefined) {
+        if (cpReplicas !== 1 && cpReplicas !== 3) {
+          errors.push({
+            field: 'spec.controlPlane.replicas',
+            reason: 'must be 1 or 3 (odd numbers required for etcd quorum)',
+          });
+        } else if (
+          cpReplicas === 1 &&
+          cluster.spec.controlPlane?.replicas === 3 &&
+          !request.acknowledgeDowngrade
+        ) {
+          errors.push({
+            field: 'spec.controlPlane.replicas',
+            reason: 'reducing from 3 to 1 requires acknowledgeDowngrade: true',
+            current: '3',
+          });
+        }
+      }
+      const workerReplicas = request.workers?.replicas;
+      if (
+        workerReplicas !== undefined &&
+        (workerReplicas < 1 || workerReplicas > 100)
+      ) {
+        errors.push({
+          field: 'spec.workers.replicas',
+          reason: 'must be between 1 and 100',
+        });
+      }
+      if (errors.length > 0) {
+        throw new ButlerApiError({
+          status: 400,
+          message: 'Butler API error (400): validation failed',
+          fieldErrors: errors,
+        });
+      }
+      if (request.infrastructureOverride && !this.identity.isPlatformAdmin) {
+        throw new ButlerApiError({
+          status: 403,
+          message:
+            'Butler API error (403): infrastructure overrides require platform admin privileges',
+        });
+      }
+      if (request.kubernetesVersion !== undefined) {
+        cluster.spec.kubernetesVersion = request.kubernetesVersion;
+      }
+      if (cpReplicas !== undefined) {
+        cluster.spec.controlPlane = {
+          ...(cluster.spec.controlPlane ?? {}),
+          replicas: cpReplicas,
+        };
+      }
+      if (request.workers) {
+        cluster.spec.workers = {
+          ...(cluster.spec.workers ?? { replicas: workerReplicas ?? 1 }),
+          ...(workerReplicas !== undefined ? { replicas: workerReplicas } : {}),
+          ...(request.workers.machineTemplate
+            ? {
+                machineTemplate: {
+                  ...(cluster.spec.workers?.machineTemplate ?? {}),
+                  ...request.workers.machineTemplate,
+                },
+              }
+            : {}),
+        };
+      }
+      this.bump(cluster);
+      return clone(cluster);
+    });
+  }
+
+  /**
+   * Mirrors PUT /clusters/{ns}/{name}/environment: the label moves and the
+   * migration annotation the admission webhook requires is set.
+   */
+  changeClusterEnvironment(
+    namespace: string,
+    name: string,
+    environment: string,
+  ): Promise<Cluster> {
+    return this.run('changeClusterEnvironment', () => {
+      const cluster = this.findCluster(namespace, name);
+      const labels = { ...(cluster.metadata.labels ?? {}) };
+      const target = environment.trim();
+      if (target) {
+        labels[ENVIRONMENT_LABEL] = target;
+      } else {
+        delete labels[ENVIRONMENT_LABEL];
+      }
+      cluster.metadata.labels = labels;
+      cluster.metadata.annotations = {
+        ...(cluster.metadata.annotations ?? {}),
+        'butler.butlerlabs.dev/migration-operation': 'true',
+      };
+      this.bump(cluster);
+      return clone(cluster);
     });
   }
 

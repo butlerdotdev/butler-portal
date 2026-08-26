@@ -14,6 +14,7 @@ import type {
   ManagementCluster,
   ManagementNode,
   ManagementPod,
+  UpdateClusterRequest,
 } from './types/clusters';
 import type {
   Provider,
@@ -110,6 +111,16 @@ export interface ButlerApi {
   getCluster(namespace: string, name: string): Promise<Cluster>;
   createCluster(data: CreateClusterRequest): Promise<Cluster>;
   deleteCluster(namespace: string, name: string): Promise<void>;
+  updateCluster(
+    namespace: string,
+    name: string,
+    request: UpdateClusterRequest,
+  ): Promise<Cluster>;
+  changeClusterEnvironment(
+    namespace: string,
+    name: string,
+    environment: string,
+  ): Promise<Cluster>;
   scaleCluster(
     namespace: string,
     name: string,

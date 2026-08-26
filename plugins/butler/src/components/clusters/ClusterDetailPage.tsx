@@ -12,7 +12,13 @@ import { useApi, alertApiRef } from '@backstage/core-plugin-api';
 import { makeStyles } from '@material-ui/core/styles';
 import { butlerApiRef } from '../../api/ButlerApi';
 import { useButlerResource } from '../../hooks/useButlerResource';
-import type { Cluster, Node, ClusterEvent } from '../../api/types/clusters';
+import type {
+  Cluster,
+  Node,
+  ClusterEvent,
+  TeamEnvironment,
+  UpdateClusterRequest,
+} from '../../api/types/clusters';
 import type {
   MachineRequest,
   LoadBalancerRequest,
@@ -29,6 +35,9 @@ import { MachineRequestsCard } from './MachineRequestsCard';
 import { LoadBalancerRequestsCard } from './LoadBalancerRequestsCard';
 import { InfrastructureOverrideCard } from './InfrastructureOverrideCard';
 import { DeleteClusterDialog } from './DeleteClusterDialog';
+import { EditClusterDialog } from './EditClusterDialog';
+import { ScaleWorkersDialog } from './ScaleWorkersDialog';
+import { ChangeEnvironmentDialog } from './ChangeEnvironmentDialog';
 import { ControlPlaneResourcesCard } from './ControlPlaneResourcesCard';
 import { butlerTokens, rgb } from '../../theme';
 import {
@@ -196,6 +205,10 @@ export const ClusterDetailPage = () => {
     setSearchParams(next, { replace: true });
   };
   const [deleteOpen, setDeleteOpen] = useState(false);
+  const [editOpen, setEditOpen] = useState(false);
+  const [scaleOpen, setScaleOpen] = useState(false);
+  const [envOpen, setEnvOpen] = useState(false);
+  const [environments, setEnvironments] = useState<TeamEnvironment[]>([]);
   const [downloading, setDownloading] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [togglingWorkspaces, setTogglingWorkspaces] = useState(false);
@@ -369,6 +382,33 @@ export const ClusterDetailPage = () => {
   const canOperate =
     isAdmin || routeTeamRole === 'admin' || routeTeamRole === 'operator';
 
+  // The environments a cluster may move between come from its team, the
+  // same place the console reads them. With none configured the move is not
+  // offered, because there is nowhere to move to.
+  useEffect(() => {
+    let cancelled = false;
+    const teamName = loadedCluster?.spec.teamRef?.name ?? team;
+    if (!teamName) return undefined;
+    api
+      .getTeam(teamName)
+      .then(raw => {
+        if (cancelled) return;
+        const detail = raw as unknown as {
+          environments?: TeamEnvironment[];
+          spec?: { environments?: TeamEnvironment[] };
+        };
+        setEnvironments(detail.environments ?? detail.spec?.environments ?? []);
+      })
+      .catch(() => {
+        // Environments are additive: a team that cannot be read simply does
+        // not offer the move.
+        if (!cancelled) setEnvironments([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [api, team, loadedCluster]);
+
   const { subscribe } = useClusterWatch();
   const [deletedRemotely, setDeletedRemotely] = useState(false);
   // Read through a ref so the subscription does not churn on every poll.
@@ -430,6 +470,46 @@ export const ClusterDetailPage = () => {
     } finally {
       setDownloading(false);
     }
+  };
+
+  // Each of these lets the failure propagate so the dialog can show what
+  // the server said, and refreshes so the page reflects the new spec.
+  const handleEdit = async (request: UpdateClusterRequest) => {
+    if (!namespace || !name) throw new Error('cluster is not addressable');
+    const updated = await api.updateCluster(namespace, name, request);
+    clusterState.refresh();
+    alertApi.post({ message: `${name} updated`, severity: 'success' });
+    return updated;
+  };
+
+  const handleScale = async (replicas: number) => {
+    if (!namespace || !name) throw new Error('cluster is not addressable');
+    const scaled = await api.scaleCluster(namespace, name, replicas);
+    clusterState.refresh();
+    alertApi.post({
+      message: `${name} scaling to ${replicas} worker${
+        replicas === 1 ? '' : 's'
+      }`,
+      severity: 'success',
+    });
+    return scaled;
+  };
+
+  const handleChangeEnvironment = async (environment: string) => {
+    if (!namespace || !name) throw new Error('cluster is not addressable');
+    const moved = await api.changeClusterEnvironment(
+      namespace,
+      name,
+      environment,
+    );
+    clusterState.refresh();
+    alertApi.post({
+      message: environment
+        ? `${name} moved to ${environment}`
+        : `${name} environment cleared`,
+      severity: 'success',
+    });
+    return moved;
   };
 
   // The dialog renders the failure inline, so this lets errors propagate.
@@ -628,12 +708,36 @@ export const ClusterDetailPage = () => {
               {downloading ? 'Downloading...' : 'Download Kubeconfig'}
             </ButlerButton>
             {canOperate && (
-              <ButlerButton
-                variant="danger"
-                onClick={() => setDeleteOpen(true)}
-              >
-                Delete
-              </ButlerButton>
+              <>
+                <ButlerButton
+                  variant="secondary"
+                  onClick={() => setEditOpen(true)}
+                  disabled={phase === 'Failed' || phase === 'Deleting'}
+                >
+                  Edit
+                </ButlerButton>
+                <ButlerButton
+                  variant="secondary"
+                  onClick={() => setScaleOpen(true)}
+                >
+                  Scale Workers
+                </ButlerButton>
+                {environments.length > 0 && (
+                  <ButlerButton
+                    variant="secondary"
+                    onClick={() => setEnvOpen(true)}
+                    disabled={phase === 'Deleting'}
+                  >
+                    Change Environment
+                  </ButlerButton>
+                )}
+                <ButlerButton
+                  variant="danger"
+                  onClick={() => setDeleteOpen(true)}
+                >
+                  Delete
+                </ButlerButton>
+              </>
             )}
           </>
         }
@@ -882,6 +986,29 @@ export const ClusterDetailPage = () => {
           <TerminalTab clusterNamespace={namespace} clusterName={name} />
         )}
       </ButlerTabPanel>
+
+      <EditClusterDialog
+        open={editOpen}
+        onClose={() => setEditOpen(false)}
+        cluster={cluster}
+        onSave={handleEdit}
+        isPlatformAdmin={isAdmin}
+      />
+
+      <ScaleWorkersDialog
+        open={scaleOpen}
+        onClose={() => setScaleOpen(false)}
+        cluster={cluster}
+        onScale={handleScale}
+      />
+
+      <ChangeEnvironmentDialog
+        open={envOpen}
+        onClose={() => setEnvOpen(false)}
+        cluster={cluster}
+        environments={environments}
+        onChange={handleChangeEnvironment}
+      />
 
       <DeleteClusterDialog
         open={deleteOpen}
