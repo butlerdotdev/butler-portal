@@ -185,6 +185,11 @@ export const ButlerNav = () => {
             label: 'Providers',
             icon: <ProvidersNavIcon />,
           },
+          {
+            to: routes.adminNetworks(),
+            label: 'Network Pools',
+            icon: <NetworkNavIcon />,
+          },
         ],
       },
       {

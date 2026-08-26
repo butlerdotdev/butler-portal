@@ -148,9 +148,10 @@ describe('the navigation only offers destinations a role can use', () => {
     await waitFor(() => {
       expect(screen.getByText('Shadow Mode')).toBeInTheDocument();
     });
-    expect(
-      screen.getByRole('link', { name: 'All Clusters' }),
-    ).toBeInTheDocument();
+    // Reads that butler-server serves a platform viewer are offered.
+    for (const label of ['All Clusters', 'Network Pools']) {
+      expect(screen.getByRole('link', { name: label })).toBeInTheDocument();
+    }
     for (const label of ['Teams', 'Users', 'Management Cluster', 'Settings']) {
       expect(
         screen.queryByRole('link', { name: label }),
