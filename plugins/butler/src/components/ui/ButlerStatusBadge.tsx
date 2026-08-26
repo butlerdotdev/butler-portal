@@ -6,7 +6,14 @@ import { makeStyles } from '@material-ui/core/styles';
 import clsx from 'clsx';
 import { butlerTokens, rgb, rgba } from '../../theme';
 
-type Tone = 'green' | 'yellow' | 'blue' | 'orange' | 'red' | 'neutral';
+type Tone =
+  | 'green'
+  | 'yellow'
+  | 'blue'
+  | 'orange'
+  | 'red'
+  | 'violet'
+  | 'neutral';
 
 interface StatusStyle {
   tone: Tone;
@@ -70,6 +77,7 @@ const useStyles = makeStyles(theme => {
     blue: tone(p.blue[500], p.blue[400]),
     orange: tone(p.orange[500], p.orange[400]),
     red: tone(p.red[500], p.red[400]),
+    violet: tone(p.violet[500], p.violet[400]),
     neutral: tone(p.neutral[500], p.neutral[400]),
     dot: {
       position: 'relative',
@@ -151,6 +159,7 @@ const useChipStyles = makeStyles(theme => {
     blue: tone(p.blue[500], p.blue[400]),
     orange: tone(p.orange[500], p.orange[400]),
     red: tone(p.red[500], p.red[400]),
+    violet: tone(p.violet[500], p.violet[400]),
     neutral: {
       backgroundColor: rgb(p.neutral[800]),
       color: rgb(p.neutral[400]),

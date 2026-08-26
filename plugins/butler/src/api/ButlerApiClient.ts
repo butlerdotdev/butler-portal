@@ -4,6 +4,11 @@
 import { DiscoveryApi, FetchApi } from '@backstage/core-plugin-api';
 import { devIdentityHeader } from './devIdentity';
 import { ButlerApiError } from './ButlerApiError';
+import type {
+  NetworkPool,
+  NetworkPoolListResponse,
+  IPAllocationListResponse,
+} from './types/networks';
 import type { ButlerFieldError } from './ButlerApiError';
 import { ButlerApi } from './ButlerApi';
 
@@ -270,6 +275,35 @@ export class ButlerApiClient implements ButlerApi {
 
   async deleteCluster(namespace: string, name: string): Promise<void> {
     return this.del(`/clusters/${namespace}/${name}`);
+  }
+
+  // ---- Networks and IP allocations ----
+  // Reads need the platform viewer role; every mutation needs platform
+  // admin. butler-server enforces both.
+
+  async listNetworkPools(): Promise<NetworkPoolListResponse> {
+    return this.get<NetworkPoolListResponse>('/admin/networks');
+  }
+
+  async getNetworkPool(namespace: string, name: string): Promise<NetworkPool> {
+    return this.get<NetworkPool>(`/admin/networks/${namespace}/${name}`);
+  }
+
+  async listPoolAllocations(
+    namespace: string,
+    name: string,
+  ): Promise<IPAllocationListResponse> {
+    return this.get<IPAllocationListResponse>(
+      `/admin/networks/${namespace}/${name}/allocations`,
+    );
+  }
+
+  async listAllIPAllocations(): Promise<IPAllocationListResponse> {
+    return this.get<IPAllocationListResponse>('/admin/ipallocations');
+  }
+
+  async releaseIPAllocation(namespace: string, name: string): Promise<void> {
+    return this.del(`/admin/ipallocations/${namespace}/${name}`);
   }
 
   async updateCluster(

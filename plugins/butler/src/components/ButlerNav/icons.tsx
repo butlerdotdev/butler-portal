@@ -56,3 +56,9 @@ export const SettingsNavIcon = (props: SVGProps<SVGSVGElement>) => (
     <P d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
   </svg>
 );
+
+export const NetworkNavIcon = (props: SVGProps<SVGSVGElement>) => (
+  <svg {...base(props)}>
+    <P d="M4 6a2 2 0 012-2h12a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM12 10v4m-4 0h8m-8 0v2m8-2v2M6 20h4m4 0h4" />
+  </svg>
+);

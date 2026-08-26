@@ -26,6 +26,8 @@ import {
   adminIdentityProvidersRouteRef,
   adminCreateIdentityProviderRouteRef,
   adminSettingsRouteRef,
+  adminNetworksRouteRef,
+  adminNetworkPoolRouteRef,
 } from '../../routes';
 import { butlerTokens } from '../../theme';
 import { ButlerNav, ButlerRoleBanner } from '../ButlerNav';
@@ -103,6 +105,16 @@ const ManagementPage = React.lazy(() =>
 );
 const UsersPage = React.lazy(() =>
   import('../admin/UsersPage').then(m => ({ default: m.UsersPage })),
+);
+const NetworkPoolsPage = React.lazy(() =>
+  import('../admin/NetworkPoolsPage').then(m => ({
+    default: m.NetworkPoolsPage,
+  })),
+);
+const NetworkPoolDetailPage = React.lazy(() =>
+  import('../admin/NetworkPoolDetailPage').then(m => ({
+    default: m.NetworkPoolDetailPage,
+  })),
 );
 const SettingsPage = React.lazy(() =>
   import('../admin/SettingsPage').then(m => ({ default: m.SettingsPage })),
@@ -290,6 +302,22 @@ const ButlerContent = () => {
                   element={
                     <AdminRouteGuard>
                       <SettingsPage />
+                    </AdminRouteGuard>
+                  }
+                />
+                <Route
+                  path={adminNetworksRouteRef.path}
+                  element={
+                    <AdminRouteGuard>
+                      <NetworkPoolsPage />
+                    </AdminRouteGuard>
+                  }
+                />
+                <Route
+                  path={adminNetworkPoolRouteRef.path}
+                  element={
+                    <AdminRouteGuard>
+                      <NetworkPoolDetailPage />
                     </AdminRouteGuard>
                   }
                 />

@@ -23,6 +23,8 @@ import {
   adminIdentityProvidersRouteRef,
   adminCreateIdentityProviderRouteRef,
   adminSettingsRouteRef,
+  adminNetworksRouteRef,
+  adminNetworkPoolRouteRef,
 } from '../routes';
 
 export interface ButlerRoutes {
@@ -48,6 +50,8 @@ export interface ButlerRoutes {
   adminIdentityProviders: () => string;
   adminCreateIdentityProvider: () => string;
   adminSettings: () => string;
+  adminNetworks: () => string;
+  adminNetworkPool: (params: { namespace: string; name: string }) => string;
 }
 
 /**
@@ -84,6 +88,8 @@ export const useButlerRoutes = (): ButlerRoutes => {
     adminCreateIdentityProviderRouteRef,
   );
   const adminSettings = useRouteRef(adminSettingsRouteRef);
+  const adminNetworks = useRouteRef(adminNetworksRouteRef);
+  const adminNetworkPool = useRouteRef(adminNetworkPoolRouteRef);
 
   return useMemo(
     () => ({
@@ -102,9 +108,13 @@ export const useButlerRoutes = (): ButlerRoutes => {
       adminUsers: () => normalizeMountPath(adminUsers()),
       adminProviders: () => normalizeMountPath(adminProviders()),
       adminCreateProvider: () => normalizeMountPath(adminCreateProvider()),
-      adminIdentityProviders: () => normalizeMountPath(adminIdentityProviders()),
-      adminCreateIdentityProvider: () => normalizeMountPath(adminCreateIdentityProvider()),
+      adminIdentityProviders: () =>
+        normalizeMountPath(adminIdentityProviders()),
+      adminCreateIdentityProvider: () =>
+        normalizeMountPath(adminCreateIdentityProvider()),
       adminSettings: () => normalizeMountPath(adminSettings()),
+      adminNetworks: () => normalizeMountPath(adminNetworks()),
+      adminNetworkPool: params => normalizeMountPath(adminNetworkPool(params)),
     }),
     [
       root,

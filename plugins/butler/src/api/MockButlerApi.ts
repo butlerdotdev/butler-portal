@@ -34,6 +34,13 @@ import { ENVIRONMENT_LABEL, compareVersions } from '../utils/environment';
 import type { ButlerFieldError } from './ButlerApiError';
 import type { ButlerIdentity } from './fixtures/identities';
 import type {
+  NetworkPool,
+  NetworkPoolListResponse,
+  IPAllocation,
+  IPAllocationListResponse,
+} from './types/networks';
+import { fixturePools, fixtureAllocations } from './fixtures/networks';
+import type {
   Cluster,
   ClusterListResponse,
   ClusterListOptions,
@@ -153,6 +160,10 @@ export interface MockButlerApiOptions {
   clusters?: Cluster[];
   /** Override the resolved caller identity. Defaults to the fixture identity. */
   identity?: Partial<ButlerIdentity>;
+  /** Override the network pools. Defaults to the fixture pool. */
+  pools?: NetworkPool[];
+  /** Override the IP allocations. Defaults to the fixture allocations. */
+  allocations?: IPAllocation[];
 }
 
 function clone<T>(value: T): T {
@@ -168,6 +179,8 @@ function notFound(kind: string, id: string): Error {
 export class MockButlerApi implements ButlerApi {
   private clusters: Cluster[];
   private identity: ButlerIdentity;
+  private pools: NetworkPool[];
+  private allocations: IPAllocation[];
   private readonly failures: Partial<Record<ButlerApiMethod, Error>>;
   private readonly latencyMs: number;
   private teamContext: string | null = null;
@@ -188,6 +201,8 @@ export class MockButlerApi implements ButlerApi {
   constructor(options: MockButlerApiOptions = {}) {
     this.clusters = clone(options.clusters ?? fixtureClusters);
     this.identity = { ...clone(fixtureIdentity), ...options.identity };
+    this.pools = clone(options.pools ?? fixturePools);
+    this.allocations = clone(options.allocations ?? fixtureAllocations);
     this.failures = options.failures ?? {};
     this.latencyMs = options.latencyMs ?? 0;
   }
@@ -469,6 +484,56 @@ export class MockButlerApi implements ButlerApi {
    * the stable-phase gate, and the field validation, so a test exercises the
    * rules the product will actually meet.
    */
+  // ---- Networks and IP allocations ----
+
+  listNetworkPools(): Promise<NetworkPoolListResponse> {
+    return this.run('listNetworkPools', () => ({
+      pools: clone(this.pools),
+    }));
+  }
+
+  getNetworkPool(namespace: string, name: string): Promise<NetworkPool> {
+    return this.run('getNetworkPool', () => {
+      const pool = this.pools.find(
+        p => p.metadata.namespace === namespace && p.metadata.name === name,
+      );
+      if (!pool) throw notFound('network pool', name);
+      return clone(pool);
+    });
+  }
+
+  listPoolAllocations(
+    namespace: string,
+    name: string,
+  ): Promise<IPAllocationListResponse> {
+    return this.run('listPoolAllocations', () => ({
+      allocations: clone(
+        this.allocations.filter(
+          a =>
+            a.spec.poolRef.name === name &&
+            (a.spec.poolRef.namespace ?? namespace) === namespace,
+        ),
+      ),
+    }));
+  }
+
+  listAllIPAllocations(): Promise<IPAllocationListResponse> {
+    return this.run('listAllIPAllocations', () => ({
+      allocations: clone(this.allocations),
+    }));
+  }
+
+  releaseIPAllocation(namespace: string, name: string): Promise<void> {
+    return this.run('releaseIPAllocation', () => {
+      const index = this.allocations.findIndex(
+        a => a.metadata.namespace === namespace && a.metadata.name === name,
+      );
+      if (index === -1) throw notFound('ip allocation', name);
+      this.allocations.splice(index, 1);
+      return undefined as unknown as void;
+    });
+  }
+
   updateCluster(
     namespace: string,
     name: string,

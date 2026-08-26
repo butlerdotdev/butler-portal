@@ -30,3 +30,20 @@ export function compareVersions(a: string, b: string): number {
   }
   return 0;
 }
+
+/**
+ * Whether an allocation belongs to a cluster.
+ *
+ * The owner link is `spec.tenantClusterRef`, a namespace and name that
+ * together identify one TenantCluster. An allocation whose reference is
+ * missing belongs to nothing addressable and is never claimed by a cluster.
+ */
+export function allocationBelongsToCluster(
+  ref: { name: string; namespace?: string } | undefined,
+  cluster: { name: string; namespace: string },
+): boolean {
+  if (!ref?.name) return false;
+  if (ref.name !== cluster.name) return false;
+  // A reference without a namespace is only trusted inside the cluster's own.
+  return (ref.namespace ?? cluster.namespace) === cluster.namespace;
+}

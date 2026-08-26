@@ -101,6 +101,18 @@ export const adminCreateIdentityProviderRouteRef = createSubRouteRef({
   parent: rootRouteRef,
 });
 
+export const adminNetworksRouteRef = createSubRouteRef({
+  id: 'butler.admin.networks',
+  parent: rootRouteRef,
+  path: '/admin/networks',
+});
+
+export const adminNetworkPoolRouteRef = createSubRouteRef({
+  id: 'butler.admin.networks.pool',
+  parent: rootRouteRef,
+  path: '/admin/networks/:namespace/:name',
+});
+
 export const adminSettingsRouteRef = createSubRouteRef({
   id: 'butler.admin.settings',
   path: '/admin/settings',

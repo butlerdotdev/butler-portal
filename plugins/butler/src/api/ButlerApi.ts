@@ -56,6 +56,11 @@ import type {
 } from './types/gitops';
 import type { PlatformConfig } from './types/config';
 import type {
+  NetworkPool,
+  NetworkPoolListResponse,
+  IPAllocationListResponse,
+} from './types/networks';
+import type {
   ClusterCertificates,
   RotationEvent,
   CertificateCategory,
@@ -111,6 +116,16 @@ export interface ButlerApi {
   getCluster(namespace: string, name: string): Promise<Cluster>;
   createCluster(data: CreateClusterRequest): Promise<Cluster>;
   deleteCluster(namespace: string, name: string): Promise<void>;
+  // Networks and IP allocations
+  listNetworkPools(): Promise<NetworkPoolListResponse>;
+  getNetworkPool(namespace: string, name: string): Promise<NetworkPool>;
+  listPoolAllocations(
+    namespace: string,
+    name: string,
+  ): Promise<IPAllocationListResponse>;
+  listAllIPAllocations(): Promise<IPAllocationListResponse>;
+  releaseIPAllocation(namespace: string, name: string): Promise<void>;
+
   updateCluster(
     namespace: string,
     name: string,

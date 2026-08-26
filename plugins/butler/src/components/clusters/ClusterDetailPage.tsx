@@ -34,6 +34,7 @@ import { ControlPlaneTab } from './ControlPlaneTab';
 import { MachineRequestsCard } from './MachineRequestsCard';
 import { LoadBalancerRequestsCard } from './LoadBalancerRequestsCard';
 import { InfrastructureOverrideCard } from './InfrastructureOverrideCard';
+import { NetworkAllocationsCard } from './NetworkAllocationsCard';
 import { DeleteClusterDialog } from './DeleteClusterDialog';
 import { EditClusterDialog } from './EditClusterDialog';
 import { ScaleWorkersDialog } from './ScaleWorkersDialog';
@@ -910,6 +911,11 @@ export const ClusterDetailPage = () => {
             />
             <InfrastructureOverrideCard
               override={spec.infrastructureOverride}
+            />
+
+            <NetworkAllocationsCard
+              clusterName={cluster.metadata.name}
+              clusterNamespace={cluster.metadata.namespace}
             />
 
             <ButlerCard
