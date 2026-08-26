@@ -155,6 +155,15 @@ export class ButlerApiClient implements ButlerApi {
           errorBody.message || errorBody.error || response.statusText;
         if (Array.isArray(errorBody.errors)) {
           fieldErrors = errorBody.errors as ButlerFieldError[];
+        } else if (
+          typeof errorBody.field === 'string' &&
+          errorBody.field.length > 0
+        ) {
+          // A webhook denial names one field rather than a list, so it
+          // would otherwise be lost and shown only as a form-level error.
+          fieldErrors = [
+            { field: errorBody.field, reason: errorMessage },
+          ] as ButlerFieldError[];
         }
       } catch {
         errorMessage = response.statusText;

@@ -115,12 +115,6 @@ describe('CreateClusterPage', () => {
     fireEvent.change(screen.getByLabelText(/OS Image/), {
       target: { value: 'talos-1.10.5' },
     });
-    fireEvent.change(screen.getByLabelText(/Load Balancer Start IP/), {
-      target: { value: '10.40.1.100' },
-    });
-    fireEvent.change(screen.getByLabelText(/Load Balancer End IP/), {
-      target: { value: '10.40.1.150' },
-    });
     fireEvent.click(screen.getByRole('button', { name: 'Create Cluster' }));
 
     // Creation is accepted and provisioning starts afterwards, so the
@@ -160,12 +154,6 @@ describe('CreateClusterPage', () => {
     });
     fireEvent.change(screen.getByLabelText(/OS Image/), {
       target: { value: 'talos-1.10.5' },
-    });
-    fireEvent.change(screen.getByLabelText(/Load Balancer Start IP/), {
-      target: { value: '10.40.1.100' },
-    });
-    fireEvent.change(screen.getByLabelText(/Load Balancer End IP/), {
-      target: { value: '10.40.1.150' },
     });
     fireEvent.click(screen.getByRole('button', { name: 'Create Cluster' }));
 

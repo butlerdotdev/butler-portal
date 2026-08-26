@@ -205,3 +205,50 @@ describe('ButlerApiClient team environments', () => {
     expect(headers).not.toHaveProperty('X-Butler-Environment');
   });
 });
+
+describe('ButlerApiClient error shapes', () => {
+  it('keeps the single field a webhook denial names', async () => {
+    const { client } = makeClient(() => ({
+      ok: false,
+      status: 403,
+      statusText: 'Forbidden',
+      json: async () => ({
+        error: 'webhook denied',
+        field: 'spec.providerConfigRef.name',
+        message: 'admission webhook denied the request: Not found: "nope"',
+      }),
+      text: async () => '',
+    }));
+
+    await expect(
+      client.createCluster({ name: 'c', providerConfigRef: 'nope' } as any),
+    ).rejects.toMatchObject({
+      status: 403,
+      fieldErrors: [
+        {
+          field: 'spec.providerConfigRef.name',
+          reason: expect.stringContaining('Not found'),
+        },
+      ],
+    });
+  });
+
+  it('still reads a list of field errors when the server sends one', async () => {
+    const { client } = makeClient(() => ({
+      ok: false,
+      status: 400,
+      statusText: 'Bad Request',
+      json: async () => ({
+        message: 'invalid',
+        errors: [{ field: 'name', reason: 'name is required' }],
+      }),
+      text: async () => '',
+    }));
+
+    await expect(
+      client.createCluster({ name: '', providerConfigRef: 'p' } as any),
+    ).rejects.toMatchObject({
+      fieldErrors: [{ field: 'name', reason: 'name is required' }],
+    });
+  });
+});

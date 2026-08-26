@@ -1268,6 +1268,10 @@ export const fixtureProviders: Provider[] = [
         namespace: 'butler-system',
         key: 'kubeconfig',
       },
+      // The live harvester provider allocates addresses from a pool, so
+      // the fixture does too; a fixture in manual mode would exercise a
+      // path this estate never takes.
+      network: { mode: 'ipam' },
     },
     status: {
       validated: true,

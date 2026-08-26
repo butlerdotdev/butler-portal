@@ -162,6 +162,11 @@ const SERVER_FIELD_TO_CONTROL: Record<string, string> = {
   proxmoxStorage: 'proxmoxStorage',
   osType: 'harvesterImageName',
   timeServers: 'timeServers',
+  // The admission webhook answers with the path on the resource rather
+  // than the request field, so those are mapped too.
+  'spec.providerConfigRef.name': 'providerConfigRef',
+  'metadata.labels[butler.butlerlabs.dev/environment]': 'environment',
+  'metadata.name': 'name',
 };
 
 /**
