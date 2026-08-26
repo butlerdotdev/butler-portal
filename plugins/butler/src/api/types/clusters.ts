@@ -249,10 +249,7 @@ export interface UpdateClusterRequest {
 }
 
 /** An environment a team may place clusters in. */
-export interface TeamEnvironment {
-  name: string;
-  displayName?: string;
-  description?: string;
-  maxClusters?: number;
-  maxClustersPerMember?: number;
-}
+// Environments belong to the team, not to the cluster. The canonical
+// shape lives with the environment types; this re-export keeps existing
+// cluster imports working without a second, drifting definition.
+export type { TeamEnvironment } from './environments';

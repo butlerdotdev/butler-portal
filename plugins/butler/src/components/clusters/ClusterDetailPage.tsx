@@ -16,7 +16,6 @@ import type {
   Cluster,
   Node,
   ClusterEvent,
-  TeamEnvironment,
   UpdateClusterRequest,
 } from '../../api/types/clusters';
 import type {
@@ -25,6 +24,7 @@ import type {
 } from '../../api/types/machines';
 import { useClusterWatch } from '../../hooks/useClusterWatch';
 import { useTeamContext } from '../../hooks/useTeamContext';
+import { useTeamEnvironments } from '../../hooks/useTeamEnvironments';
 import { AddonsTab } from './AddonsTab';
 import { GitOpsTab } from './GitOpsTab';
 import { CertificatesTab } from './CertificatesTab';
@@ -209,7 +209,6 @@ export const ClusterDetailPage = () => {
   const [editOpen, setEditOpen] = useState(false);
   const [scaleOpen, setScaleOpen] = useState(false);
   const [envOpen, setEnvOpen] = useState(false);
-  const [environments, setEnvironments] = useState<TeamEnvironment[]>([]);
   const [downloading, setDownloading] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [togglingWorkspaces, setTogglingWorkspaces] = useState(false);
@@ -383,32 +382,13 @@ export const ClusterDetailPage = () => {
   const canOperate =
     isAdmin || routeTeamRole === 'admin' || routeTeamRole === 'operator';
 
-  // The environments a cluster may move between come from its team, the
-  // same place the console reads them. With none configured the move is not
-  // offered, because there is nowhere to move to.
-  useEffect(() => {
-    let cancelled = false;
-    const teamName = loadedCluster?.spec.teamRef?.name ?? team;
-    if (!teamName) return undefined;
-    api
-      .getTeam(teamName)
-      .then(raw => {
-        if (cancelled) return;
-        const detail = raw as unknown as {
-          environments?: TeamEnvironment[];
-          spec?: { environments?: TeamEnvironment[] };
-        };
-        setEnvironments(detail.environments ?? detail.spec?.environments ?? []);
-      })
-      .catch(() => {
-        // Environments are additive: a team that cannot be read simply does
-        // not offer the move.
-        if (!cancelled) setEnvironments([]);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [api, team, loadedCluster]);
+  // The environments a cluster may move between come from its team, read
+  // through the same hook the environments page uses so a newly created
+  // environment is offered here and a deleted one stops being offered.
+  // With none configured the move is not offered: there is nowhere to go.
+  const { environments } = useTeamEnvironments(
+    loadedCluster?.spec.teamRef?.name ?? team,
+  );
 
   const { subscribe } = useClusterWatch();
   const [deletedRemotely, setDeletedRemotely] = useState(false);

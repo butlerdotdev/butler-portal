@@ -4,6 +4,7 @@
 import { DiscoveryApi, FetchApi } from '@backstage/core-plugin-api';
 import { devIdentityHeader } from './devIdentity';
 import { ButlerApiError } from './ButlerApiError';
+import type { EnvironmentRequest, TeamEnvironment } from './types/environments';
 import type {
   NetworkPool,
   NetworkPoolListResponse,
@@ -111,6 +112,8 @@ export class ButlerApiClient implements ButlerApi {
     options?: {
       method?: string;
       body?: unknown;
+      /** Scope this one request to an environment (ADR-009). */
+      environment?: string;
     },
   ): Promise<T> {
     const baseUrl = await this.getBaseUrl();
@@ -123,6 +126,11 @@ export class ButlerApiClient implements ButlerApi {
 
     if (this.teamContext) {
       headers['X-Butler-Team'] = this.teamContext;
+    }
+    // Carried per request rather than held on the client, so two calls in
+    // flight together cannot pick up each other's environment.
+    if (options?.environment) {
+      headers['X-Butler-Environment'] = options.environment;
     }
 
     const response = await this.fetchApi.fetch(url, {
@@ -196,8 +204,12 @@ export class ButlerApiClient implements ButlerApi {
     return this.request<T>(path);
   }
 
-  private post<T>(path: string, body?: unknown): Promise<T> {
-    return this.request<T>(path, { method: 'POST', body });
+  private post<T>(
+    path: string,
+    body?: unknown,
+    options?: { environment?: string },
+  ): Promise<T> {
+    return this.request<T>(path, { method: 'POST', body, ...options });
   }
 
   private put<T>(path: string, body?: unknown): Promise<T> {
@@ -269,8 +281,16 @@ export class ButlerApiClient implements ButlerApi {
     return this.get<Cluster>(`/clusters/${namespace}/${name}`);
   }
 
-  async createCluster(data: CreateClusterRequest): Promise<Cluster> {
-    return this.post<Cluster>('/clusters', data);
+  /**
+   * The environment is not part of the body. The server reads it from
+   * `X-Butler-Environment` and stamps it on the new cluster as a label,
+   * which is the same path the environment change uses afterwards.
+   */
+  async createCluster(
+    data: CreateClusterRequest,
+    options?: { environment?: string },
+  ): Promise<Cluster> {
+    return this.post<Cluster>('/clusters', data, options);
   }
 
   async deleteCluster(namespace: string, name: string): Promise<void> {
@@ -802,6 +822,52 @@ export class ButlerApiClient implements ButlerApi {
 
   async getTeam(name: string): Promise<any> {
     return this.get(`/teams/${name}`);
+  }
+
+  /**
+   * Environments come back on the team itself; there is no list endpoint
+   * of their own. A server that answers without the field reads as "none
+   * defined" rather than an error, and a raw spec is accepted for the
+   * same reason.
+   */
+  async listTeamEnvironments(team: string): Promise<TeamEnvironment[]> {
+    const detail = (await this.get(`/teams/${encodeURIComponent(team)}`)) as {
+      environments?: TeamEnvironment[];
+      spec?: { environments?: TeamEnvironment[] };
+    };
+    const envs = detail?.environments ?? detail?.spec?.environments ?? [];
+    return [...envs].sort((a, b) => a.name.localeCompare(b.name));
+  }
+
+  async createTeamEnvironment(
+    team: string,
+    request: EnvironmentRequest,
+  ): Promise<TeamEnvironment> {
+    return this.post<TeamEnvironment>(
+      `/teams/${encodeURIComponent(team)}/environments`,
+      request,
+    );
+  }
+
+  async updateTeamEnvironment(
+    team: string,
+    name: string,
+    request: EnvironmentRequest,
+  ): Promise<TeamEnvironment> {
+    return this.put<TeamEnvironment>(
+      `/teams/${encodeURIComponent(team)}/environments/${encodeURIComponent(
+        name,
+      )}`,
+      request,
+    );
+  }
+
+  async deleteTeamEnvironment(team: string, name: string): Promise<void> {
+    await this.del<unknown>(
+      `/teams/${encodeURIComponent(team)}/environments/${encodeURIComponent(
+        name,
+      )}`,
+    );
   }
 
   async createTeam(data: {

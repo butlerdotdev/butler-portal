@@ -11,6 +11,7 @@ import { useButlerRoutes } from '../../hooks/useButlerRoutes';
 import {
   ClustersNavIcon,
   DashboardNavIcon,
+  EnvironmentNavIcon,
   IdentityNavIcon,
   ManagementNavIcon,
   NetworkNavIcon,
@@ -281,6 +282,11 @@ export const ButlerNav = () => {
       {
         label: 'Team',
         items: [
+          {
+            to: routes.teamEnvironments({ team }),
+            label: 'Environments',
+            icon: <EnvironmentNavIcon />,
+          },
           {
             to: routes.teamMembers({ team }),
             label: 'Members',

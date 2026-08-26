@@ -227,20 +227,19 @@ describe('edit cluster', () => {
 
 describe('change environment', () => {
   const withEnvironments = (api: MockButlerApi) => {
-    // The team response is where the console reads environments from.
-    jest.spyOn(api, 'getTeam').mockResolvedValue({
-      name: FIXTURE_TEAM,
-      displayName: 'Platform Engineering',
-      environments: [
-        { name: 'staging', maxClusters: 10 },
-        { name: 'production', maxClusters: 4 },
-      ],
-    } as any);
+    // The environments page and this dialog read the same client method,
+    // so stubbing it here is stubbing the one source both consume.
+    jest.spyOn(api, 'listTeamEnvironments').mockResolvedValue([
+      { name: 'staging', limits: { maxClusters: 10 } },
+      { name: 'production', limits: { maxClusters: 4 } },
+    ]);
     return api;
   };
 
   it('is not offered when the team runs no environments', async () => {
-    await renderDetail(new MockButlerApi({ identity: teamAdminIdentity }));
+    await renderDetail(
+      new MockButlerApi({ identity: teamAdminIdentity, environments: [] }),
+    );
     await heading();
 
     expect(

@@ -143,8 +143,7 @@ describe('useButlerResource', () => {
       .mockReturnValueOnce(first.promise)
       .mockReturnValueOnce(second.promise);
     const { result, rerender } = renderHook(
-      ({ key }: { key: string }) =>
-        useButlerResource(fetcher, { deps: [key] }),
+      ({ key }: { key: string }) => useButlerResource(fetcher, { deps: [key] }),
       { initialProps: { key: 'a' } },
     );
 

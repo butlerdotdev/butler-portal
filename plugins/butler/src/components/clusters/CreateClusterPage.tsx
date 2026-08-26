@@ -15,6 +15,7 @@ import type {
 } from '../../api/types/providers';
 import { useButlerRoutes } from '../../hooks/useButlerRoutes';
 import { useTeamContext } from '../../hooks/useTeamContext';
+import { useTeamEnvironments } from '../../hooks/useTeamEnvironments';
 import { butlerTokens, rgb } from '../../theme';
 import {
   ButlerButton,
@@ -181,6 +182,10 @@ export const CreateClusterPage = () => {
   const navigate = useNavigate();
   const { team } = useParams<{ team: string }>();
   const { teams } = useTeamContext();
+  // The environments this team defines. When it defines none the section
+  // is not shown at all, which is the state most teams are in.
+  const { environments } = useTeamEnvironments(team);
+  const [environment, setEnvironment] = useState('');
   const activeTeam = teams.find(t => t.name === team);
   const teamDisplayName = activeTeam?.displayName || team;
   // The team's namespace comes from the server. Deriving it as
@@ -340,6 +345,12 @@ export const CreateClusterPage = () => {
       errors.loadBalancerEnd = 'Load balancer end IP is required';
     }
 
+    // A team that defines environments places every new cluster in one;
+    // the server would otherwise create it outside all of them.
+    if (environments.length > 0 && !environment) {
+      errors.environment = 'Environment is required';
+    }
+
     setValidationErrors(errors);
     return Object.keys(errors).length === 0;
   };
@@ -353,37 +364,41 @@ export const CreateClusterPage = () => {
     }
     setSubmitting(true);
     try {
-      await api.createCluster({
-        name: form.name,
-        namespace: form.namespace || undefined,
-        kubernetesVersion: form.kubernetesVersion,
-        providerConfigRef: form.providerConfigRef,
-        workerReplicas: form.workerReplicas,
-        workerCPU: form.workerCPU,
-        workerMemory: form.workerMemory,
-        workerDiskSize: form.workerDiskSize,
-        loadBalancerStart: form.loadBalancerStart,
-        loadBalancerEnd: form.loadBalancerEnd,
-        teamRef: team || undefined,
-        workspacesEnabled: form.workspacesEnabled || undefined,
-        ...(providerType === 'harvester' && {
-          harvesterNamespace: form.harvesterNamespace,
-          harvesterNetworkName: form.harvesterNetworkName,
-          harvesterImageName: form.harvesterImageName,
-        }),
-        ...(providerType === 'nutanix' && {
-          nutanixClusterUUID: form.nutanixClusterUUID,
-          nutanixSubnetUUID: form.nutanixSubnetUUID,
-          nutanixImageUUID: form.nutanixImageUUID,
-          nutanixStorageContainerUUID:
-            form.nutanixStorageContainerUUID || undefined,
-        }),
-        ...(providerType === 'proxmox' && {
-          proxmoxNode: form.proxmoxNode,
-          proxmoxStorage: form.proxmoxStorage,
-          proxmoxTemplateID: parseInt(form.proxmoxTemplateID, 10) || undefined,
-        }),
-      });
+      await api.createCluster(
+        {
+          name: form.name,
+          namespace: form.namespace || undefined,
+          kubernetesVersion: form.kubernetesVersion,
+          providerConfigRef: form.providerConfigRef,
+          workerReplicas: form.workerReplicas,
+          workerCPU: form.workerCPU,
+          workerMemory: form.workerMemory,
+          workerDiskSize: form.workerDiskSize,
+          loadBalancerStart: form.loadBalancerStart,
+          loadBalancerEnd: form.loadBalancerEnd,
+          teamRef: team || undefined,
+          workspacesEnabled: form.workspacesEnabled || undefined,
+          ...(providerType === 'harvester' && {
+            harvesterNamespace: form.harvesterNamespace,
+            harvesterNetworkName: form.harvesterNetworkName,
+            harvesterImageName: form.harvesterImageName,
+          }),
+          ...(providerType === 'nutanix' && {
+            nutanixClusterUUID: form.nutanixClusterUUID,
+            nutanixSubnetUUID: form.nutanixSubnetUUID,
+            nutanixImageUUID: form.nutanixImageUUID,
+            nutanixStorageContainerUUID:
+              form.nutanixStorageContainerUUID || undefined,
+          }),
+          ...(providerType === 'proxmox' && {
+            proxmoxNode: form.proxmoxNode,
+            proxmoxStorage: form.proxmoxStorage,
+            proxmoxTemplateID:
+              parseInt(form.proxmoxTemplateID, 10) || undefined,
+          }),
+        },
+        environment ? { environment } : undefined,
+      );
       navigate(routes.clusters({ team: team ?? '' }));
     } catch (err) {
       setSubmitError(
@@ -651,6 +666,34 @@ export const CreateClusterPage = () => {
               )}
             </ButlerFormRow>
           </ButlerFormSection>
+
+          {/*
+            Only shown when the team defines environments. The choice is
+            not part of the request body: the server reads it from a
+            header and stamps it on the cluster as a label.
+          */}
+          {environments.length > 0 && (
+            <ButlerFormSection
+              title="Environment"
+              description="Which of the team's environments this cluster belongs to."
+            >
+              <ButlerSelect
+                label="Environment *"
+                value={environment}
+                onChange={e => setEnvironment(e.target.value)}
+                error={validationErrors.environment}
+              >
+                <option value="">Select environment...</option>
+                {environments.map(env => (
+                  <option key={env.name} value={env.name}>
+                    {env.limits?.maxClusters == null
+                      ? env.name
+                      : `${env.name} (up to ${env.limits.maxClusters} clusters)`}
+                  </option>
+                ))}
+              </ButlerSelect>
+            </ButlerFormSection>
+          )}
 
           {selectedProvider && (
             <ButlerFormSection title={`Infrastructure (${providerType})`}>

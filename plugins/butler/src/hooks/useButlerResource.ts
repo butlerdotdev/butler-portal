@@ -3,9 +3,7 @@
 
 import { useCallback, useEffect, useReducer, useRef } from 'react';
 
-export type PollInterval<T> =
-  | number
-  | ((data: T | undefined) => number | null);
+export type PollInterval<T> = number | ((data: T | undefined) => number | null);
 
 export interface UseButlerResourceOptions<T> {
   deps: unknown[];
@@ -128,7 +126,10 @@ export function useButlerResource<T>(
         // A failed silent poll re-arms on the last known data so a
         // transient error does not freeze the page on a stale state.
         if (silent) {
-          const next = resolveInterval(intervalRef.current, lastDataRef.current);
+          const next = resolveInterval(
+            intervalRef.current,
+            lastDataRef.current,
+          );
           if (next !== null) {
             timerRef.current = setTimeout(() => {
               timerRef.current = null;
@@ -163,10 +164,7 @@ export function useButlerResource<T>(
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [enabled, run, ...deps]);
 
-  const refresh = useCallback(
-    (silent: boolean = false) => run(silent),
-    [run],
-  );
+  const refresh = useCallback((silent: boolean = false) => run(silent), [run]);
 
   return { ...state, refresh };
 }

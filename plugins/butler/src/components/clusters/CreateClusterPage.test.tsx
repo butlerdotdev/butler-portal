@@ -93,7 +93,9 @@ describe('CreateClusterPage', () => {
   });
 
   it('submits the form and navigates to the cluster list', async () => {
-    const api = new MockButlerApi();
+    // No environments on this team, so the form asks for none and this
+    // test stays about submitting and navigating.
+    const api = new MockButlerApi({ environments: [] });
     const spy = jest.spyOn(api, 'createCluster');
     await renderPage(api);
     await screen.findByRole('heading', { name: 'Create Cluster' });
@@ -128,11 +130,14 @@ describe('CreateClusterPage', () => {
         harvesterImageName: 'talos-1.10.5',
         teamRef: FIXTURE_TEAM,
       }),
+      // No environment chosen, so no environment scope is sent.
+      undefined,
     );
   });
 
   it('renders the API error inline when creation fails', async () => {
     const api = new MockButlerApi({
+      environments: [],
       failures: { createCluster: new Error('quota exceeded') },
     });
     await renderPage(api);

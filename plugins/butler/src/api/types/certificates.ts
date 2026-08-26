@@ -28,11 +28,7 @@ export type RotationType = 'all' | 'kubeconfigs' | 'ca';
 /**
  * Rotation operation status.
  */
-export type RotationStatus =
-  | 'in_progress'
-  | 'completed'
-  | 'failed'
-  | 'unknown';
+export type RotationStatus = 'in_progress' | 'completed' | 'failed' | 'unknown';
 
 /**
  * Individual certificate information.

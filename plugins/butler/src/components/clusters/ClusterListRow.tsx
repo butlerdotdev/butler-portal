@@ -162,7 +162,10 @@ export const ClusterListRow = ({
         <div className={classes.row}>
           <div className={classes.identity}>
             <div
-              className={clsx(classes.icon, tone === 'violet' && classes.iconViolet)}
+              className={clsx(
+                classes.icon,
+                tone === 'violet' && classes.iconViolet,
+              )}
             >
               <ServerIcon />
             </div>

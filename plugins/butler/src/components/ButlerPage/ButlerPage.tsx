@@ -13,6 +13,7 @@ import {
   clustersRouteRef,
   createClusterRouteRef,
   clusterDetailRouteRef,
+  teamEnvironmentsRouteRef,
   teamMembersRouteRef,
   teamSettingsRouteRef,
   adminRouteRef,
@@ -105,6 +106,11 @@ const ManagementPage = React.lazy(() =>
 );
 const UsersPage = React.lazy(() =>
   import('../admin/UsersPage').then(m => ({ default: m.UsersPage })),
+);
+const TeamEnvironmentsPage = React.lazy(() =>
+  import('../environments/TeamEnvironmentsPage').then(m => ({
+    default: m.TeamEnvironmentsPage,
+  })),
 );
 const NetworkPoolsPage = React.lazy(() =>
   import('../admin/NetworkPoolsPage').then(m => ({
@@ -208,6 +214,10 @@ const ButlerContent = () => {
                 <Route
                   path={clusterDetailRouteRef.path}
                   element={<ClusterDetailPage />}
+                />
+                <Route
+                  path={teamEnvironmentsRouteRef.path}
+                  element={<TeamEnvironmentsPage />}
                 />
                 <Route
                   path={teamMembersRouteRef.path}

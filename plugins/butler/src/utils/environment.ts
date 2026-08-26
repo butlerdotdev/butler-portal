@@ -47,3 +47,45 @@ export function allocationBelongsToCluster(
   // A reference without a namespace is only trusted inside the cluster's own.
   return (ref.namespace ?? cluster.namespace) === cluster.namespace;
 }
+
+/**
+ * How many clusters sit in each environment.
+ *
+ * Membership is the environment label the server stamps on a cluster, not
+ * a name match against anything. Clusters created before an environment
+ * existed carry no label and belong to none of them, which is why the
+ * unlabelled ones are counted separately rather than folded into a
+ * default bucket.
+ */
+export function clusterCountsByEnvironment(
+  clusters: Array<{ metadata?: { labels?: Record<string, string> } }>,
+): { counts: Record<string, number>; unassigned: number } {
+  const counts: Record<string, number> = {};
+  let unassigned = 0;
+  for (const cluster of clusters) {
+    const env = clusterEnvironment(cluster.metadata?.labels);
+    if (!env) {
+      unassigned += 1;
+      continue;
+    }
+    counts[env] = (counts[env] ?? 0) + 1;
+  }
+  return { counts, unassigned };
+}
+
+/**
+ * Environment names stamped on clusters that no environment defines.
+ *
+ * Deleting an environment leaves its clusters labelled, so the label can
+ * outlive the definition. Surfacing those keeps the accounting honest
+ * instead of quietly dropping the clusters from every total.
+ */
+export function orphanedEnvironments(
+  counts: Record<string, number>,
+  defined: Array<{ name: string }>,
+): string[] {
+  const known = new Set(defined.map(env => env.name));
+  return Object.keys(counts)
+    .filter(name => !known.has(name))
+    .sort();
+}

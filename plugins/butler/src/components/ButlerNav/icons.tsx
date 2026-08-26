@@ -57,6 +57,13 @@ export const SettingsNavIcon = (props: SVGProps<SVGSVGElement>) => (
   </svg>
 );
 
+/** Stacked layers: environments are parallel homes for a team's clusters. */
+export const EnvironmentNavIcon = (props: SVGProps<SVGSVGElement>) => (
+  <svg {...base(props)}>
+    <P d="M12 3l8 4-8 4-8-4 8-4zM4 12l8 4 8-4M4 17l8 4 8-4" />
+  </svg>
+);
+
 export const NetworkNavIcon = (props: SVGProps<SVGSVGElement>) => (
   <svg {...base(props)}>
     <P d="M4 6a2 2 0 012-2h12a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM12 10v4m-4 0h8m-8 0v2m8-2v2M6 20h4m4 0h4" />

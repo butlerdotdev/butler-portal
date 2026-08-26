@@ -159,3 +159,28 @@ describe('the navigation only offers destinations a role can use', () => {
     }
   });
 });
+
+describe('team environments are reachable by every team role', () => {
+  it.each(['teamAdmin', 'teamOperator', 'teamViewer'] as const)(
+    'offers %s the environments destination inside a team',
+    async role => {
+      await renderAs(role, `/butler/t/${FIXTURE_TEAM}`);
+
+      await waitFor(() => {
+        expect(
+          screen.getByRole('link', { name: 'Environments' }),
+        ).toBeInTheDocument();
+      });
+    },
+  );
+
+  it('points the destination at the team it is showing', async () => {
+    await renderAs('teamViewer', `/butler/t/${FIXTURE_TEAM}`);
+
+    const link = await screen.findByRole('link', { name: 'Environments' });
+    expect(link).toHaveAttribute(
+      'href',
+      `/butler/t/${FIXTURE_TEAM}/environments`,
+    );
+  });
+});

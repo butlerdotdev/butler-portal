@@ -235,19 +235,17 @@ export const GIT_PROVIDER_CONFIG: Record<
 /**
  * Category display info
  */
-export const CATEGORY_CONFIG: Record<
-  string,
-  { label: string; order: number }
-> = {
-  infrastructure: {
-    label: 'Infrastructure',
-    order: 1,
-  },
-  apps: {
-    label: 'Applications',
-    order: 2,
-  },
-};
+export const CATEGORY_CONFIG: Record<string, { label: string; order: number }> =
+  {
+    infrastructure: {
+      label: 'Infrastructure',
+      order: 1,
+    },
+    apps: {
+      label: 'Applications',
+      order: 2,
+    },
+  };
 
 /**
  * Get category label

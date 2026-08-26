@@ -45,7 +45,14 @@ describe('fixture clusters', () => {
   it('covers every lifecycle phase', () => {
     const phases = new Set(fixtureClusters.map(c => c.status?.phase));
     expect(phases).toEqual(
-      new Set(['Pending', 'Provisioning', 'Installing', 'Ready', 'Failed', 'Deleting']),
+      new Set([
+        'Pending',
+        'Provisioning',
+        'Installing',
+        'Ready',
+        'Failed',
+        'Deleting',
+      ]),
     );
   });
 
@@ -54,7 +61,9 @@ describe('fixture clusters', () => {
       provisioningCluster.status!.workerNodesDesired!,
     );
     expect(
-      provisioningCluster.status?.conditions?.find(c => c.type === 'WorkersReady')?.reason,
+      provisioningCluster.status?.conditions?.find(
+        c => c.type === 'WorkersReady',
+      )?.reason,
     ).toBe('WorkersProvisioning');
     expect(staleNodesCluster.status?.workerNodesReady).toBeGreaterThan(
       staleNodesCluster.status!.workerNodesDesired!,
@@ -86,11 +95,15 @@ describe('MockButlerApi', () => {
   it('filters listClusters by team and namespace', async () => {
     const api = new MockButlerApi();
     expect((await api.listClusters({ team: 'data' })).clusters).toHaveLength(0);
-    expect((await api.listClusters({ namespace: 'other' })).clusters).toHaveLength(0);
+    expect(
+      (await api.listClusters({ namespace: 'other' })).clusters,
+    ).toHaveLength(0);
     api.setTeamContext('data');
     expect((await api.listClusters()).clusters).toHaveLength(0);
     api.setTeamContext(FIXTURE_TEAM);
-    expect((await api.listClusters()).clusters).toHaveLength(fixtureClusters.length);
+    expect((await api.listClusters()).clusters).toHaveLength(
+      fixtureClusters.length,
+    );
   });
 
   it('rejects unknown clusters with a 404-style error', async () => {
@@ -125,7 +138,10 @@ describe('MockButlerApi', () => {
     expect(
       last?.status?.conditions?.find(c => c.type === 'WorkersReady'),
     ).toMatchObject({ status: 'True', reason: 'WorkersReady' });
-    expect(last?.status?.observedState?.workers).toEqual({ desired: 6, ready: 6 });
+    expect(last?.status?.observedState?.workers).toEqual({
+      desired: 6,
+      ready: 6,
+    });
 
     // Stable once converged.
     const after = await api.getCluster(ns, name);
@@ -149,7 +165,9 @@ describe('MockButlerApi', () => {
 
     const deleting = await api.getCluster(ns, name);
     expect(deleting.status?.phase).toBe('Deleting');
-    expect(deleting.status?.conditions?.find(c => c.type === 'Ready')).toMatchObject({
+    expect(
+      deleting.status?.conditions?.find(c => c.type === 'Ready'),
+    ).toMatchObject({
       status: 'False',
       reason: 'Deleting',
     });
@@ -172,7 +190,9 @@ describe('MockButlerApi', () => {
     expect(created.metadata.namespace).toBe(ns);
     expect(created.status?.phase).toBe('Pending');
     expect(created.status?.workerNodesDesired).toBe(2);
-    expect((await api.listClusters()).clusters).toHaveLength(fixtureClusters.length + 1);
+    expect((await api.listClusters()).clusters).toHaveLength(
+      fixtureClusters.length + 1,
+    );
     await expect(
       api.createCluster({
         name: 'new-india',
@@ -186,8 +206,13 @@ describe('MockButlerApi', () => {
   it('toggles workspaces', async () => {
     const api = new MockButlerApi();
     const name = readyCluster.metadata.name;
-    expect((await api.toggleClusterWorkspaces(ns, name, false)).spec.workspaces?.enabled).toBe(false);
-    expect((await api.getCluster(ns, name)).spec.workspaces?.enabled).toBe(false);
+    expect(
+      (await api.toggleClusterWorkspaces(ns, name, false)).spec.workspaces
+        ?.enabled,
+    ).toBe(false);
+    expect((await api.getCluster(ns, name)).spec.workspaces?.enabled).toBe(
+      false,
+    );
   });
 
   it('installs, converges and uninstalls addons', async () => {
@@ -198,10 +223,14 @@ describe('MockButlerApi', () => {
     expect(installing.status).toBe('Installing');
 
     const { addons } = await api.listClusterAddons(ns, name);
-    expect(addons.find(a => a.name === 'ingress-nginx')?.status).toBe('Installed');
+    expect(addons.find(a => a.name === 'ingress-nginx')?.status).toBe(
+      'Installed',
+    );
 
     await api.uninstallAddon(ns, name, 'ingress-nginx');
-    expect((await api.getAddonDetails(ns, name, 'ingress-nginx')).status).toBe('Deleting');
+    expect((await api.getAddonDetails(ns, name, 'ingress-nginx')).status).toBe(
+      'Deleting',
+    );
     const after = await api.listClusterAddons(ns, name);
     expect(after.addons.map(a => a.name)).not.toContain('ingress-nginx');
   });
@@ -212,42 +241,67 @@ describe('MockButlerApi', () => {
 
     const before = await api.getClusterCertificates(ns, name);
     expect(before.rotationInProgress).toBe(false);
-    expect(Object.keys(before.categories).sort()).toEqual(
-      ['apiserver', 'ca', 'datastore', 'front-proxy', 'konnectivity', 'kubeconfig', 'service-account'],
-    );
+    expect(Object.keys(before.categories).sort()).toEqual([
+      'apiserver',
+      'ca',
+      'datastore',
+      'front-proxy',
+      'konnectivity',
+      'kubeconfig',
+      'service-account',
+    ]);
 
     const started = await api.rotateCertificates(ns, name, 'kubeconfigs');
     expect(started.status).toBe('in_progress');
     expect(started.affectedSecrets.length).toBeGreaterThan(0);
-    expect((await api.getClusterCertificates(ns, name)).rotationInProgress).toBe(true);
+    expect(
+      (await api.getClusterCertificates(ns, name)).rotationInProgress,
+    ).toBe(true);
 
     const polled = await api.getRotationStatus(ns, name);
     expect(polled.status).toBe('completed');
     expect(polled.completedAt).toBeTruthy();
-    expect((await api.getClusterCertificates(ns, name)).rotationInProgress).toBe(false);
+    expect(
+      (await api.getClusterCertificates(ns, name)).rotationInProgress,
+    ).toBe(false);
 
-    await expect(api.rotateCertificates(ns, name, 'ca')).rejects.toThrow('acknowledge');
+    await expect(api.rotateCertificates(ns, name, 'ca')).rejects.toThrow(
+      'acknowledge',
+    );
   });
 
   it('adds and removes team members', async () => {
     const api = new MockButlerApi();
     const before = (await api.getTeamMembers(FIXTURE_TEAM)).members.length;
-    await api.addTeamMember(FIXTURE_TEAM, { email: 'new@example.com', role: 'viewer' });
-    expect((await api.getTeamMembers(FIXTURE_TEAM)).members).toHaveLength(before + 1);
+    await api.addTeamMember(FIXTURE_TEAM, {
+      email: 'new@example.com',
+      role: 'viewer',
+    });
+    expect((await api.getTeamMembers(FIXTURE_TEAM)).members).toHaveLength(
+      before + 1,
+    );
     await api.updateMemberRole(FIXTURE_TEAM, 'new@example.com', 'operator');
     expect(
-      (await api.getTeamMembers(FIXTURE_TEAM)).members.find((m: any) => m.email === 'new@example.com').role,
+      (await api.getTeamMembers(FIXTURE_TEAM)).members.find(
+        (m: any) => m.email === 'new@example.com',
+      ).role,
     ).toBe('operator');
     await api.removeTeamMember(FIXTURE_TEAM, 'new@example.com');
-    expect((await api.getTeamMembers(FIXTURE_TEAM)).members).toHaveLength(before);
-    await expect(api.removeTeamMember(FIXTURE_TEAM, 'new@example.com')).rejects.toThrow('not found');
+    expect((await api.getTeamMembers(FIXTURE_TEAM)).members).toHaveLength(
+      before,
+    );
+    await expect(
+      api.removeTeamMember(FIXTURE_TEAM, 'new@example.com'),
+    ).rejects.toThrow('not found');
   });
 
   it('injects failures per method', async () => {
     const api = new MockButlerApi({
       failures: { getCluster: new Error('boom') },
     });
-    await expect(api.getCluster(ns, readyCluster.metadata.name)).rejects.toThrow('boom');
+    await expect(
+      api.getCluster(ns, readyCluster.metadata.name),
+    ).rejects.toThrow('boom');
     // Other methods are unaffected.
     await expect(api.listClusters()).resolves.toBeDefined();
   });
@@ -288,7 +342,9 @@ describe('MockButlerApi', () => {
       'clusters/ready-delta/longhorn/helmrepository.yaml',
       'clusters/ready-delta/longhorn/helmrelease.yaml',
     ]);
-    expect(flux['clusters/ready-delta/longhorn/helmrelease.yaml']).toContain('kind: HelmRelease');
+    expect(flux['clusters/ready-delta/longhorn/helmrelease.yaml']).toContain(
+      'kind: HelmRelease',
+    );
     const argo = await api.previewManifests({
       addonName: 'longhorn',
       repository: 'butler-lab/clusters',

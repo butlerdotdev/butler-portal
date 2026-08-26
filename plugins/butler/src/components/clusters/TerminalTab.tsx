@@ -125,7 +125,8 @@ export const TerminalTab = ({
     const term = new Terminal({
       cursorBlink: true,
       fontSize: 14,
-      fontFamily: '"Cascadia Code", "Fira Code", "JetBrains Mono", Menlo, Monaco, "Courier New", monospace',
+      fontFamily:
+        '"Cascadia Code", "Fira Code", "JetBrains Mono", Menlo, Monaco, "Courier New", monospace',
       theme: {
         background: '#0a0a0a',
         foreground: '#e4e4e7',
@@ -214,7 +215,9 @@ export const TerminalTab = ({
 
       ws.onerror = () => {
         setStatus('error');
-        setErrorMsg('WebSocket connection error. Please check your network and try again.');
+        setErrorMsg(
+          'WebSocket connection error. Please check your network and try again.',
+        );
         term.writeln('\x1b[31mConnection error.\x1b[0m');
       };
 
@@ -290,19 +293,19 @@ export const TerminalTab = ({
     status === 'connected'
       ? classes.connected
       : status === 'connecting'
-        ? classes.connecting
-        : status === 'error'
-          ? classes.error
-          : classes.disconnected;
+      ? classes.connecting
+      : status === 'error'
+      ? classes.error
+      : classes.disconnected;
 
   const statusLabel =
     status === 'connected'
       ? 'Connected'
       : status === 'connecting'
-        ? 'Connecting...'
-        : status === 'error'
-          ? errorMsg || 'Error'
-          : 'Disconnected';
+      ? 'Connecting...'
+      : status === 'error'
+      ? errorMsg || 'Error'
+      : 'Disconnected';
 
   return (
     <ButlerCard flush className={classes.card}>

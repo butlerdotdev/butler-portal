@@ -10,12 +10,7 @@ import {
   Progress,
   EmptyState,
 } from '@backstage/core-components';
-import {
-  Typography,
-  Button,
-  Chip,
-  Box,
-} from '@material-ui/core';
+import { Typography, Button, Chip, Box } from '@material-ui/core';
 import { makeStyles } from '@material-ui/core/styles';
 import RefreshIcon from '@material-ui/icons/Refresh';
 import { butlerApiRef } from '../../api/ButlerApi';

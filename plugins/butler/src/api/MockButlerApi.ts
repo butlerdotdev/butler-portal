@@ -40,6 +40,8 @@ import type {
   IPAllocationListResponse,
 } from './types/networks';
 import { fixturePools, fixtureAllocations } from './fixtures/networks';
+import { fixtureEnvironments } from './fixtures/environments';
+import type { EnvironmentRequest, TeamEnvironment } from './types/environments';
 import type {
   Cluster,
   ClusterListResponse,
@@ -152,6 +154,8 @@ export type ButlerApiMethod = {
 }[keyof ButlerApi];
 
 export interface MockButlerApiOptions {
+  /** Team environments the mock starts with. */
+  environments?: TeamEnvironment[];
   /** Methods that should reject with the given error instead of running. */
   failures?: Partial<Record<ButlerApiMethod, Error>>;
   /** Artificial delay applied to every call, in milliseconds. */
@@ -181,6 +185,7 @@ export class MockButlerApi implements ButlerApi {
   private identity: ButlerIdentity;
   private pools: NetworkPool[];
   private allocations: IPAllocation[];
+  private environments: TeamEnvironment[];
   private readonly failures: Partial<Record<ButlerApiMethod, Error>>;
   private readonly latencyMs: number;
   private teamContext: string | null = null;
@@ -203,6 +208,7 @@ export class MockButlerApi implements ButlerApi {
     this.identity = { ...clone(fixtureIdentity), ...options.identity };
     this.pools = clone(options.pools ?? fixturePools);
     this.allocations = clone(options.allocations ?? fixtureAllocations);
+    this.environments = clone(options.environments ?? fixtureEnvironments);
     this.failures = options.failures ?? {};
     this.latencyMs = options.latencyMs ?? 0;
   }
@@ -395,7 +401,10 @@ export class MockButlerApi implements ButlerApi {
     });
   }
 
-  createCluster(data: CreateClusterRequest): Promise<Cluster> {
+  createCluster(
+    data: CreateClusterRequest,
+    options?: { environment?: string },
+  ): Promise<Cluster> {
     return this.run('createCluster', () => {
       const namespace = data.namespace ?? FIXTURE_NAMESPACE;
       if (
@@ -419,6 +428,10 @@ export class MockButlerApi implements ButlerApi {
           uid: `mock-${this.resourceVersion}`,
           resourceVersion: String(this.resourceVersion),
           creationTimestamp: FIXTURE_NOW,
+          // The server turns the environment header into this label.
+          labels: options?.environment
+            ? { [ENVIRONMENT_LABEL]: options.environment }
+            : undefined,
         },
         spec: {
           kubernetesVersion: data.kubernetesVersion ?? '1.33.2',
@@ -1688,6 +1701,61 @@ export class MockButlerApi implements ButlerApi {
         spec: { displayName: info.displayName },
         status: { phase: 'Active', namespace: `team-${name}` },
       };
+    });
+  }
+
+  listTeamEnvironments(_team: string): Promise<TeamEnvironment[]> {
+    return this.run('listTeamEnvironments', () =>
+      clone(this.environments).sort((a, b) => a.name.localeCompare(b.name)),
+    );
+  }
+
+  createTeamEnvironment(
+    _team: string,
+    request: EnvironmentRequest,
+  ): Promise<TeamEnvironment> {
+    return this.run('createTeamEnvironment', () => {
+      const clash = this.environments.some(
+        e => e.name.toLowerCase() === request.name.toLowerCase(),
+      );
+      if (clash) {
+        throw new ButlerApiError({
+          status: 409,
+          message: `Environment "${request.name}" already exists`,
+        });
+      }
+      const created = clone(request) as TeamEnvironment;
+      this.environments.push(created);
+      return clone(created);
+    });
+  }
+
+  updateTeamEnvironment(
+    _team: string,
+    name: string,
+    request: EnvironmentRequest,
+  ): Promise<TeamEnvironment> {
+    return this.run('updateTeamEnvironment', () => {
+      const index = this.environments.findIndex(
+        e => e.name.toLowerCase() === name.toLowerCase(),
+      );
+      if (index === -1) throw notFound('environment', name);
+      // The server keys the entry by name and refuses a rename, so the
+      // stored name wins over anything the request carries.
+      const updated = { ...clone(request), name } as TeamEnvironment;
+      this.environments[index] = updated;
+      return clone(updated);
+    });
+  }
+
+  deleteTeamEnvironment(_team: string, name: string): Promise<void> {
+    return this.run('deleteTeamEnvironment', () => {
+      const index = this.environments.findIndex(
+        e => e.name.toLowerCase() === name.toLowerCase(),
+      );
+      if (index === -1) throw notFound('environment', name);
+      this.environments.splice(index, 1);
+      return undefined;
     });
   }
 

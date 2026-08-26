@@ -68,7 +68,8 @@ describe('ButlerApiClient cluster detail reads', () => {
   });
 
   it('exports YAML as text with a yaml Accept header', async () => {
-    const yaml = 'apiVersion: butler.butlerlabs.dev/v1alpha1\nkind: TenantCluster\n';
+    const yaml =
+      'apiVersion: butler.butlerlabs.dev/v1alpha1\nkind: TenantCluster\n';
     const { client, calls } = makeClient(() => ({
       ok: true,
       status: 200,
@@ -108,5 +109,75 @@ describe('ButlerApiClient cluster detail reads', () => {
     await expect(client.exportClusterYAML('ns', 'missing')).rejects.toThrow(
       'Butler API error (404): cluster not found',
     );
+  });
+});
+
+describe('ButlerApiClient team environments', () => {
+  it('reads environments off the team, sorted by name', async () => {
+    const { client, calls } = makeClient(() =>
+      jsonResponse({
+        name: 'platform',
+        environments: [{ name: 'staging' }, { name: 'production' }],
+      }),
+    );
+
+    const envs = await client.listTeamEnvironments('platform');
+
+    expect(calls[0].url).toBe('http://localhost/api/butler/teams/platform');
+    expect(envs.map(e => e.name)).toEqual(['production', 'staging']);
+  });
+
+  it('reads a raw spec when the response carries one', async () => {
+    const { client } = makeClient(() =>
+      jsonResponse({ spec: { environments: [{ name: 'dev' }] } }),
+    );
+
+    expect(await client.listTeamEnvironments('platform')).toEqual([
+      { name: 'dev' },
+    ]);
+  });
+
+  it('treats a team without the field as having none', async () => {
+    const { client } = makeClient(() => jsonResponse({ name: 'platform' }));
+
+    expect(await client.listTeamEnvironments('platform')).toEqual([]);
+  });
+
+  it('escapes a team and environment name in the path', async () => {
+    const { client, calls } = makeClient(() => jsonResponse({}));
+
+    await client.deleteTeamEnvironment('a team', 'an/env');
+
+    expect(calls[0].url).toBe(
+      'http://localhost/api/butler/teams/a%20team/environments/an%2Fenv',
+    );
+    expect(calls[0].init?.method).toBe('DELETE');
+  });
+
+  it('sends the environment as a scope header, never in the body', async () => {
+    const { client, calls } = makeClient(() =>
+      jsonResponse({ metadata: { name: 'c1' } }),
+    );
+
+    await client.createCluster({ name: 'c1', providerConfigRef: 'p' } as any, {
+      environment: 'production',
+    });
+
+    const headers = calls[0].init?.headers as Record<string, string>;
+    expect(headers['X-Butler-Environment']).toBe('production');
+    expect(JSON.parse(String(calls[0].init?.body))).not.toHaveProperty(
+      'environment',
+    );
+  });
+
+  it('omits the scope header when no environment is chosen', async () => {
+    const { client, calls } = makeClient(() =>
+      jsonResponse({ metadata: { name: 'c1' } }),
+    );
+
+    await client.createCluster({ name: 'c1', providerConfigRef: 'p' } as any);
+
+    const headers = calls[0].init?.headers as Record<string, string>;
+    expect(headers).not.toHaveProperty('X-Butler-Environment');
   });
 });

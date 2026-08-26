@@ -221,9 +221,7 @@ export function getBuiltinAddons(
   return catalog.filter(addon => addon.source === 'builtin');
 }
 
-export function getCustomAddons(
-  catalog: AddonDefinition[],
-): AddonDefinition[] {
+export function getCustomAddons(catalog: AddonDefinition[]): AddonDefinition[] {
   return catalog.filter(addon => addon.source === 'custom');
 }
 

@@ -148,7 +148,9 @@ function WorkspaceTerminalDialogInner({
         if (initialCommand) {
           setTimeout(() => {
             if (ws.readyState === WebSocket.OPEN) {
-              ws.send(JSON.stringify({ type: 'data', data: initialCommand + '\n' }));
+              ws.send(
+                JSON.stringify({ type: 'data', data: initialCommand + '\n' }),
+              );
             }
           }, 500);
         }
@@ -197,7 +199,15 @@ function WorkspaceTerminalDialogInner({
         e instanceof Error ? e.message : 'Failed to establish connection';
       term.writeln(`\x1b[31mFailed to connect: ${message}\x1b[0m`);
     }
-  }, [targetName, targetPod, discoveryApi, clusterNamespace, clusterName, initialCommand, cleanup]);
+  }, [
+    targetName,
+    targetPod,
+    discoveryApi,
+    clusterNamespace,
+    clusterName,
+    initialCommand,
+    cleanup,
+  ]);
 
   useEffect(() => {
     if (open && targetName && targetPod) {
@@ -234,8 +244,8 @@ function WorkspaceTerminalDialogInner({
     status === 'connected'
       ? '#4caf50'
       : status === 'connecting'
-        ? '#ff9800'
-        : '#757575';
+      ? '#ff9800'
+      : '#757575';
 
   return (
     <Dialog open={open} onClose={handleClose} fullScreen>
@@ -270,7 +280,10 @@ function WorkspaceTerminalDialogInner({
             backgroundColor: '#0a0a0a',
           }}
         >
-          <div ref={terminalRef} style={{ height: 'calc(100vh - 160px)', padding: 4 }} />
+          <div
+            ref={terminalRef}
+            style={{ height: 'calc(100vh - 160px)', padding: 4 }}
+          />
         </Box>
       </DialogContent>
       <DialogActions>

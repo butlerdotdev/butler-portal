@@ -1,6 +1,7 @@
 // Copyright 2026 The Butler Authors.
 // SPDX-License-Identifier: Apache-2.0
 
+import type { EnvironmentRequest, TeamEnvironment } from './types/environments';
 import { createApiRef } from '@backstage/core-plugin-api';
 
 import type {
@@ -114,7 +115,10 @@ export interface ButlerApi {
   // Clusters
   listClusters(options?: ClusterListOptions): Promise<ClusterListResponse>;
   getCluster(namespace: string, name: string): Promise<Cluster>;
-  createCluster(data: CreateClusterRequest): Promise<Cluster>;
+  createCluster(
+    data: CreateClusterRequest,
+    options?: { environment?: string },
+  ): Promise<Cluster>;
   deleteCluster(namespace: string, name: string): Promise<void>;
   // Networks and IP allocations
   listNetworkPools(): Promise<NetworkPoolListResponse>;
@@ -328,6 +332,21 @@ export interface ButlerApi {
   disableUser(username: string): Promise<void>;
   enableUser(username: string): Promise<void>;
   resendInvite(username: string): Promise<{ inviteUrl: string }>;
+
+  // Team environments (ADR-009). Environments live in
+  // Team.spec.environments[], so the read is a team read and the three
+  // mutations are the only way to change that list.
+  listTeamEnvironments(team: string): Promise<TeamEnvironment[]>;
+  createTeamEnvironment(
+    team: string,
+    request: EnvironmentRequest,
+  ): Promise<TeamEnvironment>;
+  updateTeamEnvironment(
+    team: string,
+    name: string,
+    request: EnvironmentRequest,
+  ): Promise<TeamEnvironment>;
+  deleteTeamEnvironment(team: string, name: string): Promise<void>;
 
   // Teams
   getTeam(name: string): Promise<any>;

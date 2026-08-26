@@ -32,7 +32,5 @@ export type { Cluster } from './api/types/clusters';
 
 // Shared UI components
 export { StatusBadge } from './components/StatusBadge/StatusBadge';
-export {
-  WorkspaceTerminalDialog,
-} from './components/shared/WorkspaceTerminalDialog';
+export { WorkspaceTerminalDialog } from './components/shared/WorkspaceTerminalDialog';
 export type { TerminalTarget } from './components/shared/WorkspaceTerminalDialog';

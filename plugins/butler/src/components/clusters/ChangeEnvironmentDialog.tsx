@@ -127,12 +127,14 @@ export const ChangeEnvironmentDialog = ({
     ...(current === ''
       ? [{ value: '', label: 'None', detail: 'No environment label' }]
       : []),
+    // Limits are nested under `limits` on the wire; the description is
+    // the fallback when an environment sets no cap.
     ...environments.map(env => ({
       value: env.name,
-      label: env.displayName || env.name,
+      label: env.name,
       detail:
-        env.maxClusters !== undefined
-          ? `Up to ${env.maxClusters} clusters`
+        env.limits?.maxClusters !== undefined
+          ? `Up to ${env.limits.maxClusters} clusters`
           : env.description,
     })),
   ];
