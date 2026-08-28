@@ -10,10 +10,15 @@ import clsx from 'clsx';
 
 import { butlerApiRef } from '../../api/ButlerApi';
 import type {
+  CAInfoResponse,
   NetworkInfo,
   Provider,
   ValidateResponse,
 } from '../../api/types/providers';
+import {
+  describeValidation,
+  providerReadiness,
+} from '../../utils/providerRequest';
 import { useButlerRoutes } from '../../hooks/useButlerRoutes';
 import { useTeamContext } from '../../hooks/useTeamContext';
 import { butlerTokens, rgb, rgba } from '../../theme';
@@ -29,9 +34,11 @@ import {
   ButlerPageHeader,
   ButlerSpinner,
   ButlerStack,
+  EditIcon,
   PlusIcon,
   TrashIcon,
 } from '../ui';
+import { EditProviderDialog } from './EditProviderDialog';
 import { ProviderIcon } from './ProviderIcon';
 
 const useStyles = makeStyles(theme => {
@@ -326,6 +333,7 @@ export const ProvidersPage = () => {
   const [selected, setSelected] = useState<Provider | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Provider | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [editTarget, setEditTarget] = useState<Provider | null>(null);
 
   const loadProviders = useCallback(async () => {
     setLoading(true);
@@ -354,10 +362,9 @@ export const ProvidersPage = () => {
         provider.metadata.name,
       );
       setValidationResults(prev => ({ ...prev, [key]: result }));
+      const described = describeValidation(result);
       alertApi.post({
-        message: result.valid
-          ? `Connection Valid: ${result.message}`
-          : `Connection Failed: ${result.message}`,
+        message: `${described.headline}: ${described.detail}`,
         severity: result.valid ? 'success' : 'error',
         display: 'transient',
       });
@@ -463,6 +470,10 @@ export const ProvidersPage = () => {
                     validationResult={validationResults[key]}
                     onClick={() => setSelected(provider)}
                     onValidate={e => handleValidate(provider, e)}
+                    onEdit={e => {
+                      e.stopPropagation();
+                      setEditTarget(provider);
+                    }}
                     onDelete={e => {
                       e.stopPropagation();
                       setDeleteTarget(provider);
@@ -493,6 +504,18 @@ export const ProvidersPage = () => {
             </ButlerButton>
             {canMutate && selected && (
               <ButlerButton
+                variant="secondary"
+                startIcon={<EditIcon />}
+                onClick={() => {
+                  setEditTarget(selected);
+                  setSelected(null);
+                }}
+              >
+                Edit
+              </ButlerButton>
+            )}
+            {canMutate && selected && (
+              <ButlerButton
                 variant="danger"
                 onClick={() => {
                   setDeleteTarget(selected);
@@ -515,6 +538,24 @@ export const ProvidersPage = () => {
           />
         )}
       </ButlerDialog>
+
+      {canMutate && editTarget && (
+        <EditProviderDialog
+          open
+          provider={editTarget}
+          onClose={() => setEditTarget(null)}
+          onSave={(ns, name, request) => api.updateProvider(ns, name, request)}
+          onSaved={async () => {
+            alertApi.post({
+              message: `Provider Updated: ${editTarget.metadata.name} has been updated`,
+              severity: 'success',
+              display: 'transient',
+            });
+            setEditTarget(null);
+            await loadProviders();
+          }}
+        />
+      )}
 
       {canMutate && (
         <ButlerDialog
@@ -568,6 +609,7 @@ interface ProviderCardProps {
   validationResult?: ValidateResponse;
   onClick: () => void;
   onValidate: (e: MouseEvent) => void;
+  onEdit: (e: MouseEvent) => void;
   onDelete: (e: MouseEvent) => void;
 }
 
@@ -578,10 +620,12 @@ const ProviderCard = ({
   validationResult,
   onClick,
   onValidate,
+  onEdit,
   onDelete,
 }: ProviderCardProps) => {
   const classes = useStyles();
   const type = provider.spec.provider || 'unknown';
+  const readiness = providerReadiness(provider);
   return (
     <ButlerCard
       hoverable
@@ -633,10 +677,16 @@ const ProviderCard = ({
                 validationResult.valid ? classes.valid : classes.invalid,
               )}
             >
-              {validationResult.valid ? 'Valid' : 'Invalid'}
+              {describeValidation(validationResult).headline}
             </p>
           </div>
         )}
+        <div className={classes.stat}>
+          <p className={classes.statLabel}>Readiness</p>
+          <p className={classes.statValue} title={readiness.detail}>
+            {readiness.headline}
+          </p>
+        </div>
         {canMutate && (
           <div className={classes.actions}>
             <ButlerButton
@@ -645,6 +695,15 @@ const ProviderCard = ({
               disabled={isValidating}
             >
               {isValidating ? 'Testing...' : 'Test'}
+            </ButlerButton>
+            <ButlerButton
+              variant="ghost"
+              onClick={onEdit}
+              title="Edit provider"
+              aria-label={`Edit provider ${provider.metadata.name}`}
+              style={{ padding: 8 }}
+            >
+              <EditIcon />
             </ButlerButton>
             <ButlerButton
               variant="ghost"
@@ -694,6 +753,30 @@ const ProviderDetail = ({
   const [networks, setNetworks] = useState<NetworkInfo[]>([]);
   const [networksLoading, setNetworksLoading] = useState(false);
   const [networksError, setNetworksError] = useState<string | null>(null);
+  const [caInfo, setCaInfo] = useState<CAInfoResponse | null>(null);
+  const [caError, setCaError] = useState<string | null>(null);
+  const readiness = providerReadiness(provider);
+
+  useEffect(() => {
+    let cancelled = false;
+    setCaInfo(null);
+    setCaError(null);
+    api
+      .getProviderCAInfo(provider.metadata.namespace, provider.metadata.name)
+      .then(res => {
+        if (!cancelled) setCaInfo(res);
+      })
+      .catch(err => {
+        if (!cancelled) {
+          setCaError(
+            err instanceof Error ? err.message : 'Failed to load CA info',
+          );
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [api, provider.metadata.namespace, provider.metadata.name]);
 
   useEffect(() => {
     let cancelled = false;
@@ -734,10 +817,11 @@ const ProviderDetail = ({
                 validationResult.valid ? classes.valid : classes.invalid
               }
             >
-              {validationResult.message}
+              {describeValidation(validationResult).headline}.{' '}
+              {describeValidation(validationResult).detail}
             </span>
           ) : (
-            'Not tested'
+            `Not tested this session. ${readiness.headline}: ${readiness.detail}`
           )
         }
         action={
@@ -770,10 +854,29 @@ const ProviderDetail = ({
             label="Credentials"
             value={provider.spec.credentialsRef?.name || 'None'}
           />
+          <InfoRow label="Readiness" value={readiness.headline} />
           {provider.status?.validated !== undefined && (
             <InfoRow
-              label="Validated"
+              label="Credentials present"
               value={provider.status.validated ? 'Yes' : 'No'}
+            />
+          )}
+          {provider.spec.scope && (
+            <InfoRow
+              label="Scope"
+              value={
+                provider.spec.scope.type === 'team'
+                  ? `Team ${provider.spec.scope.teamRef?.name ?? ''}`
+                  : 'Platform'
+              }
+            />
+          )}
+          {provider.status?.capacity && (
+            <InfoRow
+              label="Capacity"
+              value={`${provider.status.capacity.availableIPs ?? '?'} IPs, ~${
+                provider.status.capacity.estimatedTenants ?? '?'
+              } tenants`}
             />
           )}
           {lastValidated && (
@@ -824,6 +927,90 @@ const ProviderDetail = ({
           <p className={classes.subtle}>Connection via kubeconfig</p>
         </div>
       )}
+
+      {provider.spec.network && (
+        <div>
+          <h4 className={classes.sectionTitle}>Network</h4>
+          <div className={classes.infoGrid}>
+            <InfoRow
+              label="Mode"
+              value={provider.spec.network.mode ?? 'default'}
+            />
+            {provider.spec.network.subnet && (
+              <InfoRow label="Subnet" value={provider.spec.network.subnet} />
+            )}
+            {provider.spec.network.gateway && (
+              <InfoRow label="Gateway" value={provider.spec.network.gateway} />
+            )}
+            {provider.spec.network.dnsServers?.length ? (
+              <InfoRow
+                label="DNS"
+                value={provider.spec.network.dnsServers.join(', ')}
+              />
+            ) : null}
+            {provider.spec.network.poolRefs?.length ? (
+              <InfoRow
+                label="Pools"
+                value={provider.spec.network.poolRefs
+                  .map(r =>
+                    r.priority !== undefined
+                      ? `${r.name} (${r.priority})`
+                      : r.name,
+                  )
+                  .join(', ')}
+              />
+            ) : null}
+          </div>
+        </div>
+      )}
+
+      {provider.spec.limits && (
+        <div>
+          <h4 className={classes.sectionTitle}>Limits</h4>
+          <div className={classes.infoGrid}>
+            <InfoRow
+              label="Max clusters per team"
+              value={String(provider.spec.limits.maxClustersPerTeam ?? 'None')}
+            />
+            <InfoRow
+              label="Max nodes per team"
+              value={String(provider.spec.limits.maxNodesPerTeam ?? 'None')}
+            />
+          </div>
+        </div>
+      )}
+
+      <div>
+        <h4 className={classes.sectionTitle}>Certificate Authority</h4>
+        {caError ? (
+          <p className={classes.subtle}>{caError}</p>
+        ) : !caInfo ? (
+          <p className={classes.subtle}>Loading CA info...</p>
+        ) : !caInfo.configured ? (
+          <p className={classes.subtle}>No CA bundle configured</p>
+        ) : (
+          <div className={classes.infoGrid}>
+            {caInfo.health && <InfoRow label="Health" value={caInfo.health} />}
+            {caInfo.nearestExpiry && (
+              <InfoRow
+                label="Nearest expiry"
+                value={new Date(caInfo.nearestExpiry).toLocaleString()}
+              />
+            )}
+            {(caInfo.certificates ?? []).map(cert => (
+              <InfoRow
+                key={`${cert.subject}-${cert.notAfter}`}
+                label={cert.subject || 'Certificate'}
+                value={
+                  cert.notAfter
+                    ? `Expires ${new Date(cert.notAfter).toLocaleDateString()}`
+                    : 'No expiry reported'
+                }
+              />
+            ))}
+          </div>
+        )}
+      </div>
 
       {provider.status?.conditions && provider.status.conditions.length > 0 && (
         <div>

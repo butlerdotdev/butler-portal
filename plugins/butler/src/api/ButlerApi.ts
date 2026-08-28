@@ -7,6 +7,8 @@ import type {
 } from './types/policies';
 import type { ObservabilityConfig } from './types/observability';
 import type {
+  CAInfoResponse,
+  UpdateProviderRequest,
   OptionListScope,
   ProviderClusterListResponse,
   StorageContainerListResponse,
@@ -214,6 +216,18 @@ export interface ButlerApi {
   createProvider(data: CreateProviderRequest): Promise<Provider>;
   deleteProvider(namespace: string, name: string): Promise<void>;
   validateProvider(namespace: string, name: string): Promise<ValidateResponse>;
+  /**
+   * Updates a provider in place. Only the fields present change; the
+   * provider type and scope cannot. Credentials sent here replace the
+   * matching keys of the provider's Secret and are never read back.
+   */
+  updateProvider(
+    namespace: string,
+    name: string,
+    data: UpdateProviderRequest,
+  ): Promise<Provider>;
+  /** Certificate details of a provider's CA bundle, without the bundle. */
+  getProviderCAInfo(namespace: string, name: string): Promise<CAInfoResponse>;
   testProviderConnection(
     data: CreateProviderRequest,
   ): Promise<ValidateResponse>;

@@ -65,6 +65,8 @@ import type {
   PolicyListResponse,
 } from './types/policies';
 import type {
+  CAInfoResponse,
+  UpdateProviderRequest,
   OptionListScope,
   ProviderClusterListResponse,
   StorageContainerListResponse,
@@ -924,16 +926,179 @@ export class MockButlerApi implements ButlerApi {
     });
   }
 
-  createProvider(_data: CreateProviderRequest): Promise<Provider> {
-    return this.run('createProvider', () =>
-      this.notImplemented('createProvider'),
-    );
+  createProvider(data: CreateProviderRequest): Promise<Provider> {
+    return this.run('createProvider', () => {
+      const namespace = data.namespace || 'butler-system';
+      if (
+        this.providers.some(
+          p =>
+            p.metadata.namespace === namespace && p.metadata.name === data.name,
+        )
+      ) {
+        throw new ButlerApiError({
+          status: 409,
+          message: `provider ${data.name} already exists`,
+        });
+      }
+      // Mirrors what the server stores: no credential ever lands on the
+      // object, only a reference to the Secret it wrote.
+      const spec: Provider['spec'] = {
+        provider: data.provider,
+        credentialsRef: { name: `${data.name}-credentials`, namespace },
+      };
+      if (data.provider === 'nutanix') {
+        spec.nutanix = {
+          endpoint: data.nutanixEndpoint,
+          port: data.nutanixPort,
+          insecure: data.nutanixInsecure,
+        };
+      }
+      if (data.provider === 'proxmox') {
+        spec.proxmox = {
+          endpoint: data.proxmoxEndpoint,
+          insecure: data.proxmoxInsecure,
+        };
+      }
+      if (data.provider === 'aws') {
+        spec.aws = { region: data.awsRegion, vpcID: data.awsVpcId };
+      }
+      if (data.networkMode || data.networkSubnet) {
+        spec.network = {
+          mode: data.networkMode,
+          subnet: data.networkSubnet,
+          gateway: data.networkGateway,
+          dnsServers: data.networkDnsServers,
+          poolRefs: data.poolRefs,
+          ...(data.lbDefaultPoolSize !== undefined && {
+            loadBalancer: { defaultPoolSize: data.lbDefaultPoolSize },
+          }),
+        };
+      }
+      if (data.scopeType === 'team' && data.scopeTeamRef) {
+        spec.scope = { type: 'team', teamRef: { name: data.scopeTeamRef } };
+      }
+      if (
+        data.maxClustersPerTeam !== undefined ||
+        data.maxNodesPerTeam !== undefined
+      ) {
+        spec.limits = {
+          maxClustersPerTeam: data.maxClustersPerTeam,
+          maxNodesPerTeam: data.maxNodesPerTeam,
+        };
+      }
+      const created: Provider = {
+        metadata: {
+          name: data.name,
+          namespace,
+          uid: `mock-provider-${this.providers.length + 1}`,
+        },
+        spec,
+        status: { ready: false, validated: false },
+      };
+      this.providers.push(created);
+      return clone(created);
+    });
   }
 
   deleteProvider(_namespace: string, _name: string): Promise<void> {
     return this.run('deleteProvider', () =>
       this.notImplemented('deleteProvider'),
     );
+  }
+
+  updateProvider(
+    namespace: string,
+    name: string,
+    data: UpdateProviderRequest,
+  ): Promise<Provider> {
+    return this.run('updateProvider', () => {
+      const provider = this.providers.find(
+        p => p.metadata.namespace === namespace && p.metadata.name === name,
+      );
+      if (!provider) throw notFound('provider', name);
+      // The server changes only what is present; credentials go to the
+      // Secret and never appear on the object.
+      const spec = provider.spec as Record<string, any>;
+      if (data.nutanixEndpoint) {
+        spec.nutanix = {
+          ...(spec.nutanix ?? {}),
+          endpoint: data.nutanixEndpoint,
+        };
+      }
+      if (data.proxmoxEndpoint) {
+        spec.proxmox = {
+          ...(spec.proxmox ?? {}),
+          endpoint: data.proxmoxEndpoint,
+        };
+      }
+      if (data.awsRegion)
+        spec.aws = { ...(spec.aws ?? {}), region: data.awsRegion };
+      const network = { ...(spec.network ?? {}) };
+      let networkTouched = false;
+      if (data.networkMode) {
+        network.mode = data.networkMode;
+        networkTouched = true;
+      }
+      if (data.networkSubnet) {
+        network.subnet = data.networkSubnet;
+        networkTouched = true;
+      }
+      if (data.networkGateway) {
+        network.gateway = data.networkGateway;
+        networkTouched = true;
+      }
+      if (data.networkDnsServers?.length) {
+        network.dnsServers = data.networkDnsServers;
+        networkTouched = true;
+      }
+      if (data.lbDefaultPoolSize !== undefined) {
+        network.loadBalancer = {
+          ...(network.loadBalancer ?? {}),
+          defaultPoolSize: data.lbDefaultPoolSize,
+        };
+        networkTouched = true;
+      }
+      if (networkTouched) spec.network = network;
+      if (
+        data.maxClustersPerTeam !== undefined ||
+        data.maxNodesPerTeam !== undefined
+      ) {
+        spec.limits = {
+          ...(spec.limits ?? {}),
+          ...(data.maxClustersPerTeam !== undefined && {
+            maxClustersPerTeam: data.maxClustersPerTeam,
+          }),
+          ...(data.maxNodesPerTeam !== undefined && {
+            maxNodesPerTeam: data.maxNodesPerTeam,
+          }),
+        };
+      }
+      return clone(provider);
+    });
+  }
+
+  getProviderCAInfo(namespace: string, name: string): Promise<CAInfoResponse> {
+    return this.run('getProviderCAInfo', () => {
+      const provider = this.providers.find(
+        p => p.metadata.namespace === namespace && p.metadata.name === name,
+      );
+      if (!provider) throw notFound('provider', name);
+      return provider.spec.provider === 'nutanix'
+        ? {
+            configured: true,
+            health: 'healthy',
+            nearestExpiry: '2027-01-01T00:00:00Z',
+            certificates: [
+              {
+                subject: 'CN=prism-central',
+                issuer: 'CN=lab-root',
+                notAfter: '2027-01-01T00:00:00Z',
+                isCA: false,
+              },
+            ],
+          }
+        : { configured: false };
+    });
   }
 
   validateProvider(

@@ -10,6 +10,8 @@ import type {
 } from './types/policies';
 import type { ObservabilityConfig } from './types/observability';
 import type {
+  CAInfoResponse,
+  UpdateProviderRequest,
   OptionListScope,
   ProviderClusterListResponse,
   StorageContainerListResponse,
@@ -507,6 +509,21 @@ export class ButlerApiClient implements ButlerApi {
 
   async deleteProvider(namespace: string, name: string): Promise<void> {
     return this.del(`/providers/${namespace}/${name}`);
+  }
+
+  async updateProvider(
+    namespace: string,
+    name: string,
+    data: UpdateProviderRequest,
+  ): Promise<Provider> {
+    return this.put<Provider>(`/providers/${namespace}/${name}`, data);
+  }
+
+  async getProviderCAInfo(
+    namespace: string,
+    name: string,
+  ): Promise<CAInfoResponse> {
+    return this.get<CAInfoResponse>(`/providers/${namespace}/${name}/ca-info`);
   }
 
   async validateProvider(

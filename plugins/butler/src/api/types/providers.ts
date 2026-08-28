@@ -19,11 +19,17 @@ export interface Provider {
       endpoint?: string;
       port?: number;
       insecure?: boolean;
+      clusterUUID?: string;
+      subnetUUID?: string;
+      imageUUID?: string;
+      storageContainerUUID?: string;
     };
     proxmox?: {
       endpoint?: string;
       insecure?: boolean;
       nodes?: string[];
+      storage?: string;
+      templateID?: number;
     };
     /**
      * How addresses are handed out. `ipam` means the platform allocates
@@ -34,6 +40,25 @@ export interface Provider {
       mode?: string;
       subnet?: string;
       gateway?: string;
+      dnsServers?: string[];
+      timeServers?: string[];
+      poolRefs?: Array<{ name: string; priority?: number }>;
+      loadBalancer?: {
+        defaultPoolSize?: number;
+        allocationMode?: string;
+        initialPoolSize?: number;
+        growthIncrement?: number;
+      };
+      quotaPerTenant?: { maxNodeIPs?: number; maxLoadBalancerIPs?: number };
+    };
+    /** Per-team ceilings the platform enforces for this provider. */
+    limits?: { maxClustersPerTeam?: number; maxNodesPerTeam?: number };
+    harvester?: {
+      endpoint?: string;
+      namespace?: string;
+      networkName?: string;
+      imageName?: string;
+      storageClassName?: string;
     };
     /**
      * Who may create clusters against this provider. Absent means
@@ -45,15 +70,44 @@ export interface Provider {
       type?: 'platform' | 'team' | string;
       teamRef?: { name: string };
     };
-    aws?: { region?: string; vpcId?: string };
-    azure?: { location?: string; vnetName?: string };
-    gcp?: { region?: string; network?: string };
+    aws?: {
+      region?: string;
+      vpcID?: string;
+      vpcId?: string;
+      subnetIDs?: string[];
+      securityGroupIDs?: string[];
+    };
+    azure?: {
+      subscriptionID?: string;
+      resourceGroup?: string;
+      location?: string;
+      vnetName?: string;
+      subnetName?: string;
+      vmSize?: string;
+      imageURN?: string;
+    };
+    gcp?: {
+      projectID?: string;
+      region?: string;
+      zone?: string;
+      network?: string;
+      subnetwork?: string;
+      machineType?: string;
+      imageProject?: string;
+      imageFamily?: string;
+      image?: string;
+      serviceAccount?: string;
+      tags?: string[];
+    };
   };
   status?: {
     validated?: boolean;
     lastValidationTime?: string;
     /** Set by the controller once the provider is usable. */
     ready?: boolean;
+    /** When the controller last probed the provider itself. */
+    lastProbeTime?: string;
+    providerVersion?: string;
     conditions?: Array<{
       type: string;
       status: string;
@@ -87,12 +141,31 @@ export interface ProviderListResponse {
 export interface ValidateResponse {
   valid: boolean;
   message: string;
+  /** Which stage failed: tls, network, auth or parse. */
+  category?: 'tls' | 'network' | 'auth' | 'parse' | string;
+  detail?: unknown;
 }
 
+export type ProviderType =
+  | 'harvester'
+  | 'nutanix'
+  | 'proxmox'
+  | 'aws'
+  | 'azure'
+  | 'gcp';
+
+/**
+ * The body butler-server accepts for creating a provider, and, as a
+ * partial, for updating one. Credentials travel in this body only on the
+ * way in; the server writes them to a Secret and never returns them. On
+ * update every field is optional and an absent or empty field leaves the
+ * stored value alone, so the same shape serves both without a merge on
+ * the client.
+ */
 export interface CreateProviderRequest {
   name: string;
   namespace?: string;
-  provider: 'harvester' | 'nutanix' | 'proxmox';
+  provider: ProviderType;
   // Harvester
   harvesterKubeconfig?: string;
   // Nutanix
@@ -101,6 +174,8 @@ export interface CreateProviderRequest {
   nutanixUsername?: string;
   nutanixPassword?: string;
   nutanixInsecure?: boolean;
+  nutanixCABundle?: string;
+  removeCABundle?: boolean;
   // Proxmox
   proxmoxEndpoint?: string;
   proxmoxUsername?: string;
@@ -108,6 +183,73 @@ export interface CreateProviderRequest {
   proxmoxTokenId?: string;
   proxmoxTokenSecret?: string;
   proxmoxInsecure?: boolean;
+  // AWS
+  awsRegion?: string;
+  awsAccessKeyId?: string;
+  awsSecretAccessKey?: string;
+  awsVpcId?: string;
+  awsSubnetIds?: string[];
+  awsSecurityGroupIds?: string[];
+  // Azure
+  azureSubscriptionId?: string;
+  azureTenantId?: string;
+  azureClientId?: string;
+  azureClientSecret?: string;
+  azureResourceGroup?: string;
+  azureLocation?: string;
+  azureVnetName?: string;
+  azureSubnetName?: string;
+  azureVmSize?: string;
+  azureImageUrn?: string;
+  // GCP
+  gcpProjectId?: string;
+  gcpRegion?: string;
+  gcpServiceAccount?: string;
+  gcpNetwork?: string;
+  gcpSubnetwork?: string;
+  gcpZone?: string;
+  gcpMachineType?: string;
+  gcpImageProject?: string;
+  gcpImageFamily?: string;
+  gcpImage?: string;
+  gcpTags?: string[];
+  // Network
+  networkMode?: 'ipam' | 'cloud';
+  networkSubnet?: string;
+  networkGateway?: string;
+  networkDnsServers?: string[];
+  poolRefs?: Array<{ name: string; priority?: number }>;
+  lbDefaultPoolSize?: number;
+  quotaMaxNodeIPs?: number;
+  quotaMaxLoadBalancerIPs?: number;
+  // Scope, fixed after creation
+  scopeType?: 'platform' | 'team';
+  scopeTeamRef?: string;
+  // Limits
+  maxClustersPerTeam?: number;
+  maxNodesPerTeam?: number;
+}
+
+/** An update carries only what changes; provider and scope cannot change. */
+export type UpdateProviderRequest = Partial<
+  Omit<
+    CreateProviderRequest,
+    'name' | 'provider' | 'scopeType' | 'scopeTeamRef'
+  >
+>;
+
+/** What `GET /providers/{ns}/{name}/ca-info` reports about a CA bundle. */
+export interface CAInfoResponse {
+  configured: boolean;
+  certificates?: Array<{
+    subject?: string;
+    issuer?: string;
+    notBefore?: string;
+    notAfter?: string;
+    isCA?: boolean;
+  }>;
+  health?: string;
+  nearestExpiry?: string;
 }
 
 export interface ImageInfo {

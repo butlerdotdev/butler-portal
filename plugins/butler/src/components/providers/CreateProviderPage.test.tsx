@@ -61,6 +61,9 @@ describe('CreateProviderPage', () => {
       'harvester',
       'nutanix',
       'proxmox',
+      'aws',
+      'azure',
+      'gcp',
     ]);
     expect(radios[0]).toHaveAttribute('aria-checked', 'true');
     expect(screen.getByLabelText('Provider Name *')).toBeInTheDocument();
@@ -99,9 +102,10 @@ describe('CreateProviderPage', () => {
     await renderPage(new MockButlerApi());
     await screen.findByRole('heading', { name: 'Add Provider' });
     fireEvent.click(screen.getByRole('button', { name: 'Create Provider' }));
-    expect(await screen.findByRole('alert')).toHaveTextContent(
-      'Provider name is required',
-    );
+    const alerts = await screen.findAllByRole('alert');
+    const texts = alerts.map(a => a.textContent);
+    expect(texts).toContain('Name is required');
+    expect(texts).toContain('A kubeconfig is required');
   });
 
   it('tests the connection and renders the result', async () => {
