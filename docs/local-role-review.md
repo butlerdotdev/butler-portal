@@ -210,3 +210,28 @@ it and butler-beta has no `otel-collector-e2e-talos` TenantAddon.
 `/observability/status` and the pipeline routes are not in the portal's
 route table and answer 403 for everyone through the portal; that is the
 platform observability page's dependency, not this tab's.
+
+## Addons: values are replaced, then merged over defaults
+
+Installing an addon creates a TenantAddon with a version and an optional
+values object. One `PUT` sets values, version, or both. The server
+replaces the values object wholesale; the controller deep-merges it over
+the catalog's own defaults and reconciles whenever the spec changes. So
+the editor holds the entire override set, an empty editor clears every
+override, and omitted keys fall back to the catalog default rather than
+being preserved.
+
+The catalog exposes versions but not its default values, so the
+effective merged configuration cannot be read through the API; the
+editor shows overrides only.
+
+Reads are served to every role. Install, reconfigure, change version and
+remove are allowed for platform admin, team admin and team operator, and
+refused for both viewers; the tab offers actions on that basis.
+
+The fixture cluster carries the platform's auto-enrolled `vector-agent`.
+Opening its configure dialog is a safe read; do not save it. To prove a
+lifecycle, install `otel-collector` at an older catalog version with the
+export endpoint cleared, change one harmless value and confirm the
+version stayed put, restore it, change only the version and watch
+desired and installed diverge then converge, then remove it.
