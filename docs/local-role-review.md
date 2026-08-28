@@ -241,6 +241,62 @@ type, then read that option list as a team member with and without
 `X-Butler-Environment` and compare the `policy.name` in each answer.
 Delete both afterwards and confirm `GET /admin/policies` reports zero.
 
+## Identity providers: one OIDC record, edited by merge
+
+An identity provider is a cluster-scoped `IdentityProvider` of type
+`oidc` (the only type the CRD allows) whose client secret lives in a
+Secret the server manages; the object carries only `clientSecretRef`.
+The server never returns the secret value, and the plugin never asks
+for it: the detail view says "Configured in secret <name>" because the
+reference is there, and the edit dialog leaves the secret field blank.
+
+The update the server performs (`PUT /admin/identity-providers/{name}`)
+is a merge with one exception:
+
+- every non-empty string in the request replaces the stored one
+  (display name, issuer, client ID, redirect, hosted domain, claims);
+  `scopes` replaces when non-empty; the client secret is rewritten only
+  when `clientSecret` is sent. Nothing can be cleared by sending it
+  empty; the dialog says so when an optional field is emptied.
+- `insecureSkipVerify` is written from the request on every update,
+  empty request or not. The plugin resends the current value whenever
+  it sends anything, so an unrelated edit cannot silently reset it. The
+  console's edit modal never sends it, so every console edit sets it to
+  false.
+- name and type are not part of the request; they are shown as facts.
+- `platformRoleGroups` and `googleWorkspace` are not touched by create
+  or update at all and are not offered.
+
+The plugin sends only fields that differ from the loaded provider and
+issues no request when nothing changed. Test Connection runs the
+server's OIDC discovery against the stored issuer: it proves the
+discovery document was fetched and parsed and nothing more, and the
+result says so. With no controller on this estate the object has no
+status, and the detail shows "No status reported" rather than a phase.
+
+Authorization, probed through the harness for all five identities:
+
+| Endpoint                                    | platform admin | platform viewer | team roles |
+| ------------------------------------------- | -------------- | --------------- | ---------- |
+| `GET /admin/identity-providers[/{name}]`    | 200            | 200             | 403        |
+| `PUT /admin/identity-providers/{name}`      | passes authz   | 403             | 403        |
+| `POST .../{name}/validate`, `POST .../test` | 200            | 403             | 403        |
+| `DELETE /admin/identity-providers/{name}`   | passes authz   | 403             | 403        |
+
+Known server defect, staged as a separate butler-server PR and not
+merged: an update whose body carries `scopes` answers an empty 500,
+because the handler stores a Go string slice in the unstructured object
+and the deep copy inside `SetNestedMap` panics on it. Until that lands,
+editing scopes from the plugin fails with the server's 500; every other
+field updates.
+
+To prove editing without touching the login path: open the real
+provider, save the dialog unchanged and confirm no request is sent;
+then change only the display name, save, change it back, and confirm
+`GET` returns a spec identical to the one you started from and the
+Secret's resourceVersion did not move. Do not change the issuer, client
+ID, redirect URL, secret or claims of the provider people sign in with.
+
 ## Platform observability: the pipeline the collectors send to
 
 Three related systems, kept apart on purpose:
