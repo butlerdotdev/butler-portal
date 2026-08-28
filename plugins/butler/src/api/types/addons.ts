@@ -53,6 +53,8 @@ export interface InstalledAddon {
   managedBy?: 'butler' | 'platform' | 'gitops';
   namespace?: string;
   message?: string;
+  /** The override values on the TenantAddon spec, exactly as stored. */
+  values?: Record<string, unknown>;
   helmRelease?: {
     name: string;
     namespace: string;

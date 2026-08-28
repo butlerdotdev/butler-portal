@@ -946,7 +946,11 @@ export const ClusterDetailPage = () => {
           ))}
 
         {activeTab === 'addons' && namespace && name && (
-          <AddonsTab clusterNamespace={namespace} clusterName={name} />
+          <AddonsTab
+            clusterNamespace={namespace}
+            clusterName={name}
+            canOperate={canOperate}
+          />
         )}
         {activeTab === 'observability' && namespace && name && (
           <ObservabilityTab

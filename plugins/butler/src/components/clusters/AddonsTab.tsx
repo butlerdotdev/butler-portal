@@ -6,6 +6,11 @@ import type { ReactNode } from 'react';
 import { useApi } from '@backstage/core-plugin-api';
 import { makeStyles } from '@material-ui/core/styles';
 import clsx from 'clsx';
+import {
+  addonVersionState,
+  formatValuesYaml,
+  parseValuesYaml,
+} from '../../utils/addonValues';
 import { butlerApiRef } from '../../api/ButlerApi';
 import type { ButlerApi } from '../../api/ButlerApi';
 import type {
@@ -21,7 +26,6 @@ import type {
   DiscoveryResult,
   GitOpsStatus,
 } from '../../api/types/gitops';
-import { useTeamContext } from '../../hooks/useTeamContext';
 import { butlerTokens, rgb, rgba } from '../../theme';
 import {
   AlertTriangleIcon,
@@ -56,6 +60,8 @@ import {
 interface AddonsTabProps {
   clusterNamespace: string;
   clusterName: string;
+  /** Whether the caller may install, reconfigure and remove addons here. */
+  canOperate: boolean;
 }
 
 export const ADDONS_PLATFORM_EMPTY_TEXT = 'No platform addons detected';
@@ -356,14 +362,17 @@ type InstalledAddonRow = {
 export const AddonsTab = ({
   clusterNamespace,
   clusterName,
+  canOperate,
 }: AddonsTabProps) => {
   const classes = useStyles();
   const api = useApi(butlerApiRef);
-  const { isAdmin } = useTeamContext();
 
-  // Console AddonsTab gates every install/manage action on canMutate
-  // (platform admin, not viewer); team admins see a read-only catalog.
-  const canMutate = isAdmin;
+  // butler-server lets a team admin or operator, or a platform admin,
+  // install, reconfigure and remove addons (checkOperatePermission). The
+  // console gates these on platform admin alone, which is stricter than the
+  // server; the server is the authority, so the caller's cluster authority
+  // is what gates the actions here.
+  const canMutate = canOperate;
 
   // Data state
   const [installedAddons, setInstalledAddons] = useState<InstalledAddon[]>([]);
@@ -401,6 +410,17 @@ export const AddonsTab = ({
   const [configureAddon, setConfigureAddon] =
     useState<InstalledAddonRow | null>(null);
   const [configureValues, setConfigureValues] = useState('');
+  const [configureVersion, setConfigureVersion] = useState('');
+  const [configureLoading, setConfigureLoading] = useState(false);
+  const [configureLoadError, setConfigureLoadError] = useState<string | null>(
+    null,
+  );
+  const [installParseError, setInstallParseError] = useState<string | null>(
+    null,
+  );
+  const [configureParseError, setConfigureParseError] = useState<string | null>(
+    null,
+  );
   const [configuring, setConfiguring] = useState(false);
 
   // Uninstall dialog state
@@ -638,14 +658,20 @@ export const AddonsTab = ({
     if (!selectedAddon) return;
     setInstalling(true);
     try {
-      let values: Record<string, unknown> | undefined;
-      if (installValues.trim()) {
-        try {
-          values = parseYaml(installValues);
-        } catch {
-          // Treat as empty values on parse error
-        }
+      // Invalid YAML is refused, not treated as empty: an install with
+      // silently dropped values is worse than no install.
+      const parsed = parseValuesYaml(installValues);
+      if (!parsed.ok) {
+        setInstallParseError(
+          parsed.line
+            ? `Line ${parsed.line}: ${parsed.message}`
+            : parsed.message,
+        );
+        setInstalling(false);
+        return;
       }
+      setInstallParseError(null);
+      const values = parsed.values;
       await api.installAddon(clusterNamespace, clusterName, {
         addon: selectedAddon.name,
         version: selectedVersion,
@@ -664,10 +690,31 @@ export const AddonsTab = ({
   };
 
   // Configure
-  const openConfigureDialog = (row: InstalledAddonRow) => {
+  // The editor starts from the addon's current overrides, read from the
+  // server, so a save with no edits sends back what is already there.
+  const openConfigureDialog = async (row: InstalledAddonRow) => {
     setConfigureAddon(row);
     setConfigureValues('');
+    setConfigureVersion(row.raw.version || '');
+    setConfigureParseError(null);
+    setConfigureLoadError(null);
+    setConfigureLoading(true);
     setConfigureOpen(true);
+    try {
+      const details = await api.getAddonDetails(
+        clusterNamespace,
+        clusterName,
+        row.name,
+      );
+      setConfigureValues(formatValuesYaml(details.values));
+      if (details.version) setConfigureVersion(details.version);
+    } catch (e) {
+      setConfigureLoadError(
+        e instanceof Error ? e.message : 'Failed to read current values',
+      );
+    } finally {
+      setConfigureLoading(false);
+    }
   };
 
   const handleOpenConfigure = (row: InstalledAddonRow) => {
@@ -684,20 +731,31 @@ export const AddonsTab = ({
     if (!configureAddon) return;
     setConfiguring(true);
     try {
-      let values: Record<string, unknown> | undefined;
-      if (configureValues.trim()) {
-        try {
-          values = parseYaml(configureValues);
-        } catch {
-          // Treat as empty
-        }
+      const parsed = parseValuesYaml(configureValues);
+      if (!parsed.ok) {
+        setConfigureParseError(
+          parsed.line
+            ? `Line ${parsed.line}: ${parsed.message}`
+            : parsed.message,
+        );
+        setConfiguring(false);
+        return;
       }
+      setConfigureParseError(null);
+      // The server replaces the override set wholesale, so an empty editor
+      // clears the overrides rather than leaving them alone. The version is
+      // sent only when it was changed, so editing values never upgrades.
+      const values = parsed.values ?? {};
+      const versionChanged =
+        configureVersion !== '' &&
+        configureVersion !== (configureAddon.raw.version || '');
       await api.updateAddon(
         clusterNamespace,
         clusterName,
         configureAddon.name,
         {
           values,
+          ...(versionChanged ? { version: configureVersion } : {}),
         },
       );
       setConfigureOpen(false);
@@ -944,9 +1002,13 @@ export const AddonsTab = ({
         addon={selectedAddon}
         version={selectedVersion}
         values={installValues}
+        parseError={installParseError}
         installing={installing}
         onVersionChange={setSelectedVersion}
-        onValuesChange={setInstallValues}
+        onValuesChange={v => {
+          setInstallValues(v);
+          setInstallParseError(null);
+        }}
         onInstall={handleInstall}
         onClose={() => {
           setInstallOpen(false);
@@ -958,8 +1020,16 @@ export const AddonsTab = ({
         open={configureOpen}
         row={configureAddon}
         values={configureValues}
+        parseError={configureParseError}
+        loading={configureLoading}
+        loadError={configureLoadError}
+        version={configureVersion}
+        onVersionChange={setConfigureVersion}
         configuring={configuring}
-        onValuesChange={setConfigureValues}
+        onValuesChange={v => {
+          setConfigureValues(v);
+          setConfigureParseError(null);
+        }}
         onConfigure={handleConfigure}
         onClose={() => {
           setConfigureOpen(false);
@@ -1078,7 +1148,13 @@ function PlatformAddonCard({ row }: { row: InstalledAddonRow }) {
           name={row.displayName}
           icon={row.catalogInfo?.icon}
           tier
-          version={row.version}
+          version={
+            addonVersionState(row.raw).pending
+              ? `${addonVersionState(row.raw).installed} → ${
+                  addonVersionState(row.raw).desired
+                }`
+              : row.version
+          }
         />
         <ButlerStatusBadge status={row.status} />
       </div>
@@ -1118,7 +1194,13 @@ function InstalledAddonCard({
           name={row.displayName}
           icon={row.catalogInfo?.icon}
           tier={!!row.catalogInfo?.platform}
-          version={row.version}
+          version={
+            addonVersionState(row.raw).pending
+              ? `${addonVersionState(row.raw).installed} → ${
+                  addonVersionState(row.raw).desired
+                }`
+              : row.version
+          }
         />
         <div className={classes.badges}>
           <ButlerStatusBadge status={row.status} />
@@ -1455,6 +1537,7 @@ function InstallAddonDialog({
   onValuesChange,
   onInstall,
   onClose,
+  parseError,
 }: {
   open: boolean;
   addon: AddonDefinition | null;
@@ -1465,6 +1548,7 @@ function InstallAddonDialog({
   onValuesChange: (v: string) => void;
   onInstall: () => void;
   onClose: () => void;
+  parseError?: string | null;
 }) {
   const classes = useStyles();
   if (!addon) return null;
@@ -1532,7 +1616,8 @@ function InstallAddonDialog({
         value={values}
         onChange={e => onValuesChange(e.target.value)}
         placeholder="# Optional: custom Helm values in YAML format"
-        help="Leave empty to install with default values."
+        help="Leave empty to install with the catalog defaults. Anything here is merged over them."
+        error={parseError ?? undefined}
       />
     </ButlerDialog>
   );
@@ -1550,6 +1635,11 @@ function ConfigureAddonDialog({
   onValuesChange,
   onConfigure,
   onClose,
+  parseError,
+  loading,
+  loadError,
+  version,
+  onVersionChange,
 }: {
   open: boolean;
   row: InstalledAddonRow | null;
@@ -1558,6 +1648,11 @@ function ConfigureAddonDialog({
   onValuesChange: (v: string) => void;
   onConfigure: () => void;
   onClose: () => void;
+  parseError?: string | null;
+  loading?: boolean;
+  loadError?: string | null;
+  version: string;
+  onVersionChange: (v: string) => void;
 }) {
   const classes = useStyles();
   if (!row) return null;
@@ -1598,12 +1693,41 @@ function ConfigureAddonDialog({
           <p className={classes.infoName}>{row.displayName}</p>
           {row.catalogInfo && (
             <p className={classes.infoMeta}>
-              {row.catalogInfo.chartName}:{row.version}
+              {row.catalogInfo.chartName}
+              {addonVersionState(row.raw).pending
+                ? `: ${addonVersionState(row.raw).installed} installed, ${
+                    addonVersionState(row.raw).desired
+                  } requested`
+                : `:${row.version}`}
             </p>
           )}
         </div>
         <ButlerStatusBadge status={row.status} />
       </div>
+
+      {row.catalogInfo?.availableVersions?.length ? (
+        <ButlerSelect
+          label="Version"
+          value={version}
+          onChange={e => onVersionChange(e.target.value)}
+          disabled={loading || configuring}
+          help="Changing this asks the platform to move the addon to that chart version. Leave it as is to change values only."
+        >
+          {row.catalogInfo.availableVersions.map(v => (
+            <option key={v} value={v}>
+              {v}
+              {v === row.raw.installedVersion ? ' (installed)' : ''}
+              {v === row.catalogInfo?.defaultVersion ? ' (default)' : ''}
+            </option>
+          ))}
+        </ButlerSelect>
+      ) : null}
+
+      {loadError && (
+        <ButlerCallout tone="danger" title="Current values could not be read">
+          <p>{loadError}</p>
+        </ButlerCallout>
+      )}
 
       {row.isGitOpsManaged && (
         <ButlerCallout tone="warning" title="Changes may be overwritten">
@@ -1616,14 +1740,17 @@ function ConfigureAddonDialog({
       )}
 
       <p className={classes.dialogText}>
-        Edit the Helm values in YAML format. Only include values you want to
-        override from defaults.
+        These are the addon's current overrides, read from the platform. Saving
+        replaces them in full; the catalog defaults still apply underneath.
+        Clearing the editor removes every override.
       </p>
       <ButlerTextarea
         aria-label="Helm values override (YAML)"
         mono
         rows={10}
-        value={values}
+        value={loading ? '# Reading current values...' : values}
+        disabled={loading}
+        error={parseError ?? undefined}
         onChange={e => onValuesChange(e.target.value)}
         placeholder={
           '# Enter Helm values in YAML format\n# Example:\n# replicas: 3\n# resources:\n#   limits:\n#     memory: 512Mi'
@@ -2261,43 +2388,3 @@ function MigrateToGitOpsDialog({
  * Minimal YAML parser that handles simple key: value pairs and nested objects.
  * For production, a full YAML library should be used.
  */
-function parseYaml(yaml: string): Record<string, unknown> {
-  const result: Record<string, unknown> = {};
-  const lines = yaml.split('\n');
-  const stack: { obj: Record<string, unknown>; indent: number }[] = [
-    { obj: result, indent: -1 },
-  ];
-
-  for (const line of lines) {
-    if (!line.trim() || line.trim().startsWith('#')) continue;
-
-    const indent = line.search(/\S/);
-    const match = line.trim().match(/^([^:]+):\s*(.*)$/);
-    if (!match) continue;
-
-    const [, key, value] = match;
-
-    while (stack.length > 1 && stack[stack.length - 1].indent >= indent) {
-      stack.pop();
-    }
-
-    const parent = stack[stack.length - 1].obj;
-
-    if (value === '' || value === undefined) {
-      const newObj: Record<string, unknown> = {};
-      parent[key] = newObj;
-      stack.push({ obj: newObj, indent });
-    } else {
-      let parsedValue: unknown = value;
-      if (value === 'true') parsedValue = true;
-      else if (value === 'false') parsedValue = false;
-      else if (!isNaN(Number(value)) && value.trim() !== '')
-        parsedValue = Number(value);
-      else if (value.startsWith('"') && value.endsWith('"'))
-        parsedValue = value.slice(1, -1);
-      parent[key] = parsedValue;
-    }
-  }
-
-  return result;
-}

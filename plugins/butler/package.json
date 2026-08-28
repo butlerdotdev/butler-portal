@@ -29,7 +29,8 @@
     "@xterm/addon-fit": "^0.10.0",
     "clsx": "^2.1.1",
     "react-use": "^17.5.0",
-    "xterm": "^5.3.0"
+    "xterm": "^5.3.0",
+    "yaml": "^2.2.1"
   },
   "peerDependencies": {
     "react": "^17.0.0 || ^18.0.0",
