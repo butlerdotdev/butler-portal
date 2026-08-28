@@ -241,6 +241,71 @@ type, then read that option list as a team member with and without
 `X-Butler-Environment` and compare the `policy.name` in each answer.
 Delete both afterwards and confirm `GET /admin/policies` reports zero.
 
+## Platform observability: the pipeline the collectors send to
+
+Three related systems, kept apart on purpose:
+
+- The platform pipeline is one record on the ButlerConfig singleton
+  (`spec.observability.pipeline`): a reference to an existing Ready
+  cluster that runs the aggregation stack, plus the log, metric and
+  trace endpoints collectors send to. There is one pipeline per platform,
+  not one per team or environment. The admin Observability page is about
+  this record and the fleet seen from it.
+- Cluster collectors are three addons on each tenant cluster
+  (`vector-agent`, `prometheus-operator`, `otel-collector`), enabled,
+  configured and disabled on that cluster's Observability tab. The
+  platform page links to them and manages none of them.
+- Generic addons are the same TenantAddon objects on the Addons tab. The
+  server's fleet status is a read of those objects across every cluster;
+  the platform page renders that read and never lists addons itself.
+
+What the server reports, and how the page words it:
+
+- `GET /observability/config` (any authenticated role): registered or
+  not, the pipeline cluster and endpoints, and the collection defaults.
+- `GET /admin/observability/status` (platform admin only): the pipeline
+  cluster's phase, an aggregator status, one row per tenant cluster with
+  its three collectors, and summary counts. The aggregator status is
+  either a vector-aggregator addon phase on the pipeline cluster or the
+  result of the server probing the log endpoint host's Vector API on port 8686. Registered, cluster Ready and aggregator reachable are three
+  facts and stay three facts on the page. On this estate the aggregator
+  reports Unreachable because port 8686 is not answered, while logs
+  still arrive at the log endpoint.
+- Every write is platform admin only: `PUT /admin/observability/config`
+  (pipeline endpoints or collection defaults; empty strings are ignored,
+  so an endpoint can be replaced but not removed by editing),
+  `POST /admin/observability/pipeline/setup` (registers a Ready cluster,
+  labels it, writes the record) and `DELETE /admin/observability/pipeline`
+  (clears the record and the label; deletes no cluster, addon or
+  collector). The page asks for confirmation before deregistering and
+  says exactly that.
+
+Authorization, probed through the harness for all five identities:
+
+| Endpoint                                   | platform admin | platform viewer | team roles |
+| ------------------------------------------ | -------------- | --------------- | ---------- |
+| `GET /observability/config`                | 200            | 200             | 200        |
+| `GET /admin/observability/status`          | 200            | 403             | 403        |
+| `PUT /admin/observability/config`          | passes authz   | 403             | 403        |
+| `POST /admin/observability/pipeline/setup` | passes authz   | 403             | 403        |
+| `DELETE /admin/observability/pipeline`     | passes authz   | 403             | 403        |
+
+A platform viewer therefore sees the pipeline record and the collection
+defaults read-only, with a note that the fleet view needs a platform
+admin. Team roles are sent to their team dashboard by the admin route
+guard, which matches the server refusing them everything under `/admin`.
+
+The proxy's route table already classified `/admin/*`; the plugin simply
+never called the status route or offered a page. The earlier note that
+`/observability/status` was unclassified came from probing a path the
+server does not serve.
+
+To prove the page yourself without touching the estate: open it as
+platform admin and as platform viewer, save the collection defaults
+unchanged and confirm `GET /observability/config` is byte-identical
+before and after. Do not deregister the live pipeline to prove the
+button; the mock covers that flow and the live estate depends on it.
+
 ## Cluster observability: three addons and a pipeline
 
 A cluster's logs, metrics and traces are collected by three ordinary
