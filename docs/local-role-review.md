@@ -241,6 +241,78 @@ type, then read that option list as a team member with and without
 `X-Butler-Environment` and compare the `policy.name` in each answer.
 Delete both afterwards and confirm `GET /admin/policies` reports zero.
 
+## Audit: what changed, who, when, where, and how the server answered
+
+Two logs, both the server's own audit buffer (`internal/audit`, a
+10,000-event in-memory ring that starts over on restart). The platform
+log (`GET /admin/audit`) is every recorded event across teams; a team's
+Activity (`GET /teams/{team}/audit`) is the events recorded while the
+caller acted as that team, filtered on the request's team context
+(`teamRef`), not on which team owns the resource. So a platform admin's
+change made from the admin pages appears in the platform log, not in the
+team's Activity, because it carried no team context.
+
+The server records every mutation (POST/PUT/PATCH/DELETE), the two reads
+that hand out material (kubeconfig, cluster export), and sign-in and
+sign-out. Each event carries the actor email, an action verb, a
+resource type derived from the path prefix ("Unknown" for nested admin
+routes), the `{name}`/`{namespace}` path parameters, the HTTP method and
+path, the status code, a scrubbed and truncated request body, the source
+address, and the identity provider for sign-ins.
+
+The page turns each event into a sentence from a bounded table of the
+server's real router shapes (Added member, Changed group role, Scaled
+workers, Removed addon, Created provider), reading the safe fields of the
+request body for the object name. A path that matches none of those falls
+back to the server's own action and resource type ("Updated network
+pool"), and only then to the raw method and path; the raw request always
+stays in the detail view. Outcome is read from the status code and kept
+in three kinds: Refused (401/403, the server said no to this caller),
+Rejected (other 4xx, malformed or conflicting), and Failed (5xx, the
+server could not do it) — a refusal is not a failure.
+
+Filtering and paging are the server's: actor, action, resource type,
+outcome, and a from/to date range, with offset paging at 25/50/100. The
+Portal backend proxy was dropping the query string when it forwarded a
+request (`req.path` carries none), so every server-side filter and page
+size had been reaching the server empty; that is fixed, and a unit test
+pins it.
+
+Privacy: the server's scrubber redacts an exact list of keys (password,
+token, secret, kubeconfig, ...). Butler's own request bodies use
+prefixed keys the list does not match (`harvesterKubeconfig`,
+`nutanixPassword`, `azureClientSecret`, `gcpServiceAccount`), so a
+provider or identity-provider creation can leave its credential in the
+stored summary. That is a server finding; the page additionally redacts
+any credential-shaped key before rendering and never renders a body that
+is not JSON, so no secret reaches the screen whatever the server stored.
+
+Authorization, from the train's `audit.go` (#93 relaxed the platform log
+to platform viewers) and probed live at the start of this slice, before
+the harness dev-identity resolver degraded (see below):
+
+| Endpoint                   | platform admin | platform viewer | team admin | team operator | team viewer |
+| -------------------------- | -------------- | --------------- | ---------- | ------------- | ----------- |
+| `GET /admin/audit`         | 200            | 200             | 403        | 403           | 403         |
+| `GET /teams/{own}/audit`   | 200            | 200             | 200        | 403           | 403         |
+| `GET /teams/{other}/audit` | 200            | 200             | 403        | 403           | 403         |
+
+The platform Audit Log is offered to platform admins and viewers; a
+team's Activity to that team's admins and to platform roles. Operators
+and viewers are refused and are not offered the entry; a direct URL
+shows the server's refusal as a plain note, not an error.
+
+A harness caveat that shaped this proof: partway through the slice the
+local dev-identity resolver began resolving every `x-butler-dev-identity`
+to platformRole=admin (right email, wrong role), so a live probe taken
+after that point returned 200 for every role and could not demonstrate
+the team-role refusals. The matrix above is the pre-degradation probe,
+which agrees with the server code; the browser captures of a team
+operator seeing the team log are contaminated by the same degradation
+and are not cited. The rule going forward: an authorization probe counts
+only when a discriminating endpoint (such as `GET /admin/identity-providers`)
+still refuses a team role at capture time.
+
 ## Teams: the authorization boundary, read from the server
 
 A team is one `Team` object. The server never hands the CRD to a client;

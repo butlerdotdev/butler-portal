@@ -213,3 +213,21 @@ merge is the version to record in the Portal's compatibility note.
 closed by #92), 92 and 93 (team-admin narrowing by #93), 94 (403 message
 from #92; refusal itself from the deployed webhook). The audit rows carry
 these annotations; no classification changed.
+
+## Addendum 2026-08-28: audit closure and a harness caveat
+
+Rows 110 and 111 (audit log, team audit) closed to PARITY. The platform
+log needs #93 in the train (main serves `/admin/audit` to platform admins
+only; #93 relaxes it to platform viewers); the Portal reads it as the
+train serves it. A backend proxy bug was fixed on the Portal side
+(`req.path` dropped the query string, so server-side filters and paging
+never reached the server); it is a plugin-backend change inside PR #79,
+not a server dependency.
+
+Two server findings recorded, neither a blocker: D9, the audit scrubber
+misses Butler's prefixed credential keys (the Portal redacts them
+itself); D10, the local dev-identity harness intermittently resolves
+every identity as platform admin, which invalidates live authorization
+probes taken while degraded — authorization for this slice was taken from
+`audit.go` and a pre-degradation probe. Neither changes the required
+backend set (#92 to #101) or the merge order.
