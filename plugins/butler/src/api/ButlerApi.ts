@@ -5,7 +5,12 @@ import type {
   ClusterCreationPolicy,
   PolicyListResponse,
 } from './types/policies';
-import type { ObservabilityConfig } from './types/observability';
+import type {
+  ObservabilityConfig,
+  ObservabilityStatus,
+  SetupPipelineRequest,
+  UpdateObservabilityConfigRequest,
+} from './types/observability';
 import type {
   CAInfoResponse,
   UpdateProviderRequest,
@@ -260,6 +265,22 @@ export interface ButlerApi {
    * pipeline has been registered at all.
    */
   getObservabilityConfig(): Promise<ObservabilityConfig>;
+
+  /**
+   * Platform observability administration. All four are platform admin
+   * only on the server; a platform viewer is refused the fleet status
+   * as well as the mutations. Setup and deregister edit the ButlerConfig
+   * pipeline reference and label the pipeline cluster; neither touches
+   * any collector addon.
+   */
+  getObservabilityStatus(): Promise<ObservabilityStatus>;
+  updateObservabilityConfig(
+    data: UpdateObservabilityConfigRequest,
+  ): Promise<ObservabilityConfig>;
+  setupObservabilityPipeline(
+    data: SetupPipelineRequest,
+  ): Promise<ObservabilityConfig>;
+  deregisterObservabilityPipeline(): Promise<ObservabilityConfig>;
 
   // Cluster creation policies (ADR-018). Reads need a platform role; the
   // server resolves them inside the option-list reads above, so a team

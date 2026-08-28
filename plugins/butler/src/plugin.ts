@@ -32,6 +32,7 @@ import {
   adminPolicyRouteRef,
   adminCreateIdentityProviderRouteRef,
   adminSettingsRouteRef,
+  adminObservabilityRouteRef,
 } from './routes';
 
 export const butlerPlugin = createPlugin({
@@ -58,6 +59,7 @@ export const butlerPlugin = createPlugin({
     adminPolicy: adminPolicyRouteRef,
     adminCreateIdentityProvider: adminCreateIdentityProviderRouteRef,
     adminSettings: adminSettingsRouteRef,
+    adminObservability: adminObservabilityRouteRef,
   },
   apis: [
     createApiFactory({

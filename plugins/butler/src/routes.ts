@@ -137,6 +137,12 @@ export const adminPolicyRouteRef = createSubRouteRef({
   path: '/admin/policies/:name',
 });
 
+export const adminObservabilityRouteRef = createSubRouteRef({
+  id: 'butler.admin.observability',
+  parent: rootRouteRef,
+  path: '/admin/observability',
+});
+
 export const adminSettingsRouteRef = createSubRouteRef({
   id: 'butler.admin.settings',
   path: '/admin/settings',

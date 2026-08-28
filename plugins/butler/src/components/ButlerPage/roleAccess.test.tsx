@@ -210,3 +210,45 @@ describe('policies are offered to the roles that may read them', () => {
     },
   );
 });
+
+describe('platform observability is reachable by route and by nav', () => {
+  it.each(['platformAdmin', 'platformViewer'] as const)(
+    'offers %s the observability destination',
+    async role => {
+      await renderAs(role, '/butler/admin');
+
+      const link = await screen.findByRole('link', { name: 'Observability' });
+      expect(link).toHaveAttribute('href', '/butler/admin/observability');
+    },
+  );
+
+  // The shell harness cannot render lazy admin pages (every admin
+  // sub-route answers its not-found fallback here, policies and providers
+  // included), so the deep link is asserted through the rail: the entry
+  // is present and marked current. The page itself is covered by
+  // platformObservability.test.tsx and the route by the live run.
+  it.each([
+    ['platformAdmin', 'Admin Mode'],
+    ['platformViewer', 'Shadow Mode'],
+  ] as const)(
+    'marks the rail entry current for %s at the direct URL',
+    async (role, mode) => {
+      await renderAs(role, '/butler/admin/observability');
+
+      await screen.findByText(mode);
+      expect(
+        screen.getByRole('link', { name: 'Observability' }),
+      ).toHaveAttribute('aria-current', 'page');
+    },
+  );
+
+  it('sends a team admin who deep-links to it back to the team dashboard', async () => {
+    await renderAs('teamAdmin', '/butler/admin/observability');
+
+    await screen.findByText('Team Admin');
+    expect(
+      screen.queryByRole('heading', { name: 'Observability' }),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Observability' })).toBeNull();
+  });
+});

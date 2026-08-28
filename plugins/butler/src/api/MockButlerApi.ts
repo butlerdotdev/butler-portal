@@ -42,7 +42,13 @@ import type {
 import { fixturePools, fixtureAllocations } from './fixtures/networks';
 import { fixtureEnvironments } from './fixtures/environments';
 import { fixturePolicies } from './fixtures/policies';
-import type { ObservabilityConfig } from './types/observability';
+import type {
+  ClusterObsInfo,
+  ObservabilityConfig,
+  ObservabilityStatus,
+  SetupPipelineRequest,
+  UpdateObservabilityConfigRequest,
+} from './types/observability';
 
 /** A registered pipeline with every endpoint set, as on the estate. */
 export const fixtureObservabilityConfig: ObservabilityConfig = {
@@ -1155,6 +1161,171 @@ export class MockButlerApi implements ButlerApi {
         });
       }
       return clone(this.observabilityConfig);
+    });
+  }
+
+  private requirePlatformAdmin(what: string) {
+    if (!this.identity.isPlatformAdmin) {
+      throw new ButlerApiError({
+        status: 403,
+        message: `forbidden: platform admin required (${what})`,
+      });
+    }
+  }
+
+  getObservabilityStatus(): Promise<ObservabilityStatus> {
+    return this.run('getObservabilityStatus', () => {
+      this.requirePlatformAdmin('observability status');
+      const cfg = this.observabilityConfig;
+      const clusters: ClusterObsInfo[] = this.clusters.map(c => {
+        const addons = this.installedAddons[c.metadata.name] ?? [];
+        const find = (names: string[]) =>
+          addons.find(a => names.includes((a.addon ?? a.name).toLowerCase()));
+        const info = (a?: (typeof addons)[number]) =>
+          a
+            ? { status: a.status, version: a.installedVersion ?? a.version }
+            : undefined;
+        return {
+          name: c.metadata.name,
+          namespace: c.metadata.namespace,
+          team: c.spec.teamRef?.name ?? '',
+          phase: c.status?.phase ?? 'Unknown',
+          vectorAgent: info(find(['vector-agent'])),
+          prometheus: info(
+            find(['prometheus-operator', 'kube-prometheus-stack']),
+          ),
+          otelCollector: info(find(['otel-collector'])),
+        };
+      });
+      const count = (k: 'vectorAgent' | 'prometheus' | 'otelCollector') =>
+        clusters.filter(c => c[k] && c[k]!.status !== 'Deleting').length;
+      const status: ObservabilityStatus = {
+        clusters,
+        summary: {
+          totalClusters: clusters.length,
+          enrolledClusters: clusters.filter(c =>
+            ['vectorAgent', 'prometheus', 'otelCollector'].some(
+              k =>
+                c[k as 'vectorAgent'] &&
+                c[k as 'vectorAgent']!.status !== 'Deleting',
+            ),
+          ).length,
+          vectorAgentCount: count('vectorAgent'),
+          prometheusCount: count('prometheus'),
+          otelCollectorCount: count('otelCollector'),
+        },
+      };
+      if (cfg?.configured && cfg.pipeline?.clusterName) {
+        const tc = this.clusters.find(
+          c =>
+            c.metadata.name === cfg.pipeline!.clusterName &&
+            c.metadata.namespace === cfg.pipeline!.clusterNamespace,
+        );
+        status.pipeline = {
+          clusterName: cfg.pipeline.clusterName,
+          clusterNamespace: cfg.pipeline.clusterNamespace ?? '',
+          clusterPhase: tc?.status?.phase ?? 'Unknown',
+          logEndpoint: cfg.pipeline.logEndpoint ?? '',
+          // The server probes the log endpoint host's Vector API; from a
+          // test there is nothing to reach, which is also what the live
+          // estate reports today.
+          aggregatorStatus: cfg.pipeline.logEndpoint
+            ? 'Unreachable'
+            : 'Unknown',
+        };
+      }
+      return status;
+    });
+  }
+
+  updateObservabilityConfig(
+    data: UpdateObservabilityConfigRequest,
+  ): Promise<ObservabilityConfig> {
+    return this.run('updateObservabilityConfig', () => {
+      this.requirePlatformAdmin('observability config');
+      const cfg: ObservabilityConfig = this.observabilityConfig
+        ? clone(this.observabilityConfig)
+        : { configured: false };
+      if (data.pipeline) {
+        cfg.pipeline = { ...(cfg.pipeline ?? {}) };
+        for (const k of [
+          'clusterName',
+          'clusterNamespace',
+          'logEndpoint',
+          'metricEndpoint',
+          'traceEndpoint',
+        ] as const) {
+          const v = data.pipeline[k];
+          if (v) cfg.pipeline[k] = v;
+        }
+      }
+      if (data.collection) {
+        cfg.collection = { ...(cfg.collection ?? {}) };
+        if (data.collection.autoEnroll)
+          cfg.collection.autoEnroll = { ...data.collection.autoEnroll };
+        if (data.collection.logs)
+          cfg.collection.logs = { ...data.collection.logs };
+        if (data.collection.metrics)
+          cfg.collection.metrics = { ...data.collection.metrics };
+      }
+      cfg.configured = Boolean(cfg.pipeline?.clusterName);
+      this.observabilityConfig = cfg;
+      return clone(cfg);
+    });
+  }
+
+  setupObservabilityPipeline(
+    data: SetupPipelineRequest,
+  ): Promise<ObservabilityConfig> {
+    return this.run('setupObservabilityPipeline', () => {
+      this.requirePlatformAdmin('pipeline setup');
+      if (!data.clusterName || !data.clusterNamespace) {
+        throw new ButlerApiError({
+          status: 400,
+          message: 'clusterName and clusterNamespace are required',
+        });
+      }
+      if (!data.logEndpoint) {
+        throw new ButlerApiError({
+          status: 400,
+          message: 'logEndpoint is required',
+        });
+      }
+      const tc = this.findCluster(data.clusterNamespace, data.clusterName);
+      if (tc.status?.phase !== 'Ready') {
+        throw new ButlerApiError({
+          status: 400,
+          message: `cluster is not Ready (current phase: ${
+            tc.status?.phase ?? 'Unknown'
+          })`,
+        });
+      }
+      const cfg: ObservabilityConfig = this.observabilityConfig
+        ? clone(this.observabilityConfig)
+        : { configured: false };
+      cfg.pipeline = {
+        clusterName: data.clusterName,
+        clusterNamespace: data.clusterNamespace,
+        logEndpoint: data.logEndpoint,
+        metricEndpoint: data.metricEndpoint,
+        traceEndpoint: data.traceEndpoint,
+      };
+      cfg.configured = true;
+      this.observabilityConfig = cfg;
+      return clone(cfg);
+    });
+  }
+
+  deregisterObservabilityPipeline(): Promise<ObservabilityConfig> {
+    return this.run('deregisterObservabilityPipeline', () => {
+      this.requirePlatformAdmin('pipeline deregister');
+      const cfg: ObservabilityConfig = this.observabilityConfig
+        ? clone(this.observabilityConfig)
+        : { configured: false };
+      delete cfg.pipeline;
+      cfg.configured = false;
+      this.observabilityConfig = cfg;
+      return clone(cfg);
     });
   }
 

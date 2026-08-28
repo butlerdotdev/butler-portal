@@ -8,7 +8,12 @@ import type {
   ClusterCreationPolicy,
   PolicyListResponse,
 } from './types/policies';
-import type { ObservabilityConfig } from './types/observability';
+import type {
+  ObservabilityConfig,
+  ObservabilityStatus,
+  SetupPipelineRequest,
+  UpdateObservabilityConfigRequest,
+} from './types/observability';
 import type {
   CAInfoResponse,
   UpdateProviderRequest,
@@ -588,6 +593,29 @@ export class ButlerApiClient implements ButlerApi {
 
   async getObservabilityConfig(): Promise<ObservabilityConfig> {
     return this.get<ObservabilityConfig>('/observability/config');
+  }
+
+  async getObservabilityStatus(): Promise<ObservabilityStatus> {
+    return this.get<ObservabilityStatus>('/admin/observability/status');
+  }
+
+  async updateObservabilityConfig(
+    data: UpdateObservabilityConfigRequest,
+  ): Promise<ObservabilityConfig> {
+    return this.put<ObservabilityConfig>('/admin/observability/config', data);
+  }
+
+  async setupObservabilityPipeline(
+    data: SetupPipelineRequest,
+  ): Promise<ObservabilityConfig> {
+    return this.post<ObservabilityConfig>(
+      '/admin/observability/pipeline/setup',
+      data,
+    );
+  }
+
+  async deregisterObservabilityPipeline(): Promise<ObservabilityConfig> {
+    return this.delete<ObservabilityConfig>('/admin/observability/pipeline');
   }
 
   async listPolicies(): Promise<PolicyListResponse> {

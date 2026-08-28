@@ -71,6 +71,12 @@ export const PoliciesNavIcon = (props: SVGProps<SVGSVGElement>) => (
   </svg>
 );
 
+export const ObservabilityNavIcon = (props: SVGProps<SVGSVGElement>) => (
+  <svg {...base(props)}>
+    <P d="M3 12h4l2-6 4 12 2-6h6M5 19h14" />
+  </svg>
+);
+
 export const NetworkNavIcon = (props: SVGProps<SVGSVGElement>) => (
   <svg {...base(props)}>
     <P d="M4 6a2 2 0 012-2h12a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM12 10v4m-4 0h8m-8 0v2m8-2v2M6 20h4m4 0h4" />
