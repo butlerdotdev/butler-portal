@@ -154,6 +154,65 @@ in the global list, is absent from your team's list, and is refused at
 admission when a cluster references it. Delete it and confirm the
 ProviderConfig and its Secret are gone. Do not leave it behind.
 
+## Platform providers: create and edit through one control plane
+
+A platform admin creates, tests, validates, edits and deletes providers
+from the admin providers page. There is one provider model: the
+`ProviderConfig` the server writes, with credentials in a Secret it
+manages and only a `credentialsRef` on the object. The plugin sends
+secret material once, on create or when a replacement is typed into the
+edit dialog, and never reads it back; nothing about a credential is
+stored client side.
+
+What the server does with an edit decides what the dialog sends:
+
+- `PUT /providers/{ns}/{name}` is a merge. Only non-empty fields change;
+  credentials are merged per key into the Secret; network and limits
+  maps are merged. The dialog therefore sends only what differs from the
+  provider it opened with, and sends nothing at all when nothing
+  changed.
+- Name, provider type and scope cannot change. The dialog shows them as
+  facts. The insecure TLS flags are honoured only on create.
+- `removeCABundle` is the only way to drop a CA bundle; an empty bundle
+  field means "keep".
+
+Readiness is not reachability. The controller sets `status.ready` and
+`status.validated` when the credentials Secret is present, and reports
+both true for an endpoint that does not answer (proven with
+`127.0.0.1:1`). The detail view says so: readiness is shown as
+"credentials present", and a Validate run is the only thing that shows
+whether the endpoint answers. Validate results name the failing stage
+from the server's `category` (auth, tls, network, parse).
+
+Admission refuses a provider in `ipam` network mode without at least
+one pool reference, and the server surfaces that denial as a 500. The
+create page and the edit dialog refuse the same shape first, with the
+field named.
+
+Authorization, probed through the harness for all five identities:
+
+| Endpoint                                                | platform admin | every other role |
+| ------------------------------------------------------- | -------------- | ---------------- |
+| `GET /providers`, `GET .../networks`, `GET .../ca-info` | 200            | 200              |
+| `POST /providers`, `POST /providers/test`               | passes authz   | 403              |
+| `PUT /providers/{ns}/{name}`, `DELETE ...`              | passes authz   | 403              |
+| `POST /providers/{ns}/{name}/validate`                  | passes authz   | 403              |
+
+The page offers Create, Edit, Test and Delete to the platform admin
+only. That mirrors the server; it is not the gate.
+
+Six provider types are offered. Harvester, Nutanix and Proxmox are the
+ones this estate runs. AWS, Azure and GCP are accepted by the server
+and covered by unit tests, but there is no cloud account here to create
+one against, so treat those forms as unproven end to end.
+
+To prove the flow yourself, create a throwaway `e2e-*` harvester
+provider with a bogus kubeconfig. Confirm the object holds only the
+`credentialsRef`, that Validate reports the endpoint unreachable while
+readiness reads ready, that an edit of one field leaves the others
+untouched, then delete it and confirm the ProviderConfig and its Secret
+are gone from butler-beta. Do not leave it behind.
+
 ## Cluster creation policy: seen by effect, read by platform roles
 
 A `ClusterCreationPolicy` narrows or orders the images, networks, and for
