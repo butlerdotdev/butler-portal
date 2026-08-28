@@ -42,6 +42,7 @@ import type {
 import { fixturePools, fixtureAllocations } from './fixtures/networks';
 import { fixtureEnvironments } from './fixtures/environments';
 import { fixturePolicies } from './fixtures/policies';
+import type { AuditListResponse, AuditQuery } from './types/audit';
 import type {
   ClusterObsInfo,
   ObservabilityConfig,
@@ -194,6 +195,7 @@ import {
   fixtureOtherTeamProvider,
   fixtureIdentityProviders,
   fixtureTeamResponse,
+  fixtureAuditEntries,
   fixturePlatformConfig,
 } from './fixtures/clusters';
 import type { FixtureTeamMember } from './fixtures/clusters';
@@ -1204,6 +1206,81 @@ export class MockButlerApi implements ButlerApi {
         message: `forbidden: platform admin required (${what})`,
       });
     }
+  }
+
+  private auditEntries = clone(fixtureAuditEntries);
+
+  /** Mirrors parseAuditQuery + RingBuffer.Query: newest first, filters, limit 1..200 default 50. */
+  private queryAudit(query: AuditQuery, teamRef?: string): AuditListResponse {
+    let limit = 50;
+    if (query.limit !== undefined && query.limit > 0 && query.limit <= 200)
+      limit = query.limit;
+    const offset = query.offset && query.offset >= 0 ? query.offset : 0;
+    const from = query.from ? new Date(query.from).getTime() : undefined;
+    const to = query.to
+      ? new Date(query.to).getTime() +
+        (/^\d{4}-\d{2}-\d{2}$/.test(query.to) ? 86_400_000 - 1 : 0)
+      : undefined;
+    const matched = [...this.auditEntries]
+      .sort((a, b) => b.timestamp.localeCompare(a.timestamp))
+      .filter(e => {
+        if (query.user && e.user.toLowerCase() !== query.user.toLowerCase())
+          return false;
+        if (query.action && e.action !== query.action) return false;
+        if (
+          query.resourceType &&
+          (e.resourceType ?? '').toLowerCase() !==
+            query.resourceType.toLowerCase()
+        )
+          return false;
+        if (query.success === 'true' && !e.success) return false;
+        if (query.success === 'false' && e.success) return false;
+        if (teamRef && e.teamRef !== teamRef) return false;
+        const t = new Date(e.timestamp).getTime();
+        if (from !== undefined && t < from) return false;
+        if (to !== undefined && t > to) return false;
+        return true;
+      });
+    const page = matched.slice(offset, offset + limit);
+    return {
+      entries: page.length ? page : null,
+      total: matched.length,
+      offset,
+      limit,
+    };
+  }
+
+  listAuditLog(query: AuditQuery = {}): Promise<AuditListResponse> {
+    return this.run('listAuditLog', () => {
+      // Train (#93): platform viewer or above.
+      if (!this.identity.isPlatformAdmin && !this.identity.platformRole) {
+        throw new ButlerApiError({
+          status: 403,
+          message: 'forbidden: platform viewer or admin required',
+        });
+      }
+      return this.queryAudit(query);
+    });
+  }
+
+  listTeamAuditLog(
+    team: string,
+    query: AuditQuery = {},
+  ): Promise<AuditListResponse> {
+    return this.run('listTeamAuditLog', () => {
+      const platform =
+        this.identity.isPlatformAdmin || Boolean(this.identity.platformRole);
+      const teamAdmin = this.identity.teams.some(
+        t => t.name === team && t.role === 'admin',
+      );
+      if (!platform && !teamAdmin) {
+        throw new ButlerApiError({
+          status: 403,
+          message: 'team admin access required',
+        });
+      }
+      return this.queryAudit(query, team);
+    });
   }
 
   getObservabilityStatus(): Promise<ObservabilityStatus> {

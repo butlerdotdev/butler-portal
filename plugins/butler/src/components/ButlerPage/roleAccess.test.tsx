@@ -252,3 +252,32 @@ describe('platform observability is reachable by route and by nav', () => {
     expect(screen.queryByRole('link', { name: 'Observability' })).toBeNull();
   });
 });
+
+describe('audit history is offered to the roles the server serves', () => {
+  it.each(['platformAdmin', 'platformViewer'] as const)(
+    'offers %s the platform audit log',
+    async role => {
+      await renderAs(role, '/butler/admin');
+      expect(
+        await screen.findByRole('link', { name: 'Audit Log' }),
+      ).toHaveAttribute('href', '/butler/admin/audit');
+    },
+  );
+
+  it('offers a team admin the team activity and not an operator or viewer', async () => {
+    await renderAs('teamAdmin', `/butler/t/${FIXTURE_TEAM}`);
+    expect(
+      await screen.findByRole('link', { name: 'Activity' }),
+    ).toHaveAttribute('href', `/butler/t/${FIXTURE_TEAM}/audit`);
+  });
+
+  it.each(['teamOperator', 'teamViewer'] as const)(
+    'does not offer %s the team activity',
+    async role => {
+      await renderAs(role, `/butler/t/${FIXTURE_TEAM}`);
+      await screen.findByRole('link', { name: 'Members' });
+      expect(screen.queryByRole('link', { name: 'Activity' })).toBeNull();
+      expect(screen.queryByRole('link', { name: 'Audit Log' })).toBeNull();
+    },
+  );
+});

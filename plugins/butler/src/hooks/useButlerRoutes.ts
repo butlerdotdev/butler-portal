@@ -31,6 +31,8 @@ import {
   adminNetworkPoolRouteRef,
   adminObservabilityRouteRef,
   adminAccessRouteRef,
+  adminAuditRouteRef,
+  teamAuditRouteRef,
 } from '../routes';
 
 export interface ButlerRoutes {
@@ -64,6 +66,8 @@ export interface ButlerRoutes {
   adminNetworkPool: (params: { namespace: string; name: string }) => string;
   adminObservability: () => string;
   adminAccess: () => string;
+  adminAudit: () => string;
+  teamAudit: (params: { team: string }) => string;
 }
 
 /**
@@ -108,6 +112,8 @@ export const useButlerRoutes = (): ButlerRoutes => {
   const adminNetworkPool = useRouteRef(adminNetworkPoolRouteRef);
   const adminObservability = useRouteRef(adminObservabilityRouteRef);
   const adminAccess = useRouteRef(adminAccessRouteRef);
+  const adminAudit = useRouteRef(adminAuditRouteRef);
+  const teamAudit = useRouteRef(teamAuditRouteRef);
 
   return useMemo(
     () => ({
@@ -139,6 +145,8 @@ export const useButlerRoutes = (): ButlerRoutes => {
       adminNetworkPool: params => normalizeMountPath(adminNetworkPool(params)),
       adminObservability: () => normalizeMountPath(adminObservability()),
       adminAccess: () => normalizeMountPath(adminAccess()),
+      adminAudit: () => normalizeMountPath(adminAudit()),
+      teamAudit: params => normalizeMountPath(teamAudit(params)),
     }),
     [
       root,
@@ -165,6 +173,8 @@ export const useButlerRoutes = (): ButlerRoutes => {
       adminNetworkPool,
       adminObservability,
       adminAccess,
+      adminAudit,
+      teamAudit,
       teamEnvironments,
       teamProviders,
     ],

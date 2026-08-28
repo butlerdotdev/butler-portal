@@ -5,6 +5,7 @@ import type {
   ClusterCreationPolicy,
   PolicyListResponse,
 } from './types/policies';
+import type { AuditListResponse, AuditQuery } from './types/audit';
 import type {
   ObservabilityConfig,
   ObservabilityStatus,
@@ -282,6 +283,18 @@ export interface ButlerApi {
    * any collector addon.
    */
   getObservabilityStatus(): Promise<ObservabilityStatus>;
+
+  /**
+   * Audit history. The platform log is served to platform admins and
+   * viewers; a team's log to platform roles or an admin of that team.
+   * Team entries are those recorded while the caller acted as that team
+   * (its X-Butler-Team context), not entries about the team's resources.
+   */
+  listAuditLog(query?: AuditQuery): Promise<AuditListResponse>;
+  listTeamAuditLog(
+    team: string,
+    query?: AuditQuery,
+  ): Promise<AuditListResponse>;
   updateObservabilityConfig(
     data: UpdateObservabilityConfigRequest,
   ): Promise<ObservabilityConfig>;

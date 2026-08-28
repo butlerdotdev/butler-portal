@@ -53,6 +53,12 @@ export const teamSettingsRouteRef = createSubRouteRef({
   parent: rootRouteRef,
 });
 
+export const teamAuditRouteRef = createSubRouteRef({
+  id: 'butler.team.audit',
+  path: '/t/:team/audit',
+  parent: rootRouteRef,
+});
+
 export const adminRouteRef = createSubRouteRef({
   id: 'butler.admin',
   path: '/admin',
@@ -135,6 +141,12 @@ export const adminPolicyRouteRef = createSubRouteRef({
   id: 'butler.admin.policies.detail',
   parent: rootRouteRef,
   path: '/admin/policies/:name',
+});
+
+export const adminAuditRouteRef = createSubRouteRef({
+  id: 'butler.admin.audit',
+  parent: rootRouteRef,
+  path: '/admin/audit',
 });
 
 export const adminAccessRouteRef = createSubRouteRef({

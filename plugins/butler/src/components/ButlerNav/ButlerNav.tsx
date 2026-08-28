@@ -22,6 +22,7 @@ import {
   TeamsNavIcon,
   UsersNavIcon,
   UserGroupNavIcon,
+  AuditNavIcon,
 } from './icons';
 
 const useStyles = makeStyles(theme => {
@@ -147,8 +148,15 @@ interface NavSection {
 export const ButlerNav = () => {
   const classes = useStyles();
   const routes = useButlerRoutes();
-  const { mode, activeTeam, activeTeamDisplayName, isAdmin, canAccessAdmin } =
-    useTeamContext();
+  const {
+    mode,
+    activeTeam,
+    activeTeamDisplayName,
+    isAdmin,
+    canAccessAdmin,
+    teams,
+  } = useTeamContext();
+  const activeTeamRole = teams.find(t => t.name === activeTeam)?.role;
 
   let sections: NavSection[];
   let context: { label: string; value: string } | null = null;
@@ -218,6 +226,11 @@ export const ButlerNav = () => {
             to: routes.adminIdentityProviders(),
             label: 'Identity Providers',
             icon: <IdentityNavIcon />,
+          },
+          {
+            to: routes.adminAudit(),
+            label: 'Audit Log',
+            icon: <AuditNavIcon />,
           },
         ],
       },
@@ -290,6 +303,11 @@ export const ButlerNav = () => {
               label: 'Identity Providers',
               icon: <IdentityNavIcon />,
             },
+            {
+              to: routes.adminAudit(),
+              label: 'Audit Log',
+              icon: <AuditNavIcon />,
+            },
           ],
         },
       ];
@@ -335,6 +353,17 @@ export const ButlerNav = () => {
             label: 'Providers',
             icon: <ProvidersNavIcon />,
           },
+          // The server serves a team's audit to its admins and to platform
+          // roles; operators and viewers are refused, so it is not offered.
+          ...(activeTeamRole === 'admin' || canAccessAdmin
+            ? [
+                {
+                  to: routes.teamAudit({ team }),
+                  label: 'Activity',
+                  icon: <AuditNavIcon />,
+                },
+              ]
+            : []),
         ],
       },
     ];

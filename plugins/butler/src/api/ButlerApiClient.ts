@@ -8,6 +8,11 @@ import type {
   ClusterCreationPolicy,
   PolicyListResponse,
 } from './types/policies';
+import {
+  auditQueryString,
+  type AuditListResponse,
+  type AuditQuery,
+} from './types/audit';
 import type {
   ObservabilityConfig,
   ObservabilityStatus,
@@ -601,6 +606,21 @@ export class ButlerApiClient implements ButlerApi {
 
   async getObservabilityConfig(): Promise<ObservabilityConfig> {
     return this.get<ObservabilityConfig>('/observability/config');
+  }
+
+  async listAuditLog(query: AuditQuery = {}): Promise<AuditListResponse> {
+    return this.get<AuditListResponse>(
+      `/admin/audit${auditQueryString(query)}`,
+    );
+  }
+
+  async listTeamAuditLog(
+    team: string,
+    query: AuditQuery = {},
+  ): Promise<AuditListResponse> {
+    return this.get<AuditListResponse>(
+      `/teams/${team}/audit${auditQueryString(query)}`,
+    );
   }
 
   async getObservabilityStatus(): Promise<ObservabilityStatus> {

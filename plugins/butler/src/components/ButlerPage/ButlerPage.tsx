@@ -29,6 +29,8 @@ import {
   adminPoliciesRouteRef,
   adminObservabilityRouteRef,
   adminAccessRouteRef,
+  adminAuditRouteRef,
+  teamAuditRouteRef,
   adminPolicyRouteRef,
   adminCreateIdentityProviderRouteRef,
   adminSettingsRouteRef,
@@ -129,6 +131,12 @@ const PolicyDetailPage = React.lazy(() =>
   import('../admin/PolicyDetailPage').then(m => ({
     default: m.PolicyDetailPage,
   })),
+);
+const AuditLogPage = React.lazy(() =>
+  import('../admin/AuditLogPage').then(m => ({ default: m.AuditLogPage })),
+);
+const TeamAuditPage = React.lazy(() =>
+  import('../teams/TeamAuditPage').then(m => ({ default: m.TeamAuditPage })),
 );
 const AccessOverviewPage = React.lazy(() =>
   import('../admin/AccessOverviewPage').then(m => ({
@@ -260,6 +268,10 @@ const ButlerContent = () => {
                   element={<TeamSettingsPage />}
                 />
                 <Route
+                  path={teamAuditRouteRef.path}
+                  element={<TeamAuditPage />}
+                />
+                <Route
                   path={adminRouteRef.path}
                   element={
                     <AdminRouteGuard>
@@ -360,6 +372,14 @@ const ButlerContent = () => {
                   element={
                     <AdminRouteGuard>
                       <PolicyDetailPage />
+                    </AdminRouteGuard>
+                  }
+                />
+                <Route
+                  path={adminAuditRouteRef.path}
+                  element={
+                    <AdminRouteGuard>
+                      <AuditLogPage />
                     </AdminRouteGuard>
                   }
                 />

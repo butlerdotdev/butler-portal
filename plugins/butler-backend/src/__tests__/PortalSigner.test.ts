@@ -14,11 +14,7 @@
  * limitations under the License.
  */
 
-import {
-  generateKeyPairSync,
-  KeyObject,
-  verify as cryptoVerify,
-} from 'crypto';
+import { generateKeyPairSync, KeyObject, verify as cryptoVerify } from 'crypto';
 import { mkdtempSync, rmSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
@@ -38,12 +34,17 @@ const silentLogger = {
   child: () => silentLogger,
 } as any;
 
-function generateTestKeyPair(): { privateKey: KeyObject; publicKey: KeyObject } {
+function generateTestKeyPair(): {
+  privateKey: KeyObject;
+  publicKey: KeyObject;
+} {
   return generateKeyPairSync('ed25519');
 }
 
 function base64UrlDecode(input: string): Buffer {
-  const padded = input.replace(/-/g, '+').replace(/_/g, '/') + '==='.slice((input.length + 3) % 4);
+  const padded =
+    input.replace(/-/g, '+').replace(/_/g, '/') +
+    '==='.slice((input.length + 3) % 4);
   return Buffer.from(padded, 'base64');
 }
 
@@ -103,7 +104,9 @@ describe('PortalSigner', () => {
       expect(payload.iat).toBeGreaterThanOrEqual(before);
       expect(payload.iat).toBeLessThanOrEqual(after);
       // exp = iat + 60s (the Stage 1 verifier accepts up to iat + 65s)
-      expect((payload.exp as number) - (payload.iat as number)).toBe(PORTAL_JWT_TTL_SECONDS);
+      expect((payload.exp as number) - (payload.iat as number)).toBe(
+        PORTAL_JWT_TTL_SECONDS,
+      );
       // nbf = iat - 5s (clock-skew slop on validity start; the verifier
       // tolerates this because Stage 1's nbf check uses the server's clock)
       expect((payload.iat as number) - (payload.nbf as number)).toBe(5);
@@ -117,7 +120,12 @@ describe('PortalSigner', () => {
 
       const signingInput = `${headerB64}.${payloadB64}`;
       const signatureBytes = base64UrlDecode(signatureB64);
-      const ok = cryptoVerify(null, Buffer.from(signingInput), publicKey, signatureBytes);
+      const ok = cryptoVerify(
+        null,
+        Buffer.from(signingInput),
+        publicKey,
+        signatureBytes,
+      );
 
       expect(ok).toBe(true);
     });
@@ -152,7 +160,12 @@ describe('PortalSigner', () => {
 
       const signingInput = `${headerB64}.${payloadB64}`;
       const signatureBytes = base64UrlDecode(signatureB64);
-      const ok = cryptoVerify(null, Buffer.from(signingInput), otherPublic, signatureBytes);
+      const ok = cryptoVerify(
+        null,
+        Buffer.from(signingInput),
+        otherPublic,
+        signatureBytes,
+      );
 
       expect(ok).toBe(false);
     });
@@ -208,18 +221,28 @@ describe('PortalSigner', () => {
       const malformed = join(tmpDir, 'malformed.pem');
       writeFileSync(malformed, 'not a pem');
       expect(() =>
-        loadPortalSigner({ keyPath: malformed, kid: 'test-kid', logger: silentLogger }),
+        loadPortalSigner({
+          keyPath: malformed,
+          kid: 'test-kid',
+          logger: silentLogger,
+        }),
       ).toThrow();
     });
 
     it('throws when the key is not Ed25519', () => {
       // Generate an RSA key and write it to a file; loadPortalSigner should reject.
-      const { privateKey } = generateKeyPairSync('rsa', { modulusLength: 2048 });
+      const { privateKey } = generateKeyPairSync('rsa', {
+        modulusLength: 2048,
+      });
       const pem = privateKey.export({ type: 'pkcs8', format: 'pem' });
       const rsaPath = join(tmpDir, 'rsa.pem');
       writeFileSync(rsaPath, pem);
       expect(() =>
-        loadPortalSigner({ keyPath: rsaPath, kid: 'test-kid', logger: silentLogger }),
+        loadPortalSigner({
+          keyPath: rsaPath,
+          kid: 'test-kid',
+          logger: silentLogger,
+        }),
       ).toThrow(/not Ed25519/);
     });
 
@@ -237,7 +260,8 @@ describe('PortalSigner', () => {
       expect(signer).not.toBeNull();
 
       const proof = signer!.sign('user@example.com');
-      const { header, payload, headerB64, payloadB64, signatureB64 } = decodeJwt(proof);
+      const { header, payload, headerB64, payloadB64, signatureB64 } =
+        decodeJwt(proof);
       expect(header.kid).toBe('butlerlabs-portal-2026-06-10');
       expect(payload.sub).toBe('user@example.com');
 

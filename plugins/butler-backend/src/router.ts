@@ -531,9 +531,11 @@ export async function createRouter(options: {
       const token = await authManager.getToken();
 
       // Build the butler-server target path.
-      // req.path is relative to this router's mount point.
-      // All butler-server API endpoints are under /api, so prefix with /api.
-      const targetPath = `/api${req.path}`;
+      // req.path is relative to this router's mount point and carries no
+      // query string; the query is taken from req.url so filters and
+      // pagination reach the server. Authorization is decided on the
+      // path alone, above.
+      const targetPath = upstreamPath(req.path, req.url);
       const targetUrlFull = `${targetUrl}${targetPath}`;
 
       // Build forwarded headers
@@ -996,4 +998,17 @@ async function handleWsRelay(
       clientWs.close(1011, 'Failed to establish relay');
     }
   }
+}
+
+/**
+ * The path forwarded to butler-server for a proxied request: the router
+ * relative path under `/api`, plus the caller's query string. Express's
+ * `req.path` drops the query, which silently disabled every server-side
+ * filter and page size (`?limit=`, `?offset=`, `?repo=` and the audit
+ * filters) until this was carried across explicitly.
+ */
+export function upstreamPath(routerPath: string, url: string): string {
+  const q = url.indexOf('?');
+  const query = q >= 0 ? url.slice(q) : '';
+  return `/api${routerPath}${query}`;
 }

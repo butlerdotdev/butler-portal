@@ -20,6 +20,7 @@ import type {
   ManagementPod,
 } from '../types/clusters';
 import type { TeamInfo, TeamResponse } from '../types/teams';
+import type { AuditEntry } from '../types/audit';
 import type {
   AddonDefinition,
   CategoryInfo,
@@ -1408,3 +1409,102 @@ export const fixturePlatformConfig: PlatformConfig = {
     tcpProxyRequired: false,
   },
 };
+
+/**
+ * Audit events shaped like the live buffer on 2026-08-28: team-scoped
+ * actions carry the acting team; platform-level actions do not; one
+ * refused write, one failed one, and a sign-in.
+ */
+export const fixtureAuditEntries: AuditEntry[] = [
+  {
+    timestamp: '2026-08-28T21:47:15.596342Z',
+    user: 'viewer@example.com',
+    action: 'update',
+    resourceType: 'Team',
+    resourceName: FIXTURE_TEAM,
+    httpMethod: 'PUT',
+    path: `/api/teams/${FIXTURE_TEAM}`,
+    statusCode: 403,
+    success: false,
+    requestSummary: '{"displayName":"Platform Engineering"}',
+    errorMessage: 'Forbidden',
+    sourceIP: '[::1]:62123',
+  },
+  {
+    timestamp: '2026-08-28T21:07:07.678635Z',
+    user: 'ada@example.com',
+    action: 'delete',
+    resourceType: 'Unknown',
+    resourceName: FIXTURE_TEAM,
+    httpMethod: 'DELETE',
+    path: `/api/admin/teams/${FIXTURE_TEAM}/groups/e2e-parity-nogroup`,
+    statusCode: 200,
+    success: true,
+    sourceIP: '[::1]:60969',
+  },
+  {
+    timestamp: '2026-08-28T21:07:06.078707Z',
+    user: 'ada@example.com',
+    action: 'create',
+    resourceType: 'Unknown',
+    resourceName: FIXTURE_TEAM,
+    httpMethod: 'POST',
+    path: `/api/admin/teams/${FIXTURE_TEAM}/members`,
+    statusCode: 201,
+    success: true,
+    requestSummary: '{"email":"nobody@example.com","role":"viewer"}',
+    sourceIP: '[::1]:60969',
+  },
+  {
+    timestamp: '2026-08-28T15:53:02.880132Z',
+    user: 'grace@example.com',
+    action: 'delete',
+    resourceType: 'TenantAddon',
+    resourceName: 'ready-delta',
+    resourceNamespace: FIXTURE_NAMESPACE,
+    teamRef: FIXTURE_TEAM,
+    httpMethod: 'DELETE',
+    path: `/api/clusters/${FIXTURE_NAMESPACE}/ready-delta/addons/vector-agent`,
+    statusCode: 200,
+    success: true,
+    sourceIP: '[::1]:51520',
+  },
+  {
+    timestamp: '2026-08-28T15:40:00.000000Z',
+    user: 'grace@example.com',
+    action: 'scale',
+    resourceType: 'TenantCluster',
+    resourceName: 'ready-delta',
+    resourceNamespace: FIXTURE_NAMESPACE,
+    teamRef: FIXTURE_TEAM,
+    httpMethod: 'PATCH',
+    path: `/api/clusters/${FIXTURE_NAMESPACE}/ready-delta/scale`,
+    statusCode: 500,
+    success: false,
+    requestSummary: '{"replicas":4}',
+    errorMessage: 'Internal Server Error',
+    sourceIP: '[::1]:51520',
+  },
+  {
+    timestamp: '2026-08-28T15:30:00.000000Z',
+    user: 'ada@example.com',
+    action: 'create',
+    resourceType: 'ProviderConfig',
+    httpMethod: 'POST',
+    path: '/api/providers',
+    statusCode: 201,
+    success: true,
+    requestSummary:
+      '{"name":"e2e-provider-probe","provider":"harvester","harvesterKubeconfig":"apiVersion: v1\\nclusters: []"}',
+    sourceIP: '[::1]:51000',
+  },
+  {
+    timestamp: '2026-08-28T09:00:00.000000Z',
+    user: 'ada@example.com',
+    action: 'login',
+    success: true,
+    statusCode: 200,
+    provider: 'butlerlabs',
+    sourceIP: '[::1]:40000',
+  },
+];
