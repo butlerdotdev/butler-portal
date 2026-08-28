@@ -5,6 +5,7 @@ import type {
   ClusterCreationPolicy,
   PolicyListResponse,
 } from './types/policies';
+import type { ObservabilityConfig } from './types/observability';
 import type {
   OptionListScope,
   ProviderClusterListResponse,
@@ -238,6 +239,13 @@ export interface ButlerApi {
     name: string,
     scope?: OptionListScope,
   ): Promise<StorageContainerListResponse>;
+
+  /**
+   * The platform observability pipeline and collection defaults. Any
+   * authenticated caller may read it; the server answers 404 when no
+   * pipeline has been registered at all.
+   */
+  getObservabilityConfig(): Promise<ObservabilityConfig>;
 
   // Cluster creation policies (ADR-018). Reads need a platform role; the
   // server resolves them inside the option-list reads above, so a team

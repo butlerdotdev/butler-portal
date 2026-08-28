@@ -42,6 +42,24 @@ import type {
 import { fixturePools, fixtureAllocations } from './fixtures/networks';
 import { fixtureEnvironments } from './fixtures/environments';
 import { fixturePolicies } from './fixtures/policies';
+import type { ObservabilityConfig } from './types/observability';
+
+/** A registered pipeline with every endpoint set, as on the estate. */
+export const fixtureObservabilityConfig: ObservabilityConfig = {
+  configured: true,
+  pipeline: {
+    clusterName: 'pipelines',
+    clusterNamespace: 'platform-engineering',
+    logEndpoint: 'http://10.40.2.29:8080',
+    metricEndpoint: 'http://10.40.2.29:9000',
+    traceEndpoint: 'http://10.40.2.41:4318',
+  },
+  collection: {
+    autoEnroll: { vectorAgent: true, prometheus: false, otelCollector: false },
+    logs: { podLogs: true, journald: false, kubernetesEvents: true },
+    metrics: { enabled: true, retention: '2h' },
+  },
+};
 import type {
   ClusterCreationPolicy,
   PolicyListResponse,
@@ -174,6 +192,8 @@ export interface MockButlerApiOptions {
   providers?: Provider[];
   /** Cluster creation policies the mock starts with. */
   policies?: ClusterCreationPolicy[];
+  /** Platform observability config; `null` answers 404 as an unregistered pipeline does. */
+  observabilityConfig?: ObservabilityConfig | null;
   /** Team environments the mock starts with. */
   environments?: TeamEnvironment[];
   /** Defaults the team applies to new clusters. */
@@ -210,6 +230,7 @@ export class MockButlerApi implements ButlerApi {
   private environments: TeamEnvironment[];
   private providers: Provider[];
   private policies: ClusterCreationPolicy[];
+  private observabilityConfig: ObservabilityConfig | null;
   private teamClusterDefaults: EnvironmentClusterDefaults | undefined;
   private readonly failures: Partial<Record<ButlerApiMethod, Error>>;
   private readonly latencyMs: number;
@@ -240,6 +261,10 @@ export class MockButlerApi implements ButlerApi {
       options.providers ?? [...fixtureProviders, fixtureOtherTeamProvider],
     );
     this.policies = clone(options.policies ?? fixturePolicies);
+    this.observabilityConfig =
+      options.observabilityConfig === undefined
+        ? clone(fixtureObservabilityConfig)
+        : options.observabilityConfig;
     this.teamClusterDefaults = options.teamClusterDefaults
       ? clone(options.teamClusterDefaults)
       : undefined;
@@ -954,6 +979,18 @@ export class MockButlerApi implements ButlerApi {
         { name: 'fast-nvme', id: 'sc-0002' },
       ],
     }));
+  }
+
+  getObservabilityConfig(): Promise<ObservabilityConfig> {
+    return this.run('getObservabilityConfig', () => {
+      if (!this.observabilityConfig) {
+        throw new ButlerApiError({
+          status: 404,
+          message: 'observability pipeline not registered',
+        });
+      }
+      return clone(this.observabilityConfig);
+    });
   }
 
   listPolicies(): Promise<PolicyListResponse> {

@@ -341,3 +341,18 @@ describe('ButlerApiClient policy-aware option lists', () => {
     );
   });
 });
+
+describe('ButlerApiClient observability config', () => {
+  it('reads the platform pipeline configuration', async () => {
+    const { client, calls } = makeClient(() =>
+      jsonResponse({ configured: true, pipeline: { logEndpoint: 'http://a' } }),
+    );
+
+    const config = await client.getObservabilityConfig();
+
+    expect(calls[0].url).toBe(
+      'http://localhost/api/butler/observability/config',
+    );
+    expect(config.pipeline?.logEndpoint).toBe('http://a');
+  });
+});

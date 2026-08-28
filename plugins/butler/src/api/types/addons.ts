@@ -43,6 +43,8 @@ export interface CategoryInfo {
 
 export interface InstalledAddon {
   name: string;
+  /** The catalog addon this was installed from; the name may differ. */
+  addon?: string;
   displayName?: string;
   status: AddonStatus;
   phase?: string;

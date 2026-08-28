@@ -8,6 +8,7 @@ import type {
   ClusterCreationPolicy,
   PolicyListResponse,
 } from './types/policies';
+import type { ObservabilityConfig } from './types/observability';
 import type {
   OptionListScope,
   ProviderClusterListResponse,
@@ -566,6 +567,10 @@ export class ButlerApiClient implements ButlerApi {
       `/providers/${namespace}/${name}/storage-containers`,
       scope,
     );
+  }
+
+  async getObservabilityConfig(): Promise<ObservabilityConfig> {
+    return this.get<ObservabilityConfig>('/observability/config');
   }
 
   async listPolicies(): Promise<PolicyListResponse> {

@@ -26,6 +26,7 @@ import { useClusterWatch } from '../../hooks/useClusterWatch';
 import { useTeamContext } from '../../hooks/useTeamContext';
 import { useTeamEnvironments } from '../../hooks/useTeamEnvironments';
 import { AddonsTab } from './AddonsTab';
+import { ObservabilityTab } from './observability/ObservabilityTab';
 import { GitOpsTab } from './GitOpsTab';
 import { CertificatesTab } from './CertificatesTab';
 import { TerminalTab } from './TerminalTab';
@@ -140,6 +141,7 @@ const TABS = [
   'gitops',
   'events',
   'certificates',
+  'observability',
   'terminal',
 ] as const;
 type TabType = (typeof TABS)[number];
@@ -152,6 +154,7 @@ const TAB_LABELS: Record<TabType, string> = {
   gitops: 'GitOps',
   events: 'Events',
   certificates: 'Certificates',
+  observability: 'Observability',
   terminal: 'Terminal',
 };
 
@@ -944,6 +947,13 @@ export const ClusterDetailPage = () => {
 
         {activeTab === 'addons' && namespace && name && (
           <AddonsTab clusterNamespace={namespace} clusterName={name} />
+        )}
+        {activeTab === 'observability' && namespace && name && (
+          <ObservabilityTab
+            clusterNamespace={namespace}
+            clusterName={name}
+            canOperate={canOperate}
+          />
         )}
 
         {activeTab === 'gitops' && namespace && name && (
