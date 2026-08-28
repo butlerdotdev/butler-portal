@@ -60,10 +60,9 @@ const useStyles = makeStyles(theme => {
     },
     flow: {
       margin: '12px 0 0',
-      display: 'grid',
-      gridTemplateColumns: '1fr auto 1fr auto 1fr',
-      alignItems: 'center',
-      gap: 8,
+      display: 'flex',
+      flexDirection: 'column',
+      gap: 4,
       fontSize: 12,
       color: t.text.subtle,
     },
@@ -74,11 +73,10 @@ const useStyles = makeStyles(theme => {
       fontFamily: t.fontMono,
       fontSize: 12,
       color: rgb(t.palette.neutral[200]),
-      overflow: 'hidden',
-      textOverflow: 'ellipsis',
-      whiteSpace: 'nowrap',
+      lineHeight: '16px',
+      wordBreak: 'break-word',
     },
-    arrow: { color: t.text.subtle },
+    arrow: { color: t.text.subtle, paddingLeft: 8 },
     actions: { display: 'flex', justifyContent: 'flex-end', marginTop: 12 },
     note: { margin: 0, fontSize: 12, color: t.text.subtle },
   };
@@ -268,11 +266,11 @@ export const ObservabilityTab = ({
                 <span className={classes.flowNode} title={signal.sources}>
                   {signal.sources}
                 </span>
-                <span className={classes.arrow}>{'→'}</span>
+                <span className={classes.arrow}>{'↓'}</span>
                 <span className={classes.flowNode}>
                   {signal.collector} ({signal.collectorKind})
                 </span>
-                <span className={classes.arrow}>{'→'}</span>
+                <span className={classes.arrow}>{'↓'}</span>
                 <span
                   className={classes.flowNode}
                   title={signalDestination(signal, data.config)}
