@@ -28,6 +28,7 @@ import {
   adminIdentityProvidersRouteRef,
   adminPoliciesRouteRef,
   adminObservabilityRouteRef,
+  adminAccessRouteRef,
   adminPolicyRouteRef,
   adminCreateIdentityProviderRouteRef,
   adminSettingsRouteRef,
@@ -127,6 +128,11 @@ const PoliciesPage = React.lazy(() =>
 const PolicyDetailPage = React.lazy(() =>
   import('../admin/PolicyDetailPage').then(m => ({
     default: m.PolicyDetailPage,
+  })),
+);
+const AccessOverviewPage = React.lazy(() =>
+  import('../admin/AccessOverviewPage').then(m => ({
+    default: m.AccessOverviewPage,
   })),
 );
 const PlatformObservabilityPage = React.lazy(() =>
@@ -354,6 +360,14 @@ const ButlerContent = () => {
                   element={
                     <AdminRouteGuard>
                       <PolicyDetailPage />
+                    </AdminRouteGuard>
+                  }
+                />
+                <Route
+                  path={adminAccessRouteRef.path}
+                  element={
+                    <AdminRouteGuard>
+                      <AccessOverviewPage />
                     </AdminRouteGuard>
                   }
                 />

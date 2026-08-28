@@ -56,7 +56,14 @@ import type {
   ImageListResponse,
   NetworkListResponse,
 } from './types/providers';
-import type { TeamInfo } from './types/teams';
+import type {
+  TeamInfo,
+  TeamResponse,
+  TeamMembersResponse,
+  GroupSyncResponse,
+  UpdateTeamRequest,
+  UserListEntry,
+} from './types/teams';
 import type {
   MachineRequestListResponse,
   LoadBalancerRequestListResponse,
@@ -929,7 +936,7 @@ export class ButlerApiClient implements ButlerApi {
 
   // ---- Users ----
 
-  async listUsers(): Promise<any> {
+  async listUsers(): Promise<{ users: UserListEntry[] }> {
     return this.get('/users');
   }
 
@@ -958,7 +965,7 @@ export class ButlerApiClient implements ButlerApi {
 
   // ---- Teams ----
 
-  async getTeam(name: string): Promise<any> {
+  async getTeam(name: string): Promise<TeamResponse> {
     return this.get(`/teams/${name}`);
   }
 
@@ -1026,14 +1033,14 @@ export class ButlerApiClient implements ButlerApi {
     name: string;
     displayName?: string;
     description?: string;
-  }): Promise<any> {
+  }): Promise<TeamResponse> {
     return this.post('/admin/teams', data);
   }
 
   async updateTeam(
     name: string,
-    data: { displayName?: string; description?: string },
-  ): Promise<any> {
+    data: UpdateTeamRequest,
+  ): Promise<TeamResponse> {
     return this.put(`/teams/${name}`, data);
   }
 
@@ -1045,7 +1052,7 @@ export class ButlerApiClient implements ButlerApi {
     return this.get<ClusterListResponse>(`/teams/${name}/clusters`);
   }
 
-  async getTeamMembers(name: string): Promise<any> {
+  async getTeamMembers(name: string): Promise<TeamMembersResponse> {
     return this.get(`/teams/${name}/members`);
   }
 
@@ -1073,7 +1080,9 @@ export class ButlerApiClient implements ButlerApi {
     );
   }
 
-  async getTeamGroupSyncs(name: string): Promise<any> {
+  async getTeamGroupSyncs(
+    name: string,
+  ): Promise<{ groups: GroupSyncResponse[] }> {
     return this.get(`/teams/${name}/groups`);
   }
 

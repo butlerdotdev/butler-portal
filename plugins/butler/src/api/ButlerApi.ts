@@ -46,7 +46,14 @@ import type {
   ImageListResponse,
   NetworkListResponse,
 } from './types/providers';
-import type { TeamInfo } from './types/teams';
+import type {
+  TeamInfo,
+  TeamResponse,
+  TeamMembersResponse,
+  GroupSyncResponse,
+  UpdateTeamRequest,
+  UserListEntry,
+} from './types/teams';
 import type {
   MachineRequestListResponse,
   LoadBalancerRequestListResponse,
@@ -417,7 +424,7 @@ export interface ButlerApi {
   getPlatformConfig(): Promise<PlatformConfig>;
 
   // Users
-  listUsers(): Promise<any>;
+  listUsers(): Promise<{ users: UserListEntry[] }>;
   createUser(data: {
     email: string;
     name?: string;
@@ -442,20 +449,22 @@ export interface ButlerApi {
   ): Promise<TeamEnvironment>;
   deleteTeamEnvironment(team: string, name: string): Promise<void>;
 
-  // Teams
-  getTeam(name: string): Promise<any>;
+  // Teams. The server answers with the flat TeamResponse, never the CRD.
+  // Reads: any authenticated user may read any team (limits, usage,
+  // environments, group mappings); members need team membership or a
+  // platform role. Writes: displayName/description by a team admin or
+  // platform admin, resourceLimits by a platform admin only (admission
+  // webhook); member and group mutations are platform admin only.
+  getTeam(name: string): Promise<TeamResponse>;
   createTeam(data: {
     name: string;
     displayName?: string;
     description?: string;
-  }): Promise<any>;
-  updateTeam(
-    name: string,
-    data: { displayName?: string; description?: string },
-  ): Promise<any>;
+  }): Promise<TeamResponse>;
+  updateTeam(name: string, data: UpdateTeamRequest): Promise<TeamResponse>;
   deleteTeam(name: string): Promise<void>;
   getTeamClusters(name: string): Promise<ClusterListResponse>;
-  getTeamMembers(name: string): Promise<any>;
+  getTeamMembers(name: string): Promise<TeamMembersResponse>;
   addTeamMember(
     teamName: string,
     data: { email: string; role: string },
@@ -466,7 +475,7 @@ export interface ButlerApi {
     email: string,
     role: string,
   ): Promise<void>;
-  getTeamGroupSyncs(name: string): Promise<any>;
+  getTeamGroupSyncs(name: string): Promise<{ groups: GroupSyncResponse[] }>;
   addGroupSync(
     teamName: string,
     data: { group: string; role: string; identityProvider?: string },

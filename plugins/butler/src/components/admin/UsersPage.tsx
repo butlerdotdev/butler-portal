@@ -32,9 +32,13 @@ export interface UserRecord {
   name?: string;
   phase?: 'Pending' | 'Active' | 'Disabled' | 'Locked' | string;
   disabled?: boolean;
-  authType?: 'internal' | 'sso';
+  authType?: 'internal' | 'sso' | string;
   teams?: Array<{ name: string; role?: string }> | string[];
   isAdmin?: boolean;
+  isPlatformAdmin?: boolean;
+  platformRole?: string;
+  ssoProvider?: string;
+  avatar?: string;
   metadata?: { name?: string };
   spec?: { email?: string; displayName?: string };
   status?: { phase?: string; teams?: Array<{ name: string; role?: string }> };
@@ -52,8 +56,7 @@ const getUsername = (u: UserRecord) =>
   u.username || u.metadata?.name || getEmail(u);
 const getPhase = (u: UserRecord) =>
   u.disabled ? 'Disabled' : u.phase || u.status?.phase || 'Active';
-const getAuthType = (u: UserRecord): 'internal' | 'sso' =>
-  u.authType || 'internal';
+const getAuthType = (u: UserRecord): string => u.authType || 'internal';
 const getTeams = (u: UserRecord): string[] => {
   const raw = u.status?.teams ?? u.teams ?? [];
   return raw.map((t: string | { name: string }) =>
@@ -228,7 +231,7 @@ export const UsersPage = () => {
     setLoadError(undefined);
     try {
       const response = await api.listUsers();
-      setUsers(response?.users || []);
+      setUsers((response?.users || []) as UserRecord[]);
     } catch (e) {
       setLoadError(e instanceof Error ? e : new Error(String(e)));
     } finally {

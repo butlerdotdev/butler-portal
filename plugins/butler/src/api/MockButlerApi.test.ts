@@ -284,7 +284,7 @@ describe('MockButlerApi', () => {
     expect(
       (await api.getTeamMembers(FIXTURE_TEAM)).members.find(
         (m: any) => m.email === 'new@example.com',
-      ).role,
+      )?.role,
     ).toBe('operator');
     await api.removeTeamMember(FIXTURE_TEAM, 'new@example.com');
     expect((await api.getTeamMembers(FIXTURE_TEAM)).members).toHaveLength(
@@ -326,9 +326,9 @@ describe('MockButlerApi', () => {
 
   it('throws a visible error for unimplemented methods', async () => {
     const api = new MockButlerApi();
-    await expect(api.deleteTeam('x')).rejects.toThrow(
-      'not implemented in MockButlerApi: deleteTeam',
-    );
+    await expect(
+      (api as any).deleteProvider('x' as any, 'x' as any),
+    ).rejects.toThrow('not implemented in MockButlerApi: deleteProvider');
   });
 
   it('returns previews for flux and argocd', async () => {

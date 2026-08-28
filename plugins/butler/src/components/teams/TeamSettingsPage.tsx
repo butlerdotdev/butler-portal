@@ -7,6 +7,12 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { useApi } from '@backstage/core-plugin-api';
 import { makeStyles } from '@material-ui/core/styles';
 import { butlerApiRef } from '../../api/ButlerApi';
+import type {
+  GroupSyncResponse,
+  TeamMemberResponse,
+  TeamResponse,
+} from '../../api/types/teams';
+import { quotaRows, quotaSummary } from '../../utils/teamQuota';
 import { useTeamContext } from '../../hooks/useTeamContext';
 import { useButlerRoutes } from '../../hooks/useButlerRoutes';
 import { butlerTokens, rgb, rgba } from '../../theme';
@@ -99,45 +105,6 @@ const useStyles = makeStyles(theme => {
   };
 });
 
-interface TeamDetail {
-  metadata?: {
-    name: string;
-    namespace?: string;
-    uid?: string;
-    creationTimestamp?: string;
-  };
-  spec?: {
-    displayName?: string;
-    description?: string;
-    resourceQuotas?: {
-      maxClusters?: number;
-      maxWorkersPerCluster?: number;
-      maxTotalWorkers?: number;
-      maxNodesPerCluster?: number;
-      maxTotalNodes?: number;
-    };
-    access?: {
-      users?: Array<{ email: string; role: string }>;
-      groups?: Array<{ name: string; role: string }>;
-    };
-  };
-  status?: {
-    namespace?: string;
-    phase?: string;
-  };
-}
-
-const QUOTA_ROWS: Array<{
-  key: keyof NonNullable<NonNullable<TeamDetail['spec']>['resourceQuotas']>;
-  label: string;
-}> = [
-  { key: 'maxClusters', label: 'Max Clusters' },
-  { key: 'maxTotalNodes', label: 'Max Total Nodes' },
-  { key: 'maxNodesPerCluster', label: 'Max Nodes per Cluster' },
-  { key: 'maxTotalWorkers', label: 'Max Total Workers' },
-  { key: 'maxWorkersPerCluster', label: 'Max Workers per Cluster' },
-];
-
 export const TeamSettingsPage = () => {
   const classes = useStyles();
   const { team } = useParams<{ team: string }>();
@@ -146,7 +113,9 @@ export const TeamSettingsPage = () => {
   const navigate = useNavigate();
   const { teams, isAdmin } = useTeamContext();
 
-  const [teamDetail, setTeamDetail] = useState<TeamDetail | null>(null);
+  const [teamDetail, setTeamDetail] = useState<TeamResponse | null>(null);
+  const [members, setMembers] = useState<TeamMemberResponse[]>([]);
+  const [groupSyncs, setGroupSyncs] = useState<GroupSyncResponse[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -164,13 +133,22 @@ export const TeamSettingsPage = () => {
     setLoading(true);
     setError(null);
     try {
-      const response: TeamDetail = await api.getTeam(team);
+      const response = await api.getTeam(team);
       setTeamDetail(response);
-      // The server answers with the flat team response; the resource shape
-      // is the fallback. Reading only spec left the form blank.
-      const raw = response as any;
-      setDisplayName(raw?.displayName || response?.spec?.displayName || '');
-      setDescription(raw?.description || response?.spec?.description || '');
+      setDisplayName(response.displayName || '');
+      setDescription(response.description || '');
+      // Group mappings are readable by anyone; the member list needs
+      // membership or a platform role, so a refusal there is not an error.
+      const [groupsRes, membersRes] = await Promise.allSettled([
+        api.getTeamGroupSyncs(team),
+        api.getTeamMembers(team),
+      ]);
+      setGroupSyncs(
+        groupsRes.status === 'fulfilled' ? groupsRes.value.groups : [],
+      );
+      setMembers(
+        membersRes.status === 'fulfilled' ? membersRes.value.members : [],
+      );
     } catch (err) {
       setError(
         err instanceof Error ? err.message : 'Failed to load team details',
@@ -224,31 +202,19 @@ export const TeamSettingsPage = () => {
     );
   }
 
-  const raw = teamDetail as any;
-  const quotas =
-    raw?.resourceLimits ||
-    raw?.resourceQuotas ||
-    teamDetail?.spec?.resourceQuotas;
-  const usage = raw?.resourceUsage;
-  const quotaRows = QUOTA_ROWS.filter(r => quotas?.[r.key] !== undefined);
-  const users = teamDetail?.spec?.access?.users ?? [];
-  const groups = teamDetail?.spec?.access?.groups ?? [];
-  const namespace =
-    raw?.namespace ||
-    teamDetail?.status?.namespace ||
-    teamDetail?.metadata?.namespace ||
-    team ||
-    '';
-  const created =
-    raw?.createdAt || teamDetail?.metadata?.creationTimestamp
-      ? new Date(
-          raw?.createdAt || teamDetail!.metadata!.creationTimestamp!,
-        ).toLocaleDateString(undefined, {
-          year: 'numeric',
-          month: 'long',
-          day: 'numeric',
-        })
-      : '-';
+  const rows = quotaRows(teamDetail?.resourceLimits, teamDetail?.resourceUsage);
+  const limited = rows.filter(r => r.limit !== undefined);
+  const summary = quotaSummary(rows);
+  const users = members.filter(m => m.source !== 'group');
+  const groups = groupSyncs;
+  const namespace = teamDetail?.namespace || team || '';
+  const created = teamDetail?.createdAt
+    ? new Date(teamDetail.createdAt).toLocaleDateString(undefined, {
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric',
+      })
+    : '-';
 
   return (
     <ButlerStack>
@@ -263,22 +229,35 @@ export const TeamSettingsPage = () => {
           Resource Usage
         </h2>
         <p className={classes.cardDescription}>
-          Usage against the limits configured for your team
+          {summary.detail} Limits are set by a platform admin; usage is what the
+          controller last reported.
         </p>
-        {quotaRows.length > 0 ? (
+        {limited.length > 0 ? (
           <ButlerKeyValueList dense>
-            {quotaRows.map(r => (
-              <ButlerKeyValueRow key={r.key} label={r.label} mono dense>
-                {usage?.[r.key] !== undefined
-                  ? `${usage[r.key]} / ${quotas?.[r.key]}`
-                  : quotas?.[r.key]}
+            {limited.map(r => (
+              <ButlerKeyValueRow
+                key={r.key}
+                label={`Max ${r.label}`}
+                mono
+                dense
+              >
+                {`${r.usedText} / ${r.limitText}`}
               </ButlerKeyValueRow>
             ))}
           </ButlerKeyValueList>
         ) : (
-          <p className={classes.muted}>
-            No resource quotas configured for this team.
-          </p>
+          <p className={classes.muted}>No limits are set on this team.</p>
+        )}
+        {rows.some(r => r.limit === undefined && r.used !== undefined) && (
+          <ButlerKeyValueList dense>
+            {rows
+              .filter(r => r.limit === undefined && r.used !== undefined)
+              .map(r => (
+                <ButlerKeyValueRow key={r.key} label={r.label} mono dense>
+                  {`${r.usedText} (no limit)`}
+                </ButlerKeyValueRow>
+              ))}
+          </ButlerKeyValueList>
         )}
       </ButlerCard>
 
@@ -297,7 +276,7 @@ export const TeamSettingsPage = () => {
           )}
           <ButlerInput
             label="Team Name"
-            value={teamDetail?.metadata?.name || team}
+            value={teamDetail?.name || team}
             disabled
             readOnly
             help="Team names cannot be changed"

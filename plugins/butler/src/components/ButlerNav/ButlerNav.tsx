@@ -21,6 +21,7 @@ import {
   SettingsNavIcon,
   TeamsNavIcon,
   UsersNavIcon,
+  UserGroupNavIcon,
 } from './icons';
 
 const useStyles = makeStyles(theme => {
@@ -178,6 +179,11 @@ export const ButlerNav = () => {
         items: [
           { to: routes.adminTeams(), label: 'Teams', icon: <TeamsNavIcon /> },
           { to: routes.adminUsers(), label: 'Users', icon: <UsersNavIcon /> },
+          {
+            to: routes.adminAccess(),
+            label: 'Access',
+            icon: <UserGroupNavIcon />,
+          },
         ],
       },
       {
@@ -238,6 +244,16 @@ export const ButlerNav = () => {
               to: routes.adminClusters(),
               label: 'All Clusters',
               icon: <ClustersNavIcon />,
+            },
+          ],
+        },
+        {
+          label: 'Organization',
+          items: [
+            {
+              to: routes.adminAccess(),
+              label: 'Access',
+              icon: <UserGroupNavIcon />,
             },
           ],
         },

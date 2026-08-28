@@ -349,10 +349,12 @@ export const TeamMembersPage = () => {
 
   const currentTeam = teams.find(t => t.name === team);
   const teamDisplayName = currentTeam?.displayName || team;
-  // The route team is the one being managed; the console gates member
-  // mutation on the viewer's role in that team, and a platform admin
-  // viewing a team they are not a member of keeps the admin affordances.
-  const canManage = currentTeam?.role === 'admin' || isAdmin;
+  // Membership is administered through /admin/teams/{team}/members, which
+  // butler-server serves to platform admins only; a team admin is refused
+  // there (403). The console offers the controls to team admins anyway and
+  // they fail. Offer them to exactly who the server accepts.
+  const canManage = isAdmin;
+  const isTeamAdmin = currentTeam?.role === 'admin';
 
   const fetchCurrentUser = useCallback(async () => {
     try {
@@ -493,6 +495,13 @@ export const TeamMembersPage = () => {
 
   return (
     <ButlerStack>
+      {isTeamAdmin && !canManage && (
+        <ButlerCallout tone="info" compact>
+          Membership is administered by platform admins. As a team admin you can
+          review who has access here; ask a platform admin to add, remove or
+          change roles.
+        </ButlerCallout>
+      )}
       <ButlerPageHeader
         title="Members"
         subtitle="Manage team members and their roles"

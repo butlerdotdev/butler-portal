@@ -104,7 +104,15 @@ import type {
   ImageListResponse,
   NetworkListResponse,
 } from './types/providers';
-import type { TeamInfo } from './types/teams';
+import type {
+  TeamInfo,
+  TeamResponse,
+  TeamMembersResponse,
+  TeamMemberResponse,
+  GroupSyncResponse,
+  UpdateTeamRequest,
+  UserListEntry,
+} from './types/teams';
 import type {
   AddonDefinition,
   InstalledAddon,
@@ -163,7 +171,6 @@ import {
   fixtureClusters,
   fixtureTeams,
   fixtureTeamMembers,
-  fixtureTeamDetail,
   fixtureGroupSyncs,
   fixtureIdentity,
   fixtureCurrentUser,
@@ -186,6 +193,7 @@ import {
   fixtureProviders,
   fixtureOtherTeamProvider,
   fixtureIdentityProviders,
+  fixtureTeamResponse,
   fixturePlatformConfig,
 } from './fixtures/clusters';
 import type { FixtureTeamMember } from './fixtures/clusters';
@@ -2177,7 +2185,7 @@ export class MockButlerApi implements ButlerApi {
 
   // ---- Users ----
 
-  listUsers(): Promise<any> {
+  listUsers(): Promise<{ users: UserListEntry[] }> {
     return this.run('listUsers', () => ({ users: clone(this.users) }));
   }
 
@@ -2239,17 +2247,35 @@ export class MockButlerApi implements ButlerApi {
 
   // ---- Teams ----
 
-  getTeam(name: string): Promise<any> {
+  private teamResponse: TeamResponse = clone(fixtureTeamResponse);
+
+  private groupSyncs: GroupSyncResponse[] = clone(fixtureGroupSyncs);
+
+  /** butler-server ListMembers: membership or a platform role, else 403. */
+  private assertTeamMembership(name: string): void {
+    if (this.identity.isPlatformAdmin || this.identity.platformRole) return;
+    if (!this.identity.teams.some(t => t.name === name)) {
+      throw new ButlerApiError({
+        status: 403,
+        message: 'Access denied to team',
+      });
+    }
+  }
+
+  getTeam(name: string): Promise<TeamResponse> {
     return this.run('getTeam', () => {
+      // Any authenticated user may read any team; the server has no check.
       const info = fixtureTeams.find(t => t.name === name);
       if (!info) throw notFound('team', name);
-      if (name === fixtureTeamDetail.metadata.name) {
-        return clone(fixtureTeamDetail);
-      }
+      if (name === this.teamResponse.name) return clone(this.teamResponse);
       return {
-        metadata: { name, namespace: `team-${name}` },
-        spec: { displayName: info.displayName },
-        status: { phase: 'Active', namespace: `team-${name}` },
+        name,
+        displayName: info.displayName,
+        namespace: `team-${name}`,
+        phase: 'Ready',
+        clusterCount: info.clusterCount,
+        memberCount: 0,
+        groupCount: 0,
       };
     });
   }
@@ -2314,31 +2340,72 @@ export class MockButlerApi implements ButlerApi {
     });
   }
 
-  createTeam(_data: {
+  createTeam(data: {
     name: string;
     displayName?: string;
     description?: string;
-  }): Promise<any> {
-    return this.run('createTeam', () => this.notImplemented('createTeam'));
-  }
-
-  updateTeam(
-    name: string,
-    data: { displayName?: string; description?: string },
-  ): Promise<any> {
-    return this.run('updateTeam', () => {
-      if (name !== fixtureTeamDetail.metadata.name)
-        throw notFound('team', name);
-      if (data.displayName !== undefined)
-        fixtureTeamDetail.spec.displayName = data.displayName;
-      if (data.description !== undefined)
-        fixtureTeamDetail.spec.description = data.description;
-      return clone(fixtureTeamDetail);
+  }): Promise<TeamResponse> {
+    return this.run('createTeam', () => {
+      this.requirePlatformAdmin('create team');
+      if (fixtureTeams.some(t => t.name === data.name)) {
+        throw new ButlerApiError({
+          status: 409,
+          message: 'Team already exists',
+        });
+      }
+      return {
+        name: data.name,
+        displayName: data.displayName || data.name,
+        description: data.description,
+        namespace: `team-${data.name}`,
+        phase: 'Pending',
+        clusterCount: 0,
+        memberCount: 0,
+        groupCount: 0,
+      };
     });
   }
 
-  deleteTeam(_name: string): Promise<void> {
-    return this.run('deleteTeam', () => this.notImplemented('deleteTeam'));
+  /**
+   * Mirrors the server: displayName/description by a team admin or platform
+   * admin; resourceLimits by a platform admin only (admission webhook);
+   * clusterDefaults by a team admin or platform admin. Empty strings are
+   * ignored, maps replace whole.
+   */
+  updateTeam(name: string, data: UpdateTeamRequest): Promise<TeamResponse> {
+    return this.run('updateTeam', () => {
+      if (name !== this.teamResponse.name) throw notFound('team', name);
+      const teamAdmin = this.identity.teams.some(
+        t => t.name === name && t.role === 'admin',
+      );
+      if (!this.identity.isPlatformAdmin && !teamAdmin) {
+        throw new ButlerApiError({
+          status: 403,
+          message: `Team admin of ${name} or platform admin required`,
+        });
+      }
+      if (data.resourceLimits && !this.identity.isPlatformAdmin) {
+        throw new ButlerApiError({
+          status: 403,
+          message: 'Platform admin required to change resourceLimits',
+        });
+      }
+      if (data.displayName) this.teamResponse.displayName = data.displayName;
+      if (data.description) this.teamResponse.description = data.description;
+      if (data.resourceLimits)
+        this.teamResponse.resourceLimits = { ...data.resourceLimits };
+      if (data.clusterDefaults)
+        this.teamResponse.clusterDefaults = { ...data.clusterDefaults };
+      return clone(this.teamResponse);
+    });
+  }
+
+  deleteTeam(name: string): Promise<void> {
+    return this.run('deleteTeam', () => {
+      this.requirePlatformAdmin('delete team');
+      if (!fixtureTeams.some(t => t.name === name))
+        throw notFound('team', name);
+    });
   }
 
   getTeamClusters(name: string): Promise<ClusterListResponse> {
@@ -2347,14 +2414,36 @@ export class MockButlerApi implements ButlerApi {
     }));
   }
 
-  getTeamMembers(name: string): Promise<any> {
+  getTeamMembers(name: string): Promise<TeamMembersResponse> {
     return this.run('getTeamMembers', () => {
       if (!fixtureTeams.some(t => t.name === name))
         throw notFound('team', name);
+      this.assertTeamMembership(name);
+      const own = name === this.teamResponse.name;
+      const members: TeamMemberResponse[] = own
+        ? this.members.map(m => ({
+            email: m.email,
+            name: m.name,
+            role: m.role,
+            source: m.source === 'group' ? 'group' : 'direct',
+            groupName: m.groupName,
+            groupRole: m.source === 'group' ? m.role : undefined,
+            canRemove:
+              m.source !== 'group' && m.email !== fixtureCurrentUser.email,
+            removeNote:
+              m.source === 'group' ? 'Access via group membership' : undefined,
+          }))
+        : [];
+      const groupMemberCounts: Record<string, number> = {};
+      for (const g of this.groupSyncs) groupMemberCounts[g.name] = 0;
+      for (const m of members)
+        if (m.groupName)
+          groupMemberCounts[m.groupName] =
+            (groupMemberCounts[m.groupName] ?? 0) + 1;
       return {
-        members: clone(
-          name === fixtureTeamDetail.metadata.name ? this.members : [],
-        ),
+        members,
+        groups: own ? clone(this.groupSyncs) : [],
+        groupMemberCounts,
       };
     });
   }
@@ -2364,10 +2453,15 @@ export class MockButlerApi implements ButlerApi {
     data: { email: string; role: string },
   ): Promise<void> {
     return this.run('addTeamMember', () => {
+      this.requirePlatformAdmin('add member');
       if (!fixtureTeams.some(t => t.name === teamName))
         throw notFound('team', teamName);
       if (this.members.some(m => m.email === data.email)) {
-        throw new Error(`${data.email} is already a member of ${teamName}`);
+        throw new ButlerApiError({
+          status: 409,
+          message:
+            'User is already a direct member. Use the role dropdown to change their role.',
+        });
       }
       this.members.push({
         email: data.email,
@@ -2380,6 +2474,7 @@ export class MockButlerApi implements ButlerApi {
 
   removeTeamMember(teamName: string, email: string): Promise<void> {
     return this.run('removeTeamMember', () => {
+      this.requirePlatformAdmin('remove member');
       if (!fixtureTeams.some(t => t.name === teamName))
         throw notFound('team', teamName);
       if (!this.members.some(m => m.email === email))
@@ -2394,6 +2489,7 @@ export class MockButlerApi implements ButlerApi {
     role: string,
   ): Promise<void> {
     return this.run('updateMemberRole', () => {
+      this.requirePlatformAdmin('update member role');
       if (!fixtureTeams.some(t => t.name === teamName))
         throw notFound('team', teamName);
       const member = this.members.find(m => m.email === email);
@@ -2402,33 +2498,72 @@ export class MockButlerApi implements ButlerApi {
     });
   }
 
-  getTeamGroupSyncs(_name: string): Promise<any> {
-    return this.run('getTeamGroupSyncs', () => ({
-      groups: clone(fixtureGroupSyncs),
-    }));
+  getTeamGroupSyncs(name: string): Promise<{ groups: GroupSyncResponse[] }> {
+    return this.run('getTeamGroupSyncs', () => {
+      // Any authenticated user may read any team's group mappings; the
+      // server has no check on this route.
+      if (!fixtureTeams.some(t => t.name === name))
+        throw notFound('team', name);
+      return {
+        groups: name === this.teamResponse.name ? clone(this.groupSyncs) : [],
+      };
+    });
   }
 
   addGroupSync(
-    _teamName: string,
-    _data: { group: string; role: string; identityProvider?: string },
+    teamName: string,
+    data: { group: string; role: string; identityProvider?: string },
   ): Promise<void> {
-    return this.run('addGroupSync', () => this.notImplemented('addGroupSync'));
+    return this.run('addGroupSync', () => {
+      this.requirePlatformAdmin('add group sync');
+      if (!fixtureTeams.some(t => t.name === teamName))
+        throw notFound('team', teamName);
+      if (
+        this.groupSyncs.some(
+          g =>
+            g.name.toLowerCase() === data.group.toLowerCase() &&
+            (g.identityProvider ?? '').toLowerCase() ===
+              (data.identityProvider ?? '').toLowerCase(),
+        )
+      ) {
+        throw new ButlerApiError({
+          status: 409,
+          message:
+            'Group sync already exists for this group and identity provider',
+        });
+      }
+      this.groupSyncs.push({
+        name: data.group,
+        role: data.role || 'viewer',
+        identityProvider: data.identityProvider,
+      });
+    });
   }
 
-  removeGroupSync(_teamName: string, _groupName: string): Promise<void> {
-    return this.run('removeGroupSync', () =>
-      this.notImplemented('removeGroupSync'),
-    );
+  removeGroupSync(teamName: string, groupName: string): Promise<void> {
+    return this.run('removeGroupSync', () => {
+      this.requirePlatformAdmin('remove group sync');
+      if (!fixtureTeams.some(t => t.name === teamName))
+        throw notFound('team', teamName);
+      if (!this.groupSyncs.some(g => g.name === groupName))
+        throw notFound('group sync', groupName);
+      this.groupSyncs = this.groupSyncs.filter(g => g.name !== groupName);
+    });
   }
 
   updateGroupSyncRole(
-    _teamName: string,
-    _groupName: string,
-    _role: string,
+    teamName: string,
+    groupName: string,
+    role: string,
   ): Promise<void> {
-    return this.run('updateGroupSyncRole', () =>
-      this.notImplemented('updateGroupSyncRole'),
-    );
+    return this.run('updateGroupSyncRole', () => {
+      this.requirePlatformAdmin('update group sync role');
+      if (!fixtureTeams.some(t => t.name === teamName))
+        throw notFound('team', teamName);
+      const g = this.groupSyncs.find(x => x.name === groupName);
+      if (!g) throw notFound('group sync', groupName);
+      g.role = role;
+    });
   }
 
   // ---- Workspaces ----

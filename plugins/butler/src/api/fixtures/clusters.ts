@@ -19,7 +19,7 @@ import type {
   ManagementNode,
   ManagementPod,
 } from '../types/clusters';
-import type { TeamInfo } from '../types/teams';
+import type { TeamInfo, TeamResponse } from '../types/teams';
 import type {
   AddonDefinition,
   CategoryInfo,
@@ -593,6 +593,44 @@ export const fixtureTeamMembers: FixtureTeamMember[] = [
 ];
 
 /** Team CRD-style detail used by TeamSettingsPage and AdminTeamDetailPage. */
+/**
+ * The flat team as butler-server returns it (`TeamResponse`), shaped like
+ * the live platform-engineering team on 2026-08-28: one limit set, usage
+ * reported by the controller, defaults, and two environments.
+ */
+export const fixtureTeamResponse: TeamResponse = {
+  name: FIXTURE_TEAM,
+  displayName: 'Platform Engineering',
+  description: 'Owns the shared Kubernetes platform and lab clusters.',
+  namespace: FIXTURE_NAMESPACE,
+  phase: 'Ready',
+  clusterCount: fixtureClusters.length,
+  memberCount: 2,
+  groupCount: 1,
+  labels: { 'butler.dev/managed': 'true' },
+  createdAt: '2026-05-01T09:00:00Z',
+  resourceLimits: { defaultNodeCount: 3, maxClusters: 10 },
+  resourceUsage: {
+    clusterUtilization: 60,
+    clusters: 6,
+    totalCPU: '48',
+    totalMemory: '96Gi',
+    totalNodes: 12,
+    totalStorage: '400Gi',
+  },
+  clusterDefaults: {
+    kubernetesVersion: 'v1.31.0',
+    workerCount: 3,
+    workerCPU: 4,
+    workerMemoryGi: 8,
+    workerDiskGi: 50,
+  },
+  environments: [
+    { name: 'e2e-dev' },
+    { name: 'e2e-staging', description: 'Pre-release verification' },
+  ],
+};
+
 export const fixtureTeamDetail = {
   metadata: {
     name: FIXTURE_TEAM,

@@ -44,6 +44,9 @@ describe('normalizeTeam', () => {
         displayName: 'Platform Engineering',
         phase: 'Ready',
         namespace: 'platform-engineering',
+        clusterCount: 15,
+        memberCount: 6,
+        groupCount: 1,
         resourceLimits: { maxClusters: 100 },
         resourceUsage: { clusters: 15, totalNodes: 30 },
         clusterDefaults: { kubernetesVersion: 'v1.31.0' },
@@ -55,17 +58,6 @@ describe('normalizeTeam', () => {
     expect(team.resourceLimits?.maxClusters).toBe(100);
     expect(team.resourceUsage?.totalNodes).toBe(30);
     expect(team.clusterDefaults?.kubernetesVersion).toBe('v1.31.0');
-  });
-
-  it('falls back to the Team CRD shape', () => {
-    const team = normalizeTeam(fixtureTeamDetail, 'fallback');
-
-    expect(team.name).toBe(fixtureTeamDetail.metadata.name);
-    expect(team.displayName).toBe(fixtureTeamDetail.spec.displayName);
-    expect(team.namespace).toBe(fixtureTeamDetail.status.namespace);
-    expect(team.resourceLimits?.maxClusters).toBe(
-      fixtureTeamDetail.spec.resourceQuotas.maxClusters,
-    );
   });
 });
 

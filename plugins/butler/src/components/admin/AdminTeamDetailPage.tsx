@@ -4,11 +4,19 @@
 import { useCallback, useEffect, useState } from 'react';
 import type { ReactNode } from 'react';
 import { Link as RouterLink, useNavigate, useParams } from 'react-router-dom';
-import { useApi } from '@backstage/core-plugin-api';
+import { alertApiRef, useApi } from '@backstage/core-plugin-api';
 import { makeStyles } from '@material-ui/core/styles';
 import clsx from 'clsx';
 import { butlerApiRef } from '../../api/ButlerApi';
 import type { Cluster } from '../../api/types/clusters';
+import type {
+  TeamClusterDefaults as ClusterDefaults,
+  TeamResourceLimits,
+  TeamResourceUsage,
+  TeamResponse,
+} from '../../api/types/teams';
+import { quotaRows, quotaSummary } from '../../utils/teamQuota';
+import { EditTeamMapDialog } from './EditTeamLimitsDialog';
 import { useButlerRoutes } from '../../hooks/useButlerRoutes';
 import { useTeamContext } from '../../hooks/useTeamContext';
 import { butlerTokens, rgb, rgba } from '../../theme';
@@ -42,31 +50,6 @@ import type { ButlerColumn } from '../ui';
 // ---------------------------------------------------------------------------
 
 type Role = 'admin' | 'operator' | 'viewer';
-
-interface TeamResourceLimits {
-  maxClusters?: number;
-  maxTotalNodes?: number;
-  maxNodesPerCluster?: number;
-  maxCPUCores?: string;
-  maxMemory?: string;
-  maxStorage?: string;
-}
-
-interface TeamResourceUsage {
-  clusters?: number;
-  totalNodes?: number;
-  totalCPU?: string;
-  totalMemory?: string;
-  totalStorage?: string;
-}
-
-interface ClusterDefaults {
-  kubernetesVersion?: string;
-  workerCount?: number;
-  workerCPU?: number;
-  workerMemoryGi?: number;
-  workerDiskGi?: number;
-}
 
 interface TeamView {
   name: string;
@@ -102,26 +85,24 @@ interface IdentityProviderSummary {
 }
 
 /**
- * `/teams/{name}` answers with the flat console `TeamResponse`, but the same
- * route can also hand back the Team CRD. Read both so limits, usage and
- * defaults survive either shape.
+ * The server answers `/teams/{name}` with the flat `TeamResponse`; the
+ * Team CRD never reaches the client. Limits come from spec, usage from
+ * status, and the two stay separate here.
  */
-export function normalizeTeam(raw: any, fallbackName: string): TeamView {
-  const meta = raw?.metadata ?? {};
-  const spec = raw?.spec ?? {};
-  const status = raw?.status ?? {};
-  const name = raw?.name || meta.name || fallbackName;
-  const quotas = spec.resourceQuotas;
+export function normalizeTeam(
+  raw: TeamResponse,
+  fallbackName: string,
+): TeamView {
+  const name = raw?.name || fallbackName;
   return {
     name,
-    displayName: raw?.displayName || spec.displayName || name,
-    description: raw?.description || spec.description,
-    phase: raw?.phase || status.phase || 'Active',
-    namespace:
-      raw?.namespace || status.namespace || meta.namespace || `team-${name}`,
-    resourceLimits: raw?.resourceLimits || spec.resourceLimits || quotas,
-    resourceUsage: raw?.resourceUsage || status.resourceUsage,
-    clusterDefaults: raw?.clusterDefaults || spec.clusterDefaults,
+    displayName: raw?.displayName || name,
+    description: raw?.description,
+    phase: raw?.phase || 'Ready',
+    namespace: raw?.namespace || name,
+    resourceLimits: raw?.resourceLimits,
+    resourceUsage: raw?.resourceUsage,
+    clusterDefaults: raw?.clusterDefaults,
   };
 }
 
@@ -459,10 +440,18 @@ const ROLE_OPTIONS: Array<{ value: Role; label: string; long: string }> = [
 export const AdminTeamDetailPage = () => {
   const classes = useStyles();
   const api = useApi(butlerApiRef);
+  const alertApi = useApi(alertApiRef);
   const routes = useButlerRoutes();
   const navigate = useNavigate();
   const { isAdmin } = useTeamContext();
   const { teamName } = useParams<{ teamName: string }>();
+  const [editMap, setEditMap] = useState<'limits' | 'defaults' | null>(null);
+  const notifyFailure = (prefix: string, e: unknown) =>
+    alertApi.post({
+      message: `${prefix}: ${e instanceof Error ? e.message : String(e)}`,
+      severity: 'error',
+      display: 'transient',
+    });
 
   const [team, setTeam] = useState<TeamView | null>(null);
   const [clusters, setClusters] = useState<Cluster[]>([]);
@@ -530,7 +519,7 @@ export const AdminTeamDetailPage = () => {
 
       if (membersRes.status === 'fulfilled') {
         const data = membersRes.value;
-        setMembers(data?.members || data?.users || []);
+        setMembers(data?.members || []);
         setGroupMemberCounts(data?.groupMemberCounts || {});
       }
 
@@ -595,8 +584,8 @@ export const AdminTeamDetailPage = () => {
       await api.removeTeamMember(teamName, memberToRemove.email);
       setMemberToRemove(null);
       fetchData();
-    } catch {
-      // The refetch below shows whether the removal took effect.
+    } catch (e) {
+      notifyFailure('Failed to remove member', e);
     } finally {
       setRemovingMember(false);
     }
@@ -607,8 +596,9 @@ export const AdminTeamDetailPage = () => {
     try {
       await api.updateMemberRole(teamName, member.email, role);
       fetchData();
-    } catch {
-      // The refetch below restores the server's view of the role.
+    } catch (e) {
+      notifyFailure('Failed to change role', e);
+      fetchData();
     }
   };
 
@@ -643,8 +633,8 @@ export const AdminTeamDetailPage = () => {
       await api.removeGroupSync(teamName, groupToRemove.name);
       setGroupToRemove(null);
       fetchData();
-    } catch {
-      // The refetch below shows whether the removal took effect.
+    } catch (e) {
+      notifyFailure('Failed to remove group sync', e);
     } finally {
       setRemovingGroup(false);
     }
@@ -655,8 +645,9 @@ export const AdminTeamDetailPage = () => {
     try {
       await api.updateGroupSyncRole(teamName, group.name, role);
       fetchData();
-    } catch {
-      // The refetch below restores the server's view of the role.
+    } catch (e) {
+      notifyFailure('Failed to change group role', e);
+      fetchData();
     }
   };
 
@@ -966,53 +957,71 @@ export const AdminTeamDetailPage = () => {
         </ButlerCard>
       </div>
 
-      <ButlerCard title="Resource Usage">
-        {usage ? (
-          <div className={classes.usageGrid}>
-            <ResourceUsageBar
-              label="Clusters"
-              used={usage.clusters ?? 0}
-              limit={limits?.maxClusters}
-            />
-            <ResourceUsageBar
-              label="Total Nodes"
-              used={usage.totalNodes ?? 0}
-              limit={limits?.maxTotalNodes}
-            />
-            <ResourceUsageBar
-              label="CPU Cores"
-              used={usage.totalCPU || '0'}
-              limit={limits?.maxCPUCores}
-              unit="cores"
-            />
-            <ResourceUsageBar
-              label="Memory"
-              used={usage.totalMemory || '0'}
-              limit={limits?.maxMemory}
-            />
-            <ResourceUsageBar
-              label="Storage"
-              used={usage.totalStorage || '0'}
-              limit={limits?.maxStorage}
-            />
-            {limits?.maxNodesPerCluster != null && (
-              <div>
-                <p className={classes.defaultLabel}>Max Nodes per Cluster</p>
-                <p className={classes.defaultValue}>
-                  {limits.maxNodesPerCluster}
-                </p>
-              </div>
-            )}
-          </div>
-        ) : (
-          <p className={classes.muted}>
-            Resource usage data is not yet available. The controller has not
-            populated usage metrics for this team.
-          </p>
-        )}
+      <ButlerCard
+        title="Resource Usage"
+        titleAction={
+          <ButlerButton
+            size="sm"
+            variant="secondary"
+            onClick={() => setEditMap('limits')}
+          >
+            Edit Limits
+          </ButlerButton>
+        }
+      >
+        {(() => {
+          const rows = quotaRows(limits, usage);
+          const summary = quotaSummary(rows);
+          return (
+            <div className={classes.usageGrid}>
+              <p className={classes.muted} data-testid="quota-summary">
+                {summary.detail}
+                {!usage &&
+                  ' Usage has not been reported by the controller yet.'}
+              </p>
+              {rows.map(r => (
+                <ResourceUsageBar
+                  key={r.key}
+                  label={r.label}
+                  used={r.used}
+                  limit={r.limit}
+                  usedText={r.usedText}
+                  limitText={r.limitText}
+                  state={r.state}
+                />
+              ))}
+              {limits?.maxNodesPerCluster != null && (
+                <div>
+                  <p className={classes.defaultLabel}>Max Nodes per Cluster</p>
+                  <p className={classes.defaultValue}>
+                    {limits.maxNodesPerCluster}
+                  </p>
+                </div>
+              )}
+              {limits?.defaultNodeCount != null && (
+                <div>
+                  <p className={classes.defaultLabel}>Default Node Count</p>
+                  <p className={classes.defaultValue}>
+                    {limits.defaultNodeCount}
+                  </p>
+                </div>
+              )}
+            </div>
+          );
+        })()}
       </ButlerCard>
-
-      <ButlerCard title="Cluster Defaults">
+      <ButlerCard
+        title="Cluster Defaults"
+        titleAction={
+          <ButlerButton
+            size="sm"
+            variant="secondary"
+            onClick={() => setEditMap('defaults')}
+          >
+            Edit Defaults
+          </ButlerButton>
+        }
+      >
         {defaults ? (
           <div className={classes.defaultsGrid}>
             <DefaultValue
@@ -1268,6 +1277,15 @@ export const AdminTeamDetailPage = () => {
                   Warning: You are about to remove yourself from this team.
                 </p>
               )}
+              {memberToRemove?.role === 'admin' &&
+                members.filter(m => m.role === 'admin' && !isGroupMember(m))
+                  .length <= 1 && (
+                  <p className={classes.dialogWarn}>
+                    This is the team's only direct admin. The server does not
+                    prevent removing the last admin; afterwards only platform
+                    admins can administer this team.
+                  </p>
+                )}
             </>
           )}
         </div>
@@ -1391,6 +1409,36 @@ export const AdminTeamDetailPage = () => {
         </div>
       </ButlerDialog>
 
+      {editMap && (
+        <EditTeamMapDialog
+          open
+          kind={editMap}
+          teamName={team.name}
+          current={editMap === 'limits' ? limits : defaults}
+          onClose={() => setEditMap(null)}
+          onSave={map =>
+            api.updateTeam(
+              team.name,
+              editMap === 'limits'
+                ? { resourceLimits: map }
+                : { clusterDefaults: map },
+            )
+          }
+          onSaved={async () => {
+            alertApi.post({
+              message:
+                editMap === 'limits'
+                  ? 'Resource limits saved'
+                  : 'Cluster defaults saved',
+              severity: 'success',
+              display: 'transient',
+            });
+            setEditMap(null);
+            await fetchData();
+          }}
+        />
+      )}
+
       <ButlerDialog
         open={deleteTeamOpen}
         onClose={() => {
@@ -1502,36 +1550,7 @@ const ClusterStat = ({
   );
 };
 
-type Quantity = number | string | undefined | null;
-
-const UNIT_MULTIPLIERS: Record<string, number> = {
-  m: 1 / 1000,
-  k: 1e3,
-  M: 1e6,
-  G: 1e9,
-  T: 1e12,
-  Ki: 1024,
-  Mi: 1024 ** 2,
-  Gi: 1024 ** 3,
-  Ti: 1024 ** 4,
-};
-
 /** Kubernetes quantity to a plain number, so usage and limit compare. */
-export function parseQuantity(value: Quantity): number {
-  if (value === null || value === undefined || value === '') return 0;
-  if (typeof value === 'number') return value;
-  const match = /^([0-9.]+)\s*([a-zA-Z]*)$/.exec(value.trim());
-  if (!match) return 0;
-  const amount = parseFloat(match[1]);
-  if (Number.isNaN(amount)) return 0;
-  const unit = match[2];
-  return unit ? amount * (UNIT_MULTIPLIERS[unit] ?? 1) : amount;
-}
-
-function formatQuantity(value: Quantity, unit?: string): string {
-  if (value === null || value === undefined || value === '') return '0';
-  return unit ? `${value} ${unit}` : String(value);
-}
 
 /**
  * Console `ResourceUsageBar`: label, mono `used / limit`, 8px track that
@@ -1541,30 +1560,30 @@ const ResourceUsageBar = ({
   label,
   used,
   limit,
-  unit,
+  usedText,
+  limitText,
+  state,
 }: {
   label: string;
-  used: Quantity;
-  limit: Quantity;
-  unit?: string;
+  used?: number;
+  limit?: number;
+  usedText: string;
+  limitText: string;
+  state: 'ok' | 'warning' | 'exceeded' | 'unlimited' | 'unknown';
 }) => {
   const classes = useStyles();
-  const usedNum = parseQuantity(used);
-  const hasLimit =
-    limit !== null && limit !== undefined && limit !== '' && limit !== 0;
-  const limitNum = hasLimit ? parseQuantity(limit) : 0;
-  const pct =
-    hasLimit && limitNum > 0 ? Math.round((usedNum / limitNum) * 100) : 0;
+  const measurable = used !== undefined && limit !== undefined && limit > 0;
+  const pct = measurable ? Math.min(100, Math.round((used / limit) * 100)) : 0;
   const textClass =
-    hasLimit && pct >= 90
+    state === 'exceeded'
       ? classes.usageRed
-      : hasLimit && pct >= 80
+      : state === 'warning'
       ? classes.usageAmber
       : undefined;
   const fillClass =
-    pct >= 90
+    state === 'exceeded'
       ? classes.usageFillRed
-      : pct >= 80
+      : state === 'warning'
       ? classes.usageFillAmber
       : classes.usageFillGreen;
   return (
@@ -1572,41 +1591,32 @@ const ResourceUsageBar = ({
       <div className={classes.usageRow}>
         <span className={classes.usageLabel}>{label}</span>
         <span className={clsx(classes.usageValue, textClass)}>
-          {formatQuantity(used, unit)}
-          {hasLimit ? (
-            <span className={classes.usageLimit}>
-              {' '}
-              / {formatQuantity(limit, unit)}
-            </span>
-          ) : (
-            <span className={classes.usageNoLimit}>No limit</span>
-          )}
+          {usedText}
+          <span className={classes.usageLimit}> / {limitText}</span>
         </span>
       </div>
-      <div
-        className={classes.usageTrack}
-        role="progressbar"
-        aria-label={label}
-        aria-valuemin={0}
-        aria-valuemax={100}
-        aria-valuenow={hasLimit ? Math.min(pct, 100) : undefined}
-      >
+      {measurable ? (
         <div
-          className={clsx(
-            classes.usageFill,
-            hasLimit ? fillClass : classes.usageFillNone,
-          )}
-          style={{
-            width: hasLimit
-              ? `${Math.min(pct, 100)}%`
-              : usedNum > 0
-              ? '100%'
-              : '0%',
-          }}
-        />
-      </div>
-      {hasLimit && (
-        <div className={clsx(classes.usagePct, textClass)}>{pct}%</div>
+          className={classes.usageTrack}
+          role="progressbar"
+          aria-label={`${label} usage`}
+          aria-valuenow={pct}
+          aria-valuemin={0}
+          aria-valuemax={100}
+        >
+          <div
+            className={clsx(classes.usageFill, fillClass)}
+            style={{ width: `${pct}%` }}
+          />
+        </div>
+      ) : (
+        <p className={classes.muted}>
+          {state === 'unlimited'
+            ? 'No limit set.'
+            : limit === undefined
+            ? 'No limit set and no usage reported.'
+            : 'Usage not reported by the controller.'}
+        </p>
       )}
     </div>
   );
