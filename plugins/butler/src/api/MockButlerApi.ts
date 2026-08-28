@@ -41,6 +41,16 @@ import type {
 } from './types/networks';
 import { fixturePools, fixtureAllocations } from './fixtures/networks';
 import { fixtureEnvironments } from './fixtures/environments';
+import { fixturePolicies } from './fixtures/policies';
+import type {
+  ClusterCreationPolicy,
+  PolicyListResponse,
+} from './types/policies';
+import type {
+  OptionListScope,
+  ProviderClusterListResponse,
+  StorageContainerListResponse,
+} from './types/providers';
 import type {
   EnvironmentClusterDefaults,
   EnvironmentRequest,
@@ -162,6 +172,8 @@ export type ButlerApiMethod = {
 export interface MockButlerApiOptions {
   /** Providers the mock starts with, across every scope. */
   providers?: Provider[];
+  /** Cluster creation policies the mock starts with. */
+  policies?: ClusterCreationPolicy[];
   /** Team environments the mock starts with. */
   environments?: TeamEnvironment[];
   /** Defaults the team applies to new clusters. */
@@ -197,6 +209,7 @@ export class MockButlerApi implements ButlerApi {
   private allocations: IPAllocation[];
   private environments: TeamEnvironment[];
   private providers: Provider[];
+  private policies: ClusterCreationPolicy[];
   private teamClusterDefaults: EnvironmentClusterDefaults | undefined;
   private readonly failures: Partial<Record<ButlerApiMethod, Error>>;
   private readonly latencyMs: number;
@@ -226,6 +239,7 @@ export class MockButlerApi implements ButlerApi {
     this.providers = clone(
       options.providers ?? [...fixtureProviders, fixtureOtherTeamProvider],
     );
+    this.policies = clone(options.policies ?? fixturePolicies);
     this.teamClusterDefaults = options.teamClusterDefaults
       ? clone(options.teamClusterDefaults)
       : undefined;
@@ -916,9 +930,51 @@ export class MockButlerApi implements ButlerApi {
     }));
   }
 
+  listProviderClusters(
+    _namespace: string,
+    _name: string,
+    _scope?: OptionListScope,
+  ): Promise<ProviderClusterListResponse> {
+    return this.run('listProviderClusters', () => ({
+      clusters: [
+        { name: 'prism-a', id: '0005a1b2-0000-4000-8000-000000000001' },
+        { name: 'prism-b', id: '0005a1b2-0000-4000-8000-000000000002' },
+      ],
+    }));
+  }
+
+  listProviderStorageContainers(
+    _namespace: string,
+    _name: string,
+    _scope?: OptionListScope,
+  ): Promise<StorageContainerListResponse> {
+    return this.run('listProviderStorageContainers', () => ({
+      storageContainers: [
+        { name: 'default-container', id: 'sc-0001' },
+        { name: 'fast-nvme', id: 'sc-0002' },
+      ],
+    }));
+  }
+
+  listPolicies(): Promise<PolicyListResponse> {
+    return this.run('listPolicies', () => ({
+      policies: clone(this.policies),
+      count: this.policies.length,
+    }));
+  }
+
+  getPolicy(name: string): Promise<ClusterCreationPolicy> {
+    return this.run('getPolicy', () => {
+      const policy = this.policies.find(p => p.metadata.name === name);
+      if (!policy) throw notFound('policy', name);
+      return clone(policy);
+    });
+  }
+
   listProviderImages(
     _namespace: string,
     _name: string,
+    _scope?: OptionListScope,
   ): Promise<ImageListResponse> {
     return this.run('listProviderImages', () => ({
       images: [
@@ -931,6 +987,7 @@ export class MockButlerApi implements ButlerApi {
   listProviderNetworks(
     _namespace: string,
     _name: string,
+    _scope?: OptionListScope,
   ): Promise<NetworkListResponse> {
     return this.run('listProviderNetworks', () => ({
       networks: [

@@ -152,3 +152,34 @@ export interface NetworkListResponse {
   networks: NetworkInfo[];
   policy?: PolicyMetadata;
 }
+
+/** A Nutanix Prism cluster a tenant cluster's machines may be placed in. */
+export interface ProviderClusterInfo {
+  name: string;
+  id: string;
+}
+
+export interface ProviderClusterListResponse {
+  clusters: ProviderClusterInfo[];
+  policy?: PolicyMetadata;
+}
+
+export interface StorageContainerInfo {
+  name: string;
+  id: string;
+}
+
+export interface StorageContainerListResponse {
+  storageContainers: StorageContainerInfo[];
+  policy?: PolicyMetadata;
+}
+
+/**
+ * Scope for an option-list read. The server resolves cluster creation
+ * policy from the team and environment on the request, so a read made
+ * without the environment the cluster will be created in can show a
+ * list the create will not get.
+ */
+export interface OptionListScope {
+  environment?: string;
+}

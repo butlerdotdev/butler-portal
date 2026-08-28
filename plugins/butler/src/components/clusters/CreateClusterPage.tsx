@@ -13,6 +13,8 @@ import type {
   ImageInfo,
   NetworkInfo,
   PolicyMetadata,
+  ProviderClusterInfo,
+  StorageContainerInfo,
 } from '../../api/types/providers';
 import { useButlerRoutes } from '../../hooks/useButlerRoutes';
 import { useTeamContext } from '../../hooks/useTeamContext';
@@ -27,6 +29,7 @@ import {
   resolveClusterDefaults,
 } from '../../utils/clusterDefaults';
 import { buildCreateClusterRequest } from '../../utils/createClusterRequest';
+import { PolicyNote } from '../shared/PolicyNote';
 import { butlerTokens, rgb } from '../../theme';
 import {
   ButlerButton,
@@ -169,35 +172,6 @@ const SERVER_FIELD_TO_CONTROL: Record<string, string> = {
   'metadata.name': 'name',
 };
 
-/**
- * What a ClusterCreationPolicy did to a list of options.
- *
- * The server applied the rule before answering, so this explains a list
- * that is already shorter or already reordered rather than offering a
- * choice. Saying nothing would leave a filtered list looking like the
- * provider simply has less to offer.
- */
-const PolicyNote = ({
-  policy,
-  noun,
-}: {
-  policy: PolicyMetadata;
-  noun: string;
-}) => {
-  const explanation =
-    policy.mode === 'pin' || policy.mode === 'allowList'
-      ? `Only the ${noun} options your platform allows are listed.`
-      : policy.mode === 'recommended'
-      ? `Recommended ${noun} options are listed first.`
-      : `Your platform suggests a default ${noun}.`;
-  return (
-    <ButlerCallout tone="violet" compact title={`Policy: ${policy.name}`}>
-      {explanation}
-      {policy.recommendedReason ? ` ${policy.recommendedReason}` : ''}
-    </ButlerCallout>
-  );
-};
-
 const initialFormState: CreateClusterFormState = {
   name: '',
   namespace: '',
@@ -330,6 +304,18 @@ export const CreateClusterPage = () => {
   const [networkPolicy, setNetworkPolicy] = useState<PolicyMetadata | null>(
     null,
   );
+  const [providerClusters, setProviderClusters] = useState<
+    ProviderClusterInfo[]
+  >([]);
+  const [storageContainers, setStorageContainers] = useState<
+    StorageContainerInfo[]
+  >([]);
+  const [clusterPolicy, setClusterPolicy] = useState<PolicyMetadata | null>(
+    null,
+  );
+  const [storagePolicy, setStoragePolicy] = useState<PolicyMetadata | null>(
+    null,
+  );
   // Only meaningful where the platform allocates addresses.
   const [overrideAllocation, setOverrideAllocation] = useState(false);
   const [resourcesLoading, setResourcesLoading] = useState(false);
@@ -393,37 +379,60 @@ export const CreateClusterPage = () => {
     });
   }, [defaults, touched]);
 
+  // The server resolves cluster creation policy from the team and the
+  // environment on the request, so the lists are read in the environment
+  // the cluster will be created in and re-read when that choice changes.
+  // Otherwise a rule scoped to that environment would shape the create
+  // but not the list the user chose from.
   const fetchProviderResources = useCallback(async () => {
     if (!selectedProvider) {
       setImages([]);
       setNetworks([]);
+      setProviderClusters([]);
+      setStorageContainers([]);
+      setImagePolicy(null);
+      setNetworkPolicy(null);
+      setClusterPolicy(null);
+      setStoragePolicy(null);
       return;
     }
+    const { namespace, name } = selectedProvider.metadata;
+    const scope = environment ? { environment } : undefined;
+    const isNutanix = selectedProvider.spec.provider === 'nutanix';
     setResourcesLoading(true);
     try {
-      const [imagesRes, networksRes] = await Promise.all([
-        api.listProviderImages(
-          selectedProvider.metadata.namespace,
-          selectedProvider.metadata.name,
-        ),
-        api.listProviderNetworks(
-          selectedProvider.metadata.namespace,
-          selectedProvider.metadata.name,
-        ),
-      ]);
+      const [imagesRes, networksRes, clustersRes, storageRes] =
+        await Promise.all([
+          api.listProviderImages(namespace, name, scope),
+          api.listProviderNetworks(namespace, name, scope),
+          isNutanix
+            ? api.listProviderClusters(namespace, name, scope)
+            : Promise.resolve(null),
+          isNutanix
+            ? api.listProviderStorageContainers(namespace, name, scope)
+            : Promise.resolve(null),
+        ]);
       setImages(imagesRes.images || []);
       setNetworks(networksRes.networks || []);
       setImagePolicy(imagesRes.policy ?? null);
       setNetworkPolicy(networksRes.policy ?? null);
+      setProviderClusters(clustersRes?.clusters ?? []);
+      setStorageContainers(storageRes?.storageContainers ?? []);
+      setClusterPolicy(clustersRes?.policy ?? null);
+      setStoragePolicy(storageRes?.policy ?? null);
     } catch {
       setImages([]);
       setNetworks([]);
+      setProviderClusters([]);
+      setStorageContainers([]);
       setImagePolicy(null);
       setNetworkPolicy(null);
+      setClusterPolicy(null);
+      setStoragePolicy(null);
     } finally {
       setResourcesLoading(false);
     }
-  }, [api, selectedProvider]);
+  }, [api, selectedProvider, environment]);
 
   useEffect(() => {
     if (selectedProvider) {
@@ -673,14 +682,23 @@ export const CreateClusterPage = () => {
       case 'nutanix':
         return (
           <ButlerFormRow>
-            <TextField
-              label="Cluster UUID"
-              required
+            {clusterPolicy && (
+              <PolicyNote policy={clusterPolicy} noun="Nutanix cluster" />
+            )}
+            <ButlerSelect
+              label="Cluster *"
               value={form.nutanixClusterUUID}
               onChange={e => updateField('nutanixClusterUUID', e.target.value)}
               error={validationErrors.nutanixClusterUUID}
-              mono
-            />
+              help="Prism cluster the machines are placed in"
+            >
+              <option value="">Select cluster...</option>
+              {providerClusters.map(cluster => (
+                <option key={cluster.id} value={cluster.id}>
+                  {cluster.name}
+                </option>
+              ))}
+            </ButlerSelect>
             <ButlerSelect
               label="Subnet *"
               value={form.nutanixSubnetUUID}
@@ -715,15 +733,24 @@ export const CreateClusterPage = () => {
                 </option>
               ))}
             </ButlerSelect>
-            <TextField
-              label="Storage Container UUID"
+            {storagePolicy && (
+              <PolicyNote policy={storagePolicy} noun="storage container" />
+            )}
+            <ButlerSelect
+              label="Storage Container"
               value={form.nutanixStorageContainerUUID}
               onChange={e =>
                 updateField('nutanixStorageContainerUUID', e.target.value)
               }
-              help="Optional"
-              mono
-            />
+              help="Optional. Leave unset for the provider default."
+            >
+              <option value="">Provider default</option>
+              {storageContainers.map(sc => (
+                <option key={sc.id} value={sc.id}>
+                  {sc.name}
+                </option>
+              ))}
+            </ButlerSelect>
           </ButlerFormRow>
         );
       case 'proxmox':

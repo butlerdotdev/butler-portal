@@ -15,6 +15,7 @@ import {
   IdentityNavIcon,
   ManagementNavIcon,
   NetworkNavIcon,
+  PoliciesNavIcon,
   ProvidersNavIcon,
   SettingsNavIcon,
   TeamsNavIcon,
@@ -197,6 +198,11 @@ export const ButlerNav = () => {
         label: 'Platform',
         items: [
           {
+            to: routes.adminPolicies(),
+            label: 'Policies',
+            icon: <PoliciesNavIcon />,
+          },
+          {
             to: routes.adminIdentityProviders(),
             label: 'Identity Providers',
             icon: <IdentityNavIcon />,
@@ -247,6 +253,11 @@ export const ButlerNav = () => {
         {
           label: 'Platform',
           items: [
+            {
+              to: routes.adminPolicies(),
+              label: 'Policies',
+              icon: <PoliciesNavIcon />,
+            },
             {
               to: routes.adminIdentityProviders(),
               label: 'Identity Providers',

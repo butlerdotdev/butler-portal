@@ -64,6 +64,13 @@ export const EnvironmentNavIcon = (props: SVGProps<SVGSVGElement>) => (
   </svg>
 );
 
+/** A shield over a list: rules that shape what may be chosen. */
+export const PoliciesNavIcon = (props: SVGProps<SVGSVGElement>) => (
+  <svg {...base(props)}>
+    <P d="M12 3l7 3v5c0 5-3.5 8.5-7 10-3.5-1.5-7-5-7-10V6l7-3zM9 12h6M9 9h6M9 15h4" />
+  </svg>
+);
+
 export const NetworkNavIcon = (props: SVGProps<SVGSVGElement>) => (
   <svg {...base(props)}>
     <P d="M4 6a2 2 0 012-2h12a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM12 10v4m-4 0h8m-8 0v2m8-2v2M6 20h4m4 0h4" />

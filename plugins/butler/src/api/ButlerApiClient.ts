@@ -5,6 +5,15 @@ import { DiscoveryApi, FetchApi } from '@backstage/core-plugin-api';
 import { devIdentityHeader } from './devIdentity';
 import { ButlerApiError } from './ButlerApiError';
 import type {
+  ClusterCreationPolicy,
+  PolicyListResponse,
+} from './types/policies';
+import type {
+  OptionListScope,
+  ProviderClusterListResponse,
+  StorageContainerListResponse,
+} from './types/providers';
+import type {
   EnvironmentClusterDefaults,
   EnvironmentRequest,
   TeamClusterContext,
@@ -214,8 +223,8 @@ export class ButlerApiClient implements ButlerApi {
     return response.text();
   }
 
-  private get<T>(path: string): Promise<T> {
-    return this.request<T>(path);
+  private get<T>(path: string, options?: { environment?: string }): Promise<T> {
+    return this.request<T>(path, options);
   }
 
   private post<T>(
@@ -518,18 +527,54 @@ export class ButlerApiClient implements ButlerApi {
   async listProviderImages(
     namespace: string,
     name: string,
+    scope?: OptionListScope,
   ): Promise<ImageListResponse> {
     return this.get<ImageListResponse>(
       `/providers/${namespace}/${name}/images`,
+      scope,
     );
   }
 
   async listProviderNetworks(
     namespace: string,
     name: string,
+    scope?: OptionListScope,
   ): Promise<NetworkListResponse> {
     return this.get<NetworkListResponse>(
       `/providers/${namespace}/${name}/networks`,
+      scope,
+    );
+  }
+
+  async listProviderClusters(
+    namespace: string,
+    name: string,
+    scope?: OptionListScope,
+  ): Promise<ProviderClusterListResponse> {
+    return this.get<ProviderClusterListResponse>(
+      `/providers/${namespace}/${name}/clusters`,
+      scope,
+    );
+  }
+
+  async listProviderStorageContainers(
+    namespace: string,
+    name: string,
+    scope?: OptionListScope,
+  ): Promise<StorageContainerListResponse> {
+    return this.get<StorageContainerListResponse>(
+      `/providers/${namespace}/${name}/storage-containers`,
+      scope,
+    );
+  }
+
+  async listPolicies(): Promise<PolicyListResponse> {
+    return this.get<PolicyListResponse>('/admin/policies');
+  }
+
+  async getPolicy(name: string): Promise<ClusterCreationPolicy> {
+    return this.get<ClusterCreationPolicy>(
+      `/admin/policies/${encodeURIComponent(name)}`,
     );
   }
 

@@ -198,3 +198,15 @@ describe('team environments are reachable by every team role', () => {
     },
   );
 });
+
+describe('policies are offered to the roles that may read them', () => {
+  it.each(['platformAdmin', 'platformViewer'] as const)(
+    'offers %s the policies destination',
+    async role => {
+      await renderAs(role, '/butler/admin');
+
+      const link = await screen.findByRole('link', { name: 'Policies' });
+      expect(link).toHaveAttribute('href', '/butler/admin/policies');
+    },
+  );
+});

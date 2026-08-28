@@ -2,6 +2,15 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import type {
+  ClusterCreationPolicy,
+  PolicyListResponse,
+} from './types/policies';
+import type {
+  OptionListScope,
+  ProviderClusterListResponse,
+  StorageContainerListResponse,
+} from './types/providers';
+import type {
   EnvironmentRequest,
   TeamClusterContext,
   TeamEnvironment,
@@ -210,11 +219,31 @@ export interface ButlerApi {
   listProviderImages(
     namespace: string,
     name: string,
+    scope?: OptionListScope,
   ): Promise<ImageListResponse>;
   listProviderNetworks(
     namespace: string,
     name: string,
+    scope?: OptionListScope,
   ): Promise<NetworkListResponse>;
+  /** Nutanix only: the Prism clusters machines may be placed in. */
+  listProviderClusters(
+    namespace: string,
+    name: string,
+    scope?: OptionListScope,
+  ): Promise<ProviderClusterListResponse>;
+  /** Nutanix only. */
+  listProviderStorageContainers(
+    namespace: string,
+    name: string,
+    scope?: OptionListScope,
+  ): Promise<StorageContainerListResponse>;
+
+  // Cluster creation policies (ADR-018). Reads need a platform role; the
+  // server resolves them inside the option-list reads above, so a team
+  // sees only their effect.
+  listPolicies(): Promise<PolicyListResponse>;
+  getPolicy(name: string): Promise<ClusterCreationPolicy>;
 
   // Addons
   getAddonCatalog(): Promise<CatalogResponse>;

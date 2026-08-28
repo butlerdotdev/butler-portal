@@ -28,6 +28,8 @@ import {
   adminProvidersRouteRef,
   adminCreateProviderRouteRef,
   adminIdentityProvidersRouteRef,
+  adminPoliciesRouteRef,
+  adminPolicyRouteRef,
   adminCreateIdentityProviderRouteRef,
   adminSettingsRouteRef,
 } from './routes';
@@ -52,6 +54,8 @@ export const butlerPlugin = createPlugin({
     adminProviders: adminProvidersRouteRef,
     adminCreateProvider: adminCreateProviderRouteRef,
     adminIdentityProviders: adminIdentityProvidersRouteRef,
+    adminPolicies: adminPoliciesRouteRef,
+    adminPolicy: adminPolicyRouteRef,
     adminCreateIdentityProvider: adminCreateIdentityProviderRouteRef,
     adminSettings: adminSettingsRouteRef,
   },

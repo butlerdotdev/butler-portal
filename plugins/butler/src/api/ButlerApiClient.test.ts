@@ -278,3 +278,66 @@ describe('ButlerApiClient team providers', () => {
     expect(calls[0].init?.method).toBe('DELETE');
   });
 });
+
+describe('ButlerApiClient policy-aware option lists', () => {
+  it('scopes an option read to the environment the cluster will use', async () => {
+    const { client, calls } = makeClient(() => jsonResponse({ images: [] }));
+
+    await client.listProviderImages('ns', 'p', { environment: 'production' });
+
+    const headers = calls[0].init?.headers as Record<string, string>;
+    expect(calls[0].url).toBe(
+      'http://localhost/api/butler/providers/ns/p/images',
+    );
+    expect(headers['X-Butler-Environment']).toBe('production');
+  });
+
+  it('sends no environment header when none is given', async () => {
+    const { client, calls } = makeClient(() => jsonResponse({ networks: [] }));
+
+    await client.listProviderNetworks('ns', 'p');
+
+    const headers = calls[0].init?.headers as Record<string, string>;
+    expect(headers).not.toHaveProperty('X-Butler-Environment');
+  });
+
+  it('reads Nutanix clusters and storage containers with their policy', async () => {
+    const { client, calls } = makeClient(url =>
+      url.endsWith('/clusters')
+        ? jsonResponse({
+            clusters: [{ id: 'c', name: 'c' }],
+            policy: { name: 'p', mode: 'pin' },
+          })
+        : jsonResponse({ storageContainers: [] }),
+    );
+
+    const clusters = await client.listProviderClusters('ns', 'p', {
+      environment: 'e',
+    });
+    await client.listProviderStorageContainers('ns', 'p');
+
+    expect(clusters.policy?.name).toBe('p');
+    expect(calls[0].url).toBe(
+      'http://localhost/api/butler/providers/ns/p/clusters',
+    );
+    expect(calls[1].url).toBe(
+      'http://localhost/api/butler/providers/ns/p/storage-containers',
+    );
+  });
+
+  it('reads policies from the admin route', async () => {
+    const { client, calls } = makeClient(url =>
+      url.endsWith('/admin/policies')
+        ? jsonResponse({ policies: [], count: 0 })
+        : jsonResponse({ metadata: { name: 'a b' }, spec: { scope: {} } }),
+    );
+
+    await client.listPolicies();
+    await client.getPolicy('a b');
+
+    expect(calls[0].url).toBe('http://localhost/api/butler/admin/policies');
+    expect(calls[1].url).toBe(
+      'http://localhost/api/butler/admin/policies/a%20b',
+    );
+  });
+});
