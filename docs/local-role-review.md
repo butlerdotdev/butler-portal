@@ -241,6 +241,72 @@ type, then read that option list as a team member with and without
 `X-Butler-Environment` and compare the `policy.name` in each answer.
 Delete both afterwards and confirm `GET /admin/policies` reports zero.
 
+## Cluster detail: desired, targeted and observed are three numbers
+
+A TenantCluster carries what was asked for in `spec` and what the
+controller has done in `status`, and the two disagree for as long as an
+operation runs. The detail page keeps them apart:
+
+- `spec.workers.replicas` is what was requested. `status.workerNodesDesired`
+  is what the controller is currently working toward. `status.workerNodesReady`
+  is what is Ready. While requested differs from targeted the page says
+  "Scaling to N"; while ready differs from targeted it says "x/y ready";
+  neither is reported as done because the HTTP call returned 200.
+- The control plane is read from the `ControlPlaneReady` condition and,
+  on its tab, from the Steward TenantControlPlane projection (phase,
+  version, endpoint, replicas ready, datastore, konnectivity, bootstrap).
+  It is never inferred from the cluster phase.
+- Workers are read from the `WorkersReady` condition. The console
+  upgrades `WorkersReady=False` to "Ready" whenever the phase is Ready;
+  this page does not. On 2026-08-28 the live `e2e-talos` was phase Ready
+  with `WorkersReady=False, 1/2 ready` for fifteen days, one CAPI
+  machine's node NodeHealthy Unknown; the console shows it as healthy.
+- Banners are for states that need a person: Cluster Failed, Cluster
+  Degraded (`Ready` reason `ReconcileDegraded`), Stale Nodes (ready >
+  desired on a Ready cluster), and Workers have not converged (ready <
+  desired on a Ready cluster for more than thirty minutes, measured from
+  the condition's `lastTransitionTime` the controller wrote, not from
+  the browser). Ordinary provisioning gets no banner.
+- Polling runs at 5 seconds only while the phase is not Ready, workers
+  are converging, or a requested scale has not been targeted yet; a
+  stable cluster is not polled.
+
+Machine requests and load balancer requests are records of Butler
+provisioning machines and load balancers itself. On this estate only
+butler-bootstrap creates MachineRequests (management provisioning);
+tenant clusters get workers as Cluster API machines through the
+provider and addresses from the platform pool (`status.lbAllocationRef`,
+NetworkReady "LB IPs allocated"). Both lists are therefore empty for
+every tenant cluster, which is normal, and the cards say so instead of
+rendering nothing.
+
+Export YAML is the TenantCluster with `status` and server-side metadata
+stripped by the server. It carries secret references only; the
+kubeconfig secret name lives in `status` and is not exported.
+
+Authorization, probed through the harness for all five identities on
+`e2e-talos` (bodies that fail validation after the authorization check,
+so nothing mutated):
+
+| Endpoint                                                                                | platform admin | platform viewer | team admin   | team operator | team viewer |
+| --------------------------------------------------------------------------------------- | -------------- | --------------- | ------------ | ------------- | ----------- |
+| `GET .../{ns}/{name}`, `/tenantcontrolplane`, `/machines`, `/load-balancers`, `/export` | 200            | 200             | 200          | 200           | 200         |
+| `PATCH .../scale`, `PUT .../environment`, `PUT .../{ns}/{name}`                         | passes (400)   | 403             | passes (400) | passes (400)  | 403         |
+
+The team boundary is `checkClusterAccess`: a platform role reads every
+cluster; a team member reads only their team's clusters; every read and
+mutation on the detail page goes through it. The harness has a single
+team, so the cross-team refusal is proven against the mock, which
+mirrors that check on every cluster method, and against the server's
+code, not against a second live team.
+
+Live mutations this slice: a no-op environment change (same
+environment) returned 200 and left the object untouched
+(resourceVersion and generation unchanged). Scaling was not executed:
+the cluster's MachineDeployment has been `ScalingUp` 1/2 for months, so
+a +1 would join a stuck queue and prove nothing; scale and environment
+moves were proven live on 2026-08-26 when the cluster was quiet.
+
 ## Identity providers: one OIDC record, edited by merge
 
 An identity provider is a cluster-scoped `IdentityProvider` of type
