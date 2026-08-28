@@ -241,6 +241,71 @@ type, then read that option list as a team member with and without
 `X-Butler-Environment` and compare the `policy.name` in each answer.
 Delete both afterwards and confirm `GET /admin/policies` reports zero.
 
+## Teams: the authorization boundary, read from the server
+
+A team is one `Team` object. The server never hands the CRD to a client;
+`GET /teams/{name}` answers the flat `TeamResponse`: identity, phase,
+counts, `resourceLimits` (spec), `resourceUsage` (status, written by the
+controller), `clusterDefaults` and `environments`. The plugin reads that
+shape and nothing else; the earlier `spec.resourceQuotas` reads matched
+no field the server has ever returned, which is why limits and usage
+rendered as absent.
+
+Limits and usage are two maps and stay two things on the page. A limit
+that is absent is unlimited; usage that is absent has not been reported
+by the controller and is shown as "Not reported", never as zero. A bar
+is drawn only where both exist. `status.quotaStatus` exists on the CRD
+but is not in the response, so the page computes its summary from the
+two maps rather than claiming a controller verdict.
+
+Who has access, and why, is the server's verdict per member
+(`GET /teams/{name}/members`): `direct` (listed on the team), `group`
+(an IdP group the team maps, matched against the groups seen on the
+user's last sign-in), or `elevated` (listed directly above the group's
+role). `canRemove` and `removeNote` come from the server; removing a
+direct member who also matches a group leaves them with the group's
+role, and the response says so. Group members appear only after they
+have signed in once, so a mapped group with zero observed members is
+normal, not broken. Effective access is resolved by the server at
+sign-in as the highest role across direct and group grants; the plugin
+never computes a role the server has not stated.
+
+Writes, as the running server enforces them (probed with bodies that
+fail validation after the authorization check):
+
+| Endpoint                                            | platform admin | platform viewer | team admin    | team operator | team viewer |
+| --------------------------------------------------- | -------------- | --------------- | ------------- | ------------- | ----------- |
+| `GET /teams`, `GET /teams/{name}`, `GET .../groups` | 200            | 200             | 200           | 200           | 200         |
+| `GET /teams/{name}/members`                         | 200            | 200             | 200 (own)     | 200 (own)     | 200 (own)   |
+| `PUT /teams/{name}` displayName/description         | passes         | 403             | passes        | 403           | 403         |
+| `PUT /teams/{name}` resourceLimits                  | passes         | 403             | 403 (webhook) | 403           | 403         |
+| `POST/PATCH/DELETE /admin/teams/{name}/members/...` | passes         | 403             | 403           | 403           | 403         |
+| `POST/PATCH/DELETE /admin/teams/{name}/groups/...`  | passes         | 403             | 403           | 403           | 403         |
+| `POST /admin/teams`, `DELETE /admin/teams/{name}`   | passes         | 403             | 403           | 403           | 403         |
+
+Two consequences the pages follow. Membership and group mappings are
+administered by platform admins only; a team admin is refused at the
+API, so the team members page offers no add or remove to them and says
+why (the console offers the controls and they fail). Any authenticated
+user can read any team's record and group mappings, and the member list
+of their own teams; that is the server's choice, recorded as a finding,
+and the plugin does not pretend otherwise.
+
+Safety the server does not provide: nothing stops removing the last
+direct admin of a team or demoting yourself; the remove dialog says so
+when the target is the team's only direct admin, and the server's
+`canRemove` is false for your own direct membership. Mutations carry no
+resourceVersion (last write wins) and emit no Kubernetes events; the
+audit trail is the server log.
+
+Live proof on `platform-engineering` used the disposable principal
+`e2e-parity-nobody@butlerlabs.dev` (a user record with no teams) and an
+unused mapping `e2e-parity-nogroup`: add, duplicate (409), role change,
+invalid role (400), remove, remove again (404); group add, unknown IdP
+(400), duplicate (409), role change, remove. `spec.access` was
+byte-identical to the baseline afterwards. Limits were not changed on
+the live team.
+
 ## Cluster detail: desired, targeted and observed are three numbers
 
 A TenantCluster carries what was asked for in `spec` and what the
