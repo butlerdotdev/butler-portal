@@ -309,7 +309,31 @@ export class MockButlerApi implements ButlerApi {
     if (!cluster) {
       throw notFound('cluster', this.key(namespace, name));
     }
+    this.assertClusterAccess(cluster);
     return cluster;
+  }
+
+  /**
+   * Mirrors butler-server's checkClusterAccess: a platform role reads
+   * every cluster; anyone else must be a member of the cluster's team.
+   * Every cluster read and mutation goes through findCluster, so the
+   * boundary holds for nodes, requests, export and scale alike.
+   */
+  private assertClusterAccess(cluster: Cluster): void {
+    if (this.identity.isPlatformAdmin || this.identity.platformRole) return;
+    const team = cluster.spec.teamRef?.name;
+    if (!team) {
+      throw new ButlerApiError({
+        status: 403,
+        message: 'forbidden: cluster is not associated with any team',
+      });
+    }
+    if (!this.identity.teams.some(t => t.name === team)) {
+      throw new ButlerApiError({
+        status: 403,
+        message: `forbidden: you don't have access to team '${team}'`,
+      });
+    }
   }
 
   private bump(cluster: Cluster): void {
@@ -2067,9 +2091,7 @@ export class MockButlerApi implements ButlerApi {
     name: string,
   ): Promise<MachineRequestListResponse> {
     return this.run('getClusterMachineRequests', () => ({
-      machineRequests: (this.clusters.find(
-        c => c.metadata.namespace === namespace && c.metadata.name === name,
-      )
+      machineRequests: (this.findCluster(namespace, name)
         ? [0, 1].map(i => ({
             metadata: { name: `${name}-worker-${i}`, namespace },
             spec: {
@@ -2097,7 +2119,10 @@ export class MockButlerApi implements ButlerApi {
     return this.run('getClusterLoadBalancerRequests', () => ({
       loadBalancerRequests: [
         {
-          metadata: { name: `${name}-api`, namespace },
+          metadata: {
+            name: `${this.findCluster(namespace, name).metadata.name}-api`,
+            namespace,
+          },
           spec: {
             clusterName: name,
             port: 6443,
@@ -2114,10 +2139,8 @@ export class MockButlerApi implements ButlerApi {
     name: string,
   ): Promise<TenantControlPlaneSummary> {
     return this.run('getClusterTenantControlPlane', () => {
-      const cluster = this.clusters.find(
-        c => c.metadata.namespace === namespace && c.metadata.name === name,
-      );
-      if (!cluster || cluster.status?.phase === 'Pending') {
+      const cluster = this.findCluster(namespace, name);
+      if (cluster.status?.phase === 'Pending') {
         throw new Error(
           'Butler API error (404): TenantControlPlane not found for cluster',
         );
@@ -2138,11 +2161,12 @@ export class MockButlerApi implements ButlerApi {
   }
 
   exportClusterYAML(namespace: string, name: string): Promise<string> {
-    return this.run(
-      'exportClusterYAML',
-      () =>
-        `apiVersion: butler.butlerlabs.dev/v1alpha1\nkind: TenantCluster\nmetadata:\n  name: ${name}\n  namespace: ${namespace}\n`,
-    );
+    return this.run('exportClusterYAML', () => {
+      // The server strips status and server-side metadata and checks
+      // cluster access first; the export is the requested cluster only.
+      const cluster = this.findCluster(namespace, name);
+      return `apiVersion: butler.butlerlabs.dev/v1alpha1\nkind: TenantCluster\nmetadata:\n  name: ${cluster.metadata.name}\n  namespace: ${cluster.metadata.namespace}\n`;
+    });
   }
 
   // ---- Settings ----

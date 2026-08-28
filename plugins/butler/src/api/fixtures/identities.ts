@@ -40,6 +40,21 @@ function identity(
   };
 }
 
+/** Admin of a team that owns none of the fixture clusters. */
+export const otherTeamAdminIdentity = identity({
+  email: 'other-admin@example.com',
+  displayName: 'Other Team Admin',
+  teams: [
+    {
+      name: 'other-team',
+      displayName: 'Other Team',
+      namespace: 'other-team',
+      role: 'admin',
+      clusterCount: 0,
+    },
+  ],
+});
+
 /** Owns the estate: reads everything, mutates everything. */
 export const platformAdminIdentity = identity({
   email: 'platform-admin@example.com',

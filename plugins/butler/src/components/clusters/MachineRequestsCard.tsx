@@ -3,10 +3,21 @@
 
 import type { MachineRequest } from '../../api/types/machines';
 import { ButlerCard, ButlerStatusBadge } from '../ui';
+import { makeStyles } from '@material-ui/core/styles';
+import { butlerTokens } from '../../theme';
+
+const useNoteStyles = makeStyles(theme => ({
+  note: { margin: 0, fontSize: 13, color: butlerTokens(theme).text.subtle },
+}));
 import { RequestRow, useRequestRowStyles } from './RequestRow';
 
 interface MachineRequestsCardProps {
   machineRequests: MachineRequest[];
+  /**
+   * Why there are none, when that is the normal case for this cluster.
+   * Without it an empty list renders nothing, as the console does.
+   */
+  absenceNote?: string;
 }
 
 /**
@@ -15,10 +26,17 @@ interface MachineRequestsCardProps {
  */
 export const MachineRequestsCard = ({
   machineRequests,
+  absenceNote,
 }: MachineRequestsCardProps) => {
   const classes = useRequestRowStyles();
+  const noteClasses = useNoteStyles();
   if (machineRequests.length === 0) {
-    return null;
+    if (!absenceNote) return null;
+    return (
+      <ButlerCard title="Machine Requests">
+        <p className={noteClasses.note}>{absenceNote}</p>
+      </ButlerCard>
+    );
   }
   const ready = machineRequests.filter(
     m => m.status?.phase === 'Running',

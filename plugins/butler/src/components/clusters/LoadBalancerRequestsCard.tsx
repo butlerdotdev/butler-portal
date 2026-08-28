@@ -3,10 +3,21 @@
 
 import type { LoadBalancerRequest } from '../../api/types/machines';
 import { ButlerCard, ButlerStatusBadge } from '../ui';
+import { makeStyles } from '@material-ui/core/styles';
+import { butlerTokens } from '../../theme';
+
+const useNoteStyles = makeStyles(theme => ({
+  note: { margin: 0, fontSize: 13, color: butlerTokens(theme).text.subtle },
+}));
 import { RequestRow, useRequestRowStyles } from './RequestRow';
 
 interface LoadBalancerRequestsCardProps {
   loadBalancerRequests: LoadBalancerRequest[];
+  /**
+   * Why there are none, when that is the normal case for this cluster.
+   * Without it an empty list renders nothing, as the console does.
+   */
+  absenceNote?: string;
 }
 
 /**
@@ -15,10 +26,17 @@ interface LoadBalancerRequestsCardProps {
  */
 export const LoadBalancerRequestsCard = ({
   loadBalancerRequests,
+  absenceNote,
 }: LoadBalancerRequestsCardProps) => {
   const classes = useRequestRowStyles();
+  const noteClasses = useNoteStyles();
   if (loadBalancerRequests.length === 0) {
-    return null;
+    if (!absenceNote) return null;
+    return (
+      <ButlerCard title="Load Balancer Requests">
+        <p className={noteClasses.note}>{absenceNote}</p>
+      </ButlerCard>
+    );
   }
   return (
     <ButlerCard title="Load Balancer Requests">

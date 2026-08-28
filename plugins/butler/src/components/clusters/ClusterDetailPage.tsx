@@ -41,6 +41,14 @@ import { EditClusterDialog } from './EditClusterDialog';
 import { ScaleWorkersDialog } from './ScaleWorkersDialog';
 import { ChangeEnvironmentDialog } from './ChangeEnvironmentDialog';
 import { ControlPlaneResourcesCard } from './ControlPlaneResourcesCard';
+import {
+  clusterBanners,
+  clusterOwner,
+  controlPlaneState,
+  requestsAbsenceNote,
+  workersState,
+} from '../../utils/clusterHealth';
+import { ENVIRONMENT_LABEL } from '../../utils/environment';
 import { butlerTokens, rgb } from '../../theme';
 import {
   ButlerBanner,
@@ -177,8 +185,13 @@ export function clusterPollInterval(
     workerNodesReady !== undefined &&
     workerNodesDesired !== undefined &&
     workerNodesReady !== workerNodesDesired;
+  // A scale the server accepted but the controller has not targeted yet.
+  const scalePending =
+    cluster.spec?.workers?.replicas !== undefined &&
+    workerNodesDesired !== undefined &&
+    cluster.spec.workers.replicas !== workerNodesDesired;
   const notReady = Boolean(phase) && phase !== 'Ready';
-  return workersConverging || notReady ? CLUSTER_POLL_MS : null;
+  return workersConverging || scalePending || notReady ? CLUSTER_POLL_MS : null;
 }
 
 function errorMessage(e: unknown, prefix: string): string {
@@ -558,16 +571,16 @@ export const ClusterDetailPage = () => {
   const status = cluster.status;
   const phase = status?.phase || 'Unknown';
   const conditions = status?.conditions || [];
-  const readyCondition = conditions.find(c => c.type === 'Ready');
   const workersReady = conditions.find(c => c.type === 'WorkersReady');
   const networkReady = conditions.find(c => c.type === 'NetworkReady');
-  const isDegraded = readyCondition?.reason === 'ReconcileDegraded';
-  const isFailed = phase === 'Failed';
-  const ready = status?.workerNodesReady;
-  const desired = status?.workerNodesDesired;
-  const hasStaleNodes =
-    phase === 'Ready' && ready != null && desired != null && ready > desired;
-  const converging = ready != null && desired != null && ready !== desired;
+  const banners = clusterBanners(cluster, new Date());
+  const workers = workersState(cluster);
+  const controlPlane = controlPlaneState(cluster);
+  const owner = clusterOwner(cluster);
+  const environment = cluster.metadata.labels?.[ENVIRONMENT_LABEL];
+  const ready = workers.ready;
+  const desired = workers.desired;
+  const converging = workers.converging;
   const workerCount = spec.workers?.replicas ?? 0;
   const os = spec.workers?.machineTemplate?.os;
   const osVersion = os?.type === 'talos' ? os.talos?.version : os?.version;
@@ -626,21 +639,6 @@ export const ClusterDetailPage = () => {
     disabled: id === 'terminal' && phase !== 'Ready',
   }));
 
-  const workersValue = (() => {
-    if (converging) {
-      return (
-        <span className={classes.converging}>
-          <span>
-            {ready}/{desired} ready
-          </span>
-          <SpinnerIcon className={classes.spin} />
-        </span>
-      );
-    }
-    if (ready != null && desired != null) return `${ready}/${desired} ready`;
-    return String(workerCount);
-  })();
-
   const conditionBadge = (c: { status: string; reason?: string }) => {
     if (c.status === 'True') return 'Ready';
     if (c.status === 'False') {
@@ -663,7 +661,16 @@ export const ClusterDetailPage = () => {
 
       <ButlerPageHeader
         title={cluster.metadata.name}
-        titleAdornment={<ButlerStatusBadge status={phase} />}
+        titleAdornment={
+          <>
+            <ButlerStatusBadge status={phase} />
+            {environment && (
+              <ButlerChip tone="neutral" title="Environment">
+                {environment}
+              </ButlerChip>
+            )}
+          </>
+        }
         subtitle={cluster.metadata.namespace}
         onBack={() => navigate(clustersPath)}
         actions={
@@ -738,25 +745,14 @@ export const ClusterDetailPage = () => {
       <ButlerTabPanel idPrefix="cluster" id={activeTab}>
         {activeTab === 'overview' && (
           <ButlerStack>
-            {isFailed && readyCondition?.message && (
+            {banners.map(b => (
               <ButlerBanner
-                severity="danger"
-                title="Cluster Failed"
-                message={readyCondition.message}
+                key={b.kind}
+                severity={b.severity === 'danger' ? 'danger' : 'warning'}
+                title={b.title}
+                message={b.message}
               />
-            )}
-            {isDegraded && (
-              <ButlerBanner
-                title="Cluster Degraded"
-                message={readyCondition?.message}
-              />
-            )}
-            {hasStaleNodes && (
-              <ButlerBanner
-                title="Stale Nodes Detected"
-                message={`${ready} nodes reporting but only ${desired} desired. Check the Nodes tab for NotReady nodes that may need manual cleanup.`}
-              />
-            )}
+            ))}
 
             <ButlerGrid>
               <ButlerCard title="Specification">
@@ -775,8 +771,28 @@ export const ClusterDetailPage = () => {
                   <ButlerKeyValueRow label="Team">
                     {spec.teamRef?.name || team || 'N/A'}
                   </ButlerKeyValueRow>
+                  <ButlerKeyValueRow label="Environment">
+                    {environment || 'None'}
+                  </ButlerKeyValueRow>
+                  {owner && (
+                    <ButlerKeyValueRow label="Created by" title={owner}>
+                      {owner}
+                    </ButlerKeyValueRow>
+                  )}
                   <ButlerKeyValueRow label="Workers">
-                    {workersValue}
+                    <span
+                      className={classes.conditionValue}
+                      title={workers.word.detail}
+                    >
+                      <ButlerChip tone={workers.word.tone}>
+                        {workers.word.headline}
+                      </ButlerChip>
+                      {workers.scalePending && (
+                        <span className={classes.conditionMessage}>
+                          {workers.word.detail}
+                        </span>
+                      )}
+                    </span>
                   </ButlerKeyValueRow>
                   {spec.controlPlane?.replicas != null && (
                     <ButlerKeyValueRow label="Control Plane Replicas">
@@ -809,20 +825,37 @@ export const ClusterDetailPage = () => {
                   <ButlerKeyValueRow label="Tenant Namespace">
                     {status?.tenantNamespace || 'N/A'}
                   </ButlerKeyValueRow>
-                  <ButlerKeyValueRow label="Control Plane Ready">
-                    {phase === 'Ready' ? 'Yes' : 'No'}
+                  <ButlerKeyValueRow
+                    label="Control Plane"
+                    title={controlPlane.detail}
+                  >
+                    <span className={classes.conditionValue}>
+                      <ButlerChip tone={controlPlane.tone}>
+                        {controlPlane.headline}
+                      </ButlerChip>
+                      {controlPlane.detail && (
+                        <span className={classes.conditionMessage}>
+                          {controlPlane.detail}
+                        </span>
+                      )}
+                    </span>
                   </ButlerKeyValueRow>
                   {workersReady && (
-                    <ButlerKeyValueRow label="Workers Ready">
-                      <ButlerStatusBadge
-                        status={
-                          workersReady.status === 'True' || phase === 'Ready'
-                            ? 'Ready'
-                            : workersReady.reason === 'WorkersProvisioning'
-                            ? 'Provisioning'
-                            : 'Pending'
-                        }
-                      />
+                    <ButlerKeyValueRow
+                      label="Workers"
+                      title={workers.word.detail}
+                    >
+                      <span className={classes.conditionValue}>
+                        <ButlerChip tone={workers.word.tone}>
+                          {workers.word.headline}
+                        </ButlerChip>
+                        {workers.conditionStatus !== 'True' &&
+                          workers.conditionMessage && (
+                            <span className={classes.conditionMessage}>
+                              {workers.conditionMessage}
+                            </span>
+                          )}
+                      </span>
                     </ButlerKeyValueRow>
                   )}
                   {networkReady && (
@@ -888,9 +921,13 @@ export const ClusterDetailPage = () => {
               </ButlerCard>
             )}
 
-            <MachineRequestsCard machineRequests={machineRequests} />
+            <MachineRequestsCard
+              machineRequests={machineRequests}
+              absenceNote={requestsAbsenceNote('machine', cluster)}
+            />
             <LoadBalancerRequestsCard
               loadBalancerRequests={loadBalancerRequests}
+              absenceNote={requestsAbsenceNote('loadBalancer', cluster)}
             />
             <InfrastructureOverrideCard
               override={spec.infrastructureOverride}

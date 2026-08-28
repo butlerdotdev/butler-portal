@@ -53,4 +53,14 @@ describe('MachineRequestsCard', () => {
     );
     expect(container.querySelector('h3')).toBeNull();
   });
+
+  it('explains an empty list when told why, without implying failure', async () => {
+    await renderInTestApp(
+      <MachineRequestsCard
+        machineRequests={[]}
+        absenceNote="No machine requests are recorded. Workers on this cluster are Cluster API machines managed through the provider; see the Nodes tab."
+      />,
+    );
+    expect(screen.getByText(/Cluster API machines/)).toBeInTheDocument();
+  });
 });

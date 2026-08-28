@@ -47,4 +47,13 @@ describe('clusterPollInterval', () => {
       ),
     ).toBeNull();
   });
+
+  it('keeps polling while a requested scale is not yet targeted by the controller', () => {
+    expect(
+      clusterPollInterval({
+        spec: { workers: { replicas: 3 } },
+        status: { phase: 'Ready', workerNodesReady: 2, workerNodesDesired: 2 },
+      } as any),
+    ).toBe(5000);
+  });
 });
