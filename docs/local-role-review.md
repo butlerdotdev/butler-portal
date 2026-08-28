@@ -108,3 +108,48 @@ stops exercising that path.
 Anything created while reviewing should be named `e2e-*` and removed
 afterwards. The three fixtures above are the exception: they are meant to
 persist.
+
+## Providers: what a team may create against
+
+A provider (`ProviderConfig`) carries a scope. `platform`, the default,
+is usable by every team. `team` names exactly one team, and the
+TenantCluster admission webhook refuses a cluster from any other team
+that references it. A team provider is the same kind of object with a
+narrower scope, not a reference to or a copy of a platform one.
+
+Two reads exist and they mean different things:
+
+- `GET /providers` is the whole estate, every scope, no filtering. It is
+  the platform admin's inventory.
+- `GET /teams/{team}/providers` is the platform providers plus the ones
+  scoped to that team. It is what a team may actually create against.
+
+The plugin reads the team list through `useTeamProviders`, and both the
+create form and the team providers page consume that one hook. The
+global list is used only by the platform admin's providers page.
+
+Authorization, probed through the harness for all five identities:
+
+| Endpoint                            | platform admin | platform viewer | team admin | team operator | team viewer |
+| ----------------------------------- | -------------- | --------------- | ---------- | ------------- | ----------- |
+| `GET /providers`                    | 200            | 200             | 200        | 200           | 200         |
+| `GET /teams/{own}/providers`        | 200            | 200             | 200        | 200           | 200         |
+| `POST /teams/{own}/providers`       | passes authz   | 403             | passes     | passes        | 403         |
+| `DELETE /teams/{own}/providers/...` | passes authz   | 403             | passes     | passes        | 403         |
+| `POST /providers` (platform)        | passes authz   | 403             | 403        | 403           | 403         |
+
+Removal is therefore offered to team admin, team operator and platform
+admin, and only for a provider scoped to this team. Connecting a cloud
+account is not offered yet: the console's flow is AWS/Azure/GCP only and
+this estate has no cloud provider to verify it against.
+
+Before butler-server PR #100 the team read had no authorization, so any
+user could list another team's scoped providers by naming that team in
+the path. The harness server is the user's own build and will not carry
+that fix until it is rebuilt.
+
+To prove the scope boundary yourself, create a throwaway provider scoped
+to a team you are not a member of, named `e2e-*`, and confirm it appears
+in the global list, is absent from your team's list, and is refused at
+admission when a cluster references it. Delete it and confirm the
+ProviderConfig and its Secret are gone. Do not leave it behind.
