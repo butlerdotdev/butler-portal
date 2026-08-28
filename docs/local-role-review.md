@@ -153,3 +153,31 @@ to a team you are not a member of, named `e2e-*`, and confirm it appears
 in the global list, is absent from your team's list, and is refused at
 admission when a cluster references it. Delete it and confirm the
 ProviderConfig and its Secret are gone. Do not leave it behind.
+
+## Cluster creation policy: seen by effect, read by platform roles
+
+A `ClusterCreationPolicy` narrows or orders the images, networks, and for
+Nutanix the clusters and storage containers a cluster may be created
+with. The server resolves it inside those four list reads, most specific
+scope first (team and environment, then team, then platform wide), from
+the `X-Butler-Team` and `X-Butler-Environment` headers on the request.
+There is no endpoint that returns an effective policy; each list's
+`policy` object is the whole observable outcome, and the plugin never
+evaluates policy itself.
+
+`GET /admin/policies` and its detail answer platform admin and platform
+viewer; every team role gets 403. So the Policies pages sit in the admin
+rail for both platform roles, and a team sees only the note above each
+list on the create form. A platform role gets a link from that note to
+the policy.
+
+The create form reads every list in the environment the cluster will be
+created in and reads again when that choice changes. That matters: with
+the team header alone a team-and-environment rule does not apply to the
+list, while it does apply to the create.
+
+To prove it yourself, create two `e2e-*` policies as a platform admin,
+one platform wide and one for a team and environment on the same option
+type, then read that option list as a team member with and without
+`X-Butler-Environment` and compare the `policy.name` in each answer.
+Delete both afterwards and confirm `GET /admin/policies` reports zero.
