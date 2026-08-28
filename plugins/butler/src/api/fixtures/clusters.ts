@@ -1253,6 +1253,26 @@ export const fixtureManagementPods: Record<string, ManagementPod[]> = {
 // Providers and identity providers
 // ---------------------------------------------------------------------------
 
+/**
+ * A provider scoped to another team. It exists so the team-scoped list
+ * can be proven to exclude it: it appears in the global list and must
+ * never be offered to the fixture team.
+ */
+export const fixtureOtherTeamProvider: Provider = {
+  metadata: {
+    name: 'data-nutanix',
+    namespace: 'butler-system',
+    uid: '7b8c9d0e-0002-4000-8000-0000000000cc',
+    creationTimestamp: '2026-06-01T09:30:00Z',
+  },
+  spec: {
+    provider: 'nutanix',
+    scope: { type: 'team', teamRef: { name: 'data' } },
+    network: { mode: 'ipam' },
+  },
+  status: { ready: true },
+};
+
 export const fixtureProviders: Provider[] = [
   {
     metadata: {

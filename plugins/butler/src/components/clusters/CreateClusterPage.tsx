@@ -10,7 +10,6 @@ import clsx from 'clsx';
 import { butlerApiRef } from '../../api/ButlerApi';
 import { ButlerApiError, extractWebhookDenial } from '../../api/ButlerApiError';
 import type {
-  Provider,
   ImageInfo,
   NetworkInfo,
   PolicyMetadata,
@@ -19,6 +18,7 @@ import { useButlerRoutes } from '../../hooks/useButlerRoutes';
 import { useTeamContext } from '../../hooks/useTeamContext';
 import { useTeamEnvironments } from '../../hooks/useTeamEnvironments';
 import { useCanOperateTeam } from '../../hooks/useCanOperateTeam';
+import { useTeamProviders } from '../../hooks/useTeamProviders';
 import {
   SERVER_DEFAULT_KUBERNETES_VERSION,
   SUPPORTED_KUBERNETES_VERSIONS,
@@ -313,8 +313,14 @@ export const CreateClusterPage = () => {
     );
   }, [teamNamespace]);
 
-  const [providers, setProviders] = useState<Provider[]>([]);
-  const [providersLoading, setProvidersLoading] = useState(true);
+  // Only the providers this team may create against. The global list also
+  // carries providers scoped to other teams, and a cluster referencing one
+  // of those is refused at admission, so it must not be offered here.
+  const {
+    providers,
+    loading: providersLoading,
+    error: providersError,
+  } = useTeamProviders(team);
   const [images, setImages] = useState<ImageInfo[]>([]);
   const [networks, setNetworks] = useState<NetworkInfo[]>([]);
   // What a ClusterCreationPolicy did to each list. The server has already
@@ -334,20 +340,19 @@ export const CreateClusterPage = () => {
     Record<string, string>
   >({});
 
+  // A selection that is no longer offered, because the team changed or the
+  // provider was removed, must not survive into the request.
   useEffect(() => {
-    const fetchProviders = async () => {
-      setProvidersLoading(true);
-      try {
-        const response = await api.listProviders();
-        setProviders(response.providers || []);
-      } catch {
-        setProviders([]);
-      } finally {
-        setProvidersLoading(false);
-      }
-    };
-    fetchProviders();
-  }, [api]);
+    if (providersLoading || !form.providerConfigRef) return;
+    const stillOffered = providers.some(
+      p =>
+        p.metadata.name === form.providerConfigRef ||
+        `${p.metadata.namespace}/${p.metadata.name}` === form.providerConfigRef,
+    );
+    if (!stillOffered) {
+      setForm(prev => ({ ...prev, providerConfigRef: '' }));
+    }
+  }, [providers, providersLoading, form.providerConfigRef]);
 
   const selectedProvider = providers.find(
     p =>
@@ -760,6 +765,28 @@ export const CreateClusterPage = () => {
             </ButlerSelect>
           </ButlerFormRow>
         );
+      case 'aws':
+      case 'azure':
+      case 'gcp': {
+        // A cloud provider carries its placement on the provider itself
+        // and the server takes no cloud-specific create fields, so there
+        // is nothing to fill in here; the context is shown so the choice
+        // is an informed one.
+        const spec = selectedProvider?.spec;
+        const region =
+          spec?.aws?.region ?? spec?.azure?.location ?? spec?.gcp?.region;
+        const network =
+          spec?.aws?.vpcId ?? spec?.azure?.vnetName ?? spec?.gcp?.network;
+        return (
+          <ButlerFormMessage tone="info">
+            {providerType.toUpperCase()} manages the machines, load balancers
+            and addresses for this cluster
+            {region ? ` in ${region}` : ''}
+            {network ? ` on ${network}` : ''}. There is nothing further to
+            configure for the infrastructure.
+          </ButlerFormMessage>
+        );
+      }
       default:
         return (
           <ButlerFormMessage tone="danger">
@@ -835,7 +862,9 @@ export const CreateClusterPage = () => {
               {providers.length === 0 ? (
                 <ButlerField label="Provider *">
                   <p className={classes.providerMissing}>
-                    No providers configured. Ask a platform admin to add one.
+                    {providersError
+                      ? `The team's providers could not be read: ${providersError.message}`
+                      : 'No providers are available to this team. Ask a platform admin to assign one.'}
                   </p>
                 </ButlerField>
               ) : (

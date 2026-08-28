@@ -252,3 +252,29 @@ describe('ButlerApiClient error shapes', () => {
     });
   });
 });
+
+describe('ButlerApiClient team providers', () => {
+  it('reads the team-scoped list from the team route', async () => {
+    const { client, calls } = makeClient(() =>
+      jsonResponse({ providers: [{ metadata: { name: 'p' } }] }),
+    );
+
+    const res = await client.listTeamProviders('a team');
+
+    expect(calls[0].url).toBe(
+      'http://localhost/api/butler/teams/a%20team/providers',
+    );
+    expect(res.providers).toHaveLength(1);
+  });
+
+  it('removes a team provider through the team route', async () => {
+    const { client, calls } = makeClient(() => jsonResponse({}));
+
+    await client.deleteTeamProvider('platform', 'butler-system', 'pe/x');
+
+    expect(calls[0].url).toBe(
+      'http://localhost/api/butler/teams/platform/providers/butler-system/pe%2Fx',
+    );
+    expect(calls[0].init?.method).toBe('DELETE');
+  });
+});

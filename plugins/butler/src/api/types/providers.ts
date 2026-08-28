@@ -35,17 +35,49 @@ export interface Provider {
       subnet?: string;
       gateway?: string;
     };
+    /**
+     * Who may create clusters against this provider. Absent means
+     * `platform`, which every team may use. A `team` provider belongs to
+     * exactly one team; the admission webhook refuses a cluster from any
+     * other team that references it.
+     */
+    scope?: {
+      type?: 'platform' | 'team' | string;
+      teamRef?: { name: string };
+    };
+    aws?: { region?: string; vpcId?: string };
+    azure?: { location?: string; vnetName?: string };
+    gcp?: { region?: string; network?: string };
   };
   status?: {
     validated?: boolean;
     lastValidationTime?: string;
+    /** Set by the controller once the provider is usable. */
+    ready?: boolean;
     conditions?: Array<{
       type: string;
       status: string;
       reason: string;
       message: string;
     }>;
+    capacity?: { availableIPs?: number; estimatedTenants?: number };
   };
+}
+
+export type ProviderScope = 'platform' | 'team';
+
+/** The scope a provider carries, with the server's default applied. */
+export function providerScope(provider: Provider): ProviderScope {
+  return provider.spec.scope?.type === 'team' ? 'team' : 'platform';
+}
+
+/** Whether a team may create clusters against this provider. */
+export function providerUsableByTeam(
+  provider: Provider,
+  team: string,
+): boolean {
+  if (providerScope(provider) === 'platform') return true;
+  return provider.spec.scope?.teamRef?.name === team;
 }
 
 export interface ProviderListResponse {

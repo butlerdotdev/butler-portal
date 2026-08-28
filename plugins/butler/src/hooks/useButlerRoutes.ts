@@ -11,6 +11,7 @@ import {
   createClusterRouteRef,
   clusterDetailRouteRef,
   teamEnvironmentsRouteRef,
+  teamProvidersRouteRef,
   teamMembersRouteRef,
   teamSettingsRouteRef,
   adminRouteRef,
@@ -39,6 +40,7 @@ export interface ButlerRoutes {
     name: string;
   }) => string;
   teamEnvironments: (params: { team: string }) => string;
+  teamProviders: (params: { team: string }) => string;
   teamMembers: (params: { team: string }) => string;
   teamSettings: (params: { team: string }) => string;
   admin: () => string;
@@ -76,6 +78,7 @@ export const useButlerRoutes = (): ButlerRoutes => {
   const createCluster = useRouteRef(createClusterRouteRef);
   const clusterDetail = useRouteRef(clusterDetailRouteRef);
   const teamEnvironments = useRouteRef(teamEnvironmentsRouteRef);
+  const teamProviders = useRouteRef(teamProvidersRouteRef);
   const teamMembers = useRouteRef(teamMembersRouteRef);
   const teamSettings = useRouteRef(teamSettingsRouteRef);
   const admin = useRouteRef(adminRouteRef);
@@ -102,6 +105,7 @@ export const useButlerRoutes = (): ButlerRoutes => {
       createCluster: params => normalizeMountPath(createCluster(params)),
       clusterDetail: params => normalizeMountPath(clusterDetail(params)),
       teamEnvironments: params => normalizeMountPath(teamEnvironments(params)),
+      teamProviders: params => normalizeMountPath(teamProviders(params)),
       teamMembers: params => normalizeMountPath(teamMembers(params)),
       teamSettings: params => normalizeMountPath(teamSettings(params)),
       admin: () => normalizeMountPath(admin()),

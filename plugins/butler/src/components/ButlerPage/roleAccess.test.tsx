@@ -183,4 +183,18 @@ describe('team environments are reachable by every team role', () => {
       `/butler/t/${FIXTURE_TEAM}/environments`,
     );
   });
+
+  it.each(['teamAdmin', 'teamOperator', 'teamViewer'] as const)(
+    'offers %s the team providers destination',
+    async role => {
+      await renderAs(role, `/butler/t/${FIXTURE_TEAM}`);
+
+      // The server serves the team list to every team role.
+      const link = await screen.findByRole('link', { name: 'Providers' });
+      expect(link).toHaveAttribute(
+        'href',
+        `/butler/t/${FIXTURE_TEAM}/providers`,
+      );
+    },
+  );
 });

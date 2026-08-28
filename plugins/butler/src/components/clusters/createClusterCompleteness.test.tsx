@@ -9,7 +9,11 @@ import { renderInTestApp, TestApiProvider } from '@backstage/test-utils';
 import { butlerApiRef } from '../../api/ButlerApi';
 import { ButlerApiError } from '../../api/ButlerApiError';
 import { MockButlerApi } from '../../api/MockButlerApi';
-import { FIXTURE_TEAM, FIXTURE_PROVIDER } from '../../api/fixtures/clusters';
+import {
+  FIXTURE_TEAM,
+  FIXTURE_PROVIDER,
+  fixtureProviders,
+} from '../../api/fixtures/clusters';
 import {
   platformAdminIdentity,
   platformViewerIdentity,
@@ -280,6 +284,49 @@ describe('server validation lands on the control it names', () => {
     expect(await screen.findByText(/Not found: "nope"/)).toBeVisible();
     expect(
       screen.queryByText(/vtenantcluster\.kb\.io/),
+    ).not.toBeInTheDocument();
+  });
+});
+
+describe('a cloud provider needs no infrastructure fields', () => {
+  it('explains what the cloud manages instead of calling the type unknown', async () => {
+    const user = userEvent.setup();
+    const api = new MockButlerApi({
+      identity: teamAdminIdentity,
+      environments: [],
+      providers: [
+        ...fixtureProviders,
+        {
+          metadata: {
+            name: 'aws-lab',
+            namespace: 'butler-system',
+            uid: 'aws-1',
+          },
+          spec: {
+            provider: 'aws',
+            network: { mode: 'cloud' },
+            aws: { region: 'eu-west-1', vpcId: 'vpc-0abc' },
+          },
+          status: { ready: true },
+        },
+      ],
+    });
+    await render(api);
+    await screen.findByRole('heading', { name: /create cluster/i });
+
+    await user.selectOptions(screen.getByLabelText(/Provider/i), 'aws-lab');
+
+    expect(await screen.findByText(/AWS manages the machines/i)).toBeVisible();
+    expect(screen.getByText(/in eu-west-1/)).toBeInTheDocument();
+    expect(
+      screen.queryByText(/Unknown provider type/i),
+    ).not.toBeInTheDocument();
+    // The cloud owns addressing: no range is asked for, and no override.
+    expect(
+      screen.queryByLabelText(/Load Balancer Start IP/i),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByLabelText(/Choose the addresses myself/i),
     ).not.toBeInTheDocument();
   });
 });

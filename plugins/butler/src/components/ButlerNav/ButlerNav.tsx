@@ -292,6 +292,11 @@ export const ButlerNav = () => {
             label: 'Members',
             icon: <UsersNavIcon />,
           },
+          {
+            to: routes.teamProviders({ team }),
+            label: 'Providers',
+            icon: <ProvidersNavIcon />,
+          },
         ],
       },
     ];

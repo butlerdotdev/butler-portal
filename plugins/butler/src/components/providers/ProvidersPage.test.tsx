@@ -50,7 +50,7 @@ describe('ProvidersPage', () => {
   beforeEach(() => localStorage.clear());
 
   it('renders the console header and one card per provider', async () => {
-    await renderPage(new MockButlerApi());
+    await renderPage(new MockButlerApi({ providers: fixtureProviders }));
     expect(
       await screen.findByRole('heading', { name: 'Providers' }),
     ).toBeInTheDocument();

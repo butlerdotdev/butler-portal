@@ -35,6 +35,12 @@ export const teamEnvironmentsRouteRef = createSubRouteRef({
   parent: rootRouteRef,
 });
 
+export const teamProvidersRouteRef = createSubRouteRef({
+  id: 'butler.team.providers',
+  path: '/t/:team/providers',
+  parent: rootRouteRef,
+});
+
 export const teamMembersRouteRef = createSubRouteRef({
   id: 'butler.team.members',
   path: '/t/:team/members',

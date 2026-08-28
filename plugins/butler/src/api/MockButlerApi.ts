@@ -147,6 +147,7 @@ import {
   fixtureManagementNodes,
   fixtureManagementPods,
   fixtureProviders,
+  fixtureOtherTeamProvider,
   fixtureIdentityProviders,
   fixturePlatformConfig,
 } from './fixtures/clusters';
@@ -159,6 +160,8 @@ export type ButlerApiMethod = {
 }[keyof ButlerApi];
 
 export interface MockButlerApiOptions {
+  /** Providers the mock starts with, across every scope. */
+  providers?: Provider[];
   /** Team environments the mock starts with. */
   environments?: TeamEnvironment[];
   /** Defaults the team applies to new clusters. */
@@ -193,6 +196,7 @@ export class MockButlerApi implements ButlerApi {
   private pools: NetworkPool[];
   private allocations: IPAllocation[];
   private environments: TeamEnvironment[];
+  private providers: Provider[];
   private teamClusterDefaults: EnvironmentClusterDefaults | undefined;
   private readonly failures: Partial<Record<ButlerApiMethod, Error>>;
   private readonly latencyMs: number;
@@ -217,6 +221,11 @@ export class MockButlerApi implements ButlerApi {
     this.pools = clone(options.pools ?? fixturePools);
     this.allocations = clone(options.allocations ?? fixtureAllocations);
     this.environments = clone(options.environments ?? fixtureEnvironments);
+    // The global list carries a provider scoped to another team, so the
+    // team-scoped read has something real to exclude.
+    this.providers = clone(
+      options.providers ?? [...fixtureProviders, fixtureOtherTeamProvider],
+    );
     this.teamClusterDefaults = options.teamClusterDefaults
       ? clone(options.teamClusterDefaults)
       : undefined;
@@ -826,13 +835,49 @@ export class MockButlerApi implements ButlerApi {
 
   listProviders(): Promise<ProviderListResponse> {
     return this.run('listProviders', () => ({
-      providers: clone(fixtureProviders),
+      providers: clone(this.providers),
     }));
+  }
+
+  /** Mirrors ListTeamProviders: platform scope plus this team's own. */
+  listTeamProviders(team: string): Promise<ProviderListResponse> {
+    return this.run('listTeamProviders', () => ({
+      providers: clone(
+        this.providers.filter(p => {
+          const scope = p.spec.scope?.type ?? 'platform';
+          return scope === 'platform' || p.spec.scope?.teamRef?.name === team;
+        }),
+      ),
+    }));
+  }
+
+  deleteTeamProvider(
+    team: string,
+    namespace: string,
+    name: string,
+  ): Promise<void> {
+    return this.run('deleteTeamProvider', () => {
+      const index = this.providers.findIndex(
+        p => p.metadata.namespace === namespace && p.metadata.name === name,
+      );
+      if (index === -1) throw notFound('provider', name);
+      const scope = this.providers[index].spec.scope;
+      // The server only removes a provider scoped to this very team.
+      if (scope?.type !== 'team' || scope.teamRef?.name !== team) {
+        throw new ButlerApiError({
+          status: 403,
+          message:
+            'can only delete team-scoped providers belonging to this team',
+        });
+      }
+      this.providers.splice(index, 1);
+      return undefined;
+    });
   }
 
   getProvider(namespace: string, name: string): Promise<Provider> {
     return this.run('getProvider', () => {
-      const provider = fixtureProviders.find(
+      const provider = this.providers.find(
         p => p.metadata.namespace === namespace && p.metadata.name === name,
       );
       if (!provider) throw notFound('provider', this.key(namespace, name));

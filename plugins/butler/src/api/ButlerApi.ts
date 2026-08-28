@@ -188,6 +188,18 @@ export interface ButlerApi {
 
   // Providers
   listProviders(): Promise<ProviderListResponse>;
+  /**
+   * Providers a team may create clusters against: every platform-scoped
+   * provider plus the ones scoped to this team. This, not the global
+   * list, is what a team's create form must offer.
+   */
+  listTeamProviders(team: string): Promise<ProviderListResponse>;
+  /** Removes a provider scoped to this team; the server refuses any other. */
+  deleteTeamProvider(
+    team: string,
+    namespace: string,
+    name: string,
+  ): Promise<void>;
   getProvider(namespace: string, name: string): Promise<Provider>;
   createProvider(data: CreateProviderRequest): Promise<Provider>;
   deleteProvider(namespace: string, name: string): Promise<void>;

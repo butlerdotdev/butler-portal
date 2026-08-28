@@ -469,6 +469,24 @@ export class ButlerApiClient implements ButlerApi {
     return this.get<ProviderListResponse>('/providers');
   }
 
+  async listTeamProviders(team: string): Promise<ProviderListResponse> {
+    return this.get<ProviderListResponse>(
+      `/teams/${encodeURIComponent(team)}/providers`,
+    );
+  }
+
+  async deleteTeamProvider(
+    team: string,
+    namespace: string,
+    name: string,
+  ): Promise<void> {
+    return this.del(
+      `/teams/${encodeURIComponent(team)}/providers/${encodeURIComponent(
+        namespace,
+      )}/${encodeURIComponent(name)}`,
+    );
+  }
+
   async getProvider(namespace: string, name: string): Promise<Provider> {
     return this.get<Provider>(`/providers/${namespace}/${name}`);
   }
