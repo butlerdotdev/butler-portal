@@ -9,6 +9,11 @@ import clsx from 'clsx';
 
 import { butlerApiRef } from '../../api/ButlerApi';
 import type { IdentityProvider } from '../../api/types/identity-providers';
+import {
+  describeDiscovery,
+  identityProviderReadiness,
+} from '../../utils/identityProviderRequest';
+import { EditIdentityProviderDialog } from './EditIdentityProviderDialog';
 import { useButlerRoutes } from '../../hooks/useButlerRoutes';
 import { useTeamContext } from '../../hooks/useTeamContext';
 import { butlerTokens, rgb, rgba } from '../../theme';
@@ -21,6 +26,7 @@ import {
   ButlerPageHeader,
   ButlerStack,
   ButlerStatusBadge,
+  EditIcon,
   KeyIcon,
   PlusIcon,
   TrashIcon,
@@ -222,6 +228,7 @@ export const IdentityProvidersPage = () => {
   );
   const [validating, setValidating] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [editTarget, setEditTarget] = useState<IdentityProvider | null>(null);
 
   const fetchProviders = useCallback(async () => {
     setLoading(true);
@@ -248,10 +255,9 @@ export const IdentityProvidersPage = () => {
     setValidating(true);
     try {
       const result = await api.validateIdentityProvider(name);
+      const described = describeDiscovery(result);
       alertApi.post({
-        message: result.valid
-          ? 'OIDC discovery successful'
-          : result.message || 'Validation failed',
+        message: `${described.headline}: ${described.detail}`,
         severity: result.valid ? 'success' : 'error',
         display: 'transient',
       });
@@ -393,6 +399,16 @@ export const IdentityProvidersPage = () => {
                       </ButlerButton>
                       {canMutate && (
                         <ButlerButton
+                          variant="secondary"
+                          size="sm"
+                          onClick={() => setEditTarget(provider)}
+                          aria-label={`Edit ${displayName}`}
+                        >
+                          Edit
+                        </ButlerButton>
+                      )}
+                      {canMutate && (
+                        <ButlerButton
                           variant="danger"
                           size="sm"
                           onClick={() => setDeleteTarget(provider)}
@@ -432,18 +448,52 @@ export const IdentityProvidersPage = () => {
               >
                 Close
               </ButlerButton>
-              <ButlerButton
-                onClick={() => handleValidate(selected.metadata.name)}
-                disabled={validating}
-              >
-                {validating ? 'Validating...' : 'Test Connection'}
-              </ButlerButton>
+              {canMutate && (
+                <ButlerButton
+                  variant="secondary"
+                  startIcon={<EditIcon />}
+                  onClick={() => {
+                    setEditTarget(selected);
+                    setSelected(null);
+                  }}
+                >
+                  Edit
+                </ButlerButton>
+              )}
+              {canMutate && (
+                <ButlerButton
+                  onClick={() => handleValidate(selected.metadata.name)}
+                  disabled={validating}
+                >
+                  {validating ? 'Validating...' : 'Test Connection'}
+                </ButlerButton>
+              )}
             </>
           )
         }
       >
         {selected && <IdentityProviderDetail provider={selected} />}
       </ButlerDialog>
+
+      {canMutate && editTarget && (
+        <EditIdentityProviderDialog
+          open
+          provider={editTarget}
+          onClose={() => setEditTarget(null)}
+          onSave={(name, request) => api.updateIdentityProvider(name, request)}
+          onSaved={async () => {
+            alertApi.post({
+              message: `Identity provider updated: ${
+                editTarget.spec.displayName || editTarget.metadata.name
+              }`,
+              severity: 'success',
+              display: 'transient',
+            });
+            setEditTarget(null);
+            await fetchProviders();
+          }}
+        />
+      )}
 
       {canMutate && (
         <ButlerDialog
@@ -497,13 +547,20 @@ const IdentityProviderDetail = ({
 }) => {
   const classes = useStyles();
   const issuerURL = provider.spec.oidc?.issuerURL || '';
-  const phase = provider.status?.phase || 'Active';
+  const phase = provider.status?.phase;
   const endpoints = provider.status?.discoveredEndpoints;
+  const readiness = identityProviderReadiness(provider);
+  const oidc = provider.spec.oidc;
 
   return (
     <div className={classes.detail}>
       <div className={classes.badgeSlot}>
-        <ButlerStatusBadge status={phase} />
+        {phase ? (
+          <ButlerStatusBadge status={phase} />
+        ) : (
+          <ButlerChip>{readiness.headline}</ButlerChip>
+        )}
+        <p className={classes.kvLabel}>{readiness.detail}</p>
       </div>
 
       <div className={classes.block}>
@@ -536,6 +593,34 @@ const IdentityProviderDetail = ({
           <p className={classes.kvLabel}>Redirect URL</p>
           <p className={clsx(classes.kvValue, classes.kvMono)}>
             {provider.spec.oidc?.redirectURL || '-'}
+          </p>
+        </div>
+        <div>
+          <p className={classes.kvLabel}>Client Secret</p>
+          <p className={clsx(classes.kvValue, classes.kvMono)}>
+            {oidc?.clientSecretRef?.name
+              ? `Configured in secret ${oidc.clientSecretRef.name}`
+              : 'No secret reference'}
+          </p>
+        </div>
+        <div className={classes.grid2}>
+          <div>
+            <p className={classes.kvLabel}>Email Claim</p>
+            <p className={clsx(classes.kvValue, classes.kvMono)}>
+              {oidc?.emailClaim || 'email (default)'}
+            </p>
+          </div>
+          <div>
+            <p className={classes.kvLabel}>Groups Claim</p>
+            <p className={clsx(classes.kvValue, classes.kvMono)}>
+              {oidc?.groupsClaim || 'groups (default)'}
+            </p>
+          </div>
+        </div>
+        <div>
+          <p className={classes.kvLabel}>TLS Verification</p>
+          <p className={classes.kvValue}>
+            {oidc?.insecureSkipVerify ? 'Skipped (insecure)' : 'Enforced'}
           </p>
         </div>
         {provider.spec.oidc?.hostedDomain && (

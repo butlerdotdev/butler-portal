@@ -139,6 +139,7 @@ import type {
   IdentityProvider,
   IdentityProviderListResponse,
   CreateIdentityProviderRequest,
+  UpdateIdentityProviderRequest,
   TestDiscoveryResponse,
 } from './types/identity-providers';
 import type {
@@ -1969,16 +1970,54 @@ export class MockButlerApi implements ButlerApi {
 
   // ---- Identity Providers ----
 
+  private identityProviders: IdentityProvider[] = clone(
+    fixtureIdentityProviders,
+  );
+
   listIdentityProviders(): Promise<IdentityProviderListResponse> {
     return this.run('listIdentityProviders', () => ({
-      identityProviders: clone(fixtureIdentityProviders),
+      identityProviders: clone(this.identityProviders),
     }));
   }
 
   getIdentityProvider(name: string): Promise<IdentityProvider> {
     return this.run('getIdentityProvider', () => {
-      const idp = fixtureIdentityProviders.find(p => p.metadata.name === name);
+      const idp = this.identityProviders.find(p => p.metadata.name === name);
       if (!idp) throw notFound('identity provider', name);
+      return clone(idp);
+    });
+  }
+
+  /** Mirrors the server: non-empty strings merge, the secret is replaced only when sent, the TLS flag is always written. */
+  updateIdentityProvider(
+    name: string,
+    data: UpdateIdentityProviderRequest,
+  ): Promise<IdentityProvider> {
+    return this.run('updateIdentityProvider', () => {
+      this.requirePlatformAdmin('identity provider update');
+      const idp = this.identityProviders.find(p => p.metadata.name === name);
+      if (!idp) throw notFound('identity provider', name);
+      const oidc = idp.spec.oidc ?? {
+        issuerURL: '',
+        clientID: '',
+        clientSecretRef: { name: `${name}-oidc-secret` },
+        redirectURL: '',
+      };
+      for (const k of [
+        'issuerURL',
+        'clientID',
+        'redirectURL',
+        'hostedDomain',
+        'groupsClaim',
+        'emailClaim',
+      ] as const) {
+        const v = data[k];
+        if (v) oidc[k] = v;
+      }
+      if (data.scopes && data.scopes.length > 0) oidc.scopes = [...data.scopes];
+      oidc.insecureSkipVerify = Boolean(data.insecureSkipVerify);
+      idp.spec.oidc = oidc;
+      if (data.displayName) idp.spec.displayName = data.displayName;
       return clone(idp);
     });
   }
@@ -2012,7 +2051,7 @@ export class MockButlerApi implements ButlerApi {
 
   validateIdentityProvider(name: string): Promise<TestDiscoveryResponse> {
     return this.run('validateIdentityProvider', () => {
-      const idp = fixtureIdentityProviders.find(p => p.metadata.name === name);
+      const idp = this.identityProviders.find(p => p.metadata.name === name);
       if (!idp) throw notFound('identity provider', name);
       return {
         valid: true,

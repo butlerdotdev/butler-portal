@@ -97,6 +97,7 @@ import type {
   IdentityProvider,
   IdentityProviderListResponse,
   CreateIdentityProviderRequest,
+  UpdateIdentityProviderRequest,
   TestDiscoveryResponse,
 } from './types/identity-providers';
 import type {
@@ -883,6 +884,16 @@ export class ButlerApiClient implements ButlerApi {
 
   async getIdentityProvider(name: string): Promise<IdentityProvider> {
     return this.get<IdentityProvider>(`/admin/identity-providers/${name}`);
+  }
+
+  async updateIdentityProvider(
+    name: string,
+    data: UpdateIdentityProviderRequest,
+  ): Promise<IdentityProvider> {
+    return this.put<IdentityProvider>(
+      `/admin/identity-providers/${name}`,
+      data,
+    );
   }
 
   async createIdentityProvider(

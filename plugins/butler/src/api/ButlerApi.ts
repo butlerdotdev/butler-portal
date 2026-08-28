@@ -92,6 +92,7 @@ import type {
   IdentityProvider,
   IdentityProviderListResponse,
   CreateIdentityProviderRequest,
+  UpdateIdentityProviderRequest,
   TestDiscoveryResponse,
 } from './types/identity-providers';
 import type {
@@ -406,6 +407,11 @@ export interface ButlerApi {
   ): Promise<{ status: string; message: string }>;
   testIdPDiscovery(issuerURL: string): Promise<TestDiscoveryResponse>;
   validateIdentityProvider(name: string): Promise<TestDiscoveryResponse>;
+  /** Platform admin only; see UpdateIdentityProviderRequest for the merge rules. */
+  updateIdentityProvider(
+    name: string,
+    data: UpdateIdentityProviderRequest,
+  ): Promise<IdentityProvider>;
 
   // Settings
   getPlatformConfig(): Promise<PlatformConfig>;
