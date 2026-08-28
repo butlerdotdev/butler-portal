@@ -615,7 +615,7 @@ export class ButlerApiClient implements ButlerApi {
   }
 
   async deregisterObservabilityPipeline(): Promise<ObservabilityConfig> {
-    return this.delete<ObservabilityConfig>('/admin/observability/pipeline');
+    return this.del<ObservabilityConfig>('/admin/observability/pipeline');
   }
 
   async listPolicies(): Promise<PolicyListResponse> {

@@ -137,10 +137,8 @@ type LoadState = {
  * them.
  */
 export const PlatformObservabilityPage = () => {
-  const classes = useStyles();
   const api = useApi(butlerApiRef);
   const alertApi = useApi(alertApiRef);
-  const routes = useButlerRoutes();
   const { isAdmin: canMutate } = useTeamContext();
 
   const [state, setState] = useState<LoadState | null>(null);
