@@ -86,6 +86,8 @@ export interface Cluster {
     lastTransitionTime?: string;
     workerNodesReady?: number;
     workerNodesDesired?: number;
+    /** Platform IPAM allocation backing this cluster's load balancer addresses. */
+    lbAllocationRef?: { name: string };
     observedState?: {
       kubernetesVersion?: string;
       workers?: {

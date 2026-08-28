@@ -67,7 +67,6 @@ import {
   ButlerTabPanel,
   ButlerTabs,
   DownloadIcon,
-  SpinnerIcon,
   TerminalIcon,
 } from '../ui';
 import type { ButlerColumn, ButlerTabItem } from '../ui';
@@ -578,9 +577,6 @@ export const ClusterDetailPage = () => {
   const controlPlane = controlPlaneState(cluster);
   const owner = clusterOwner(cluster);
   const environment = cluster.metadata.labels?.[ENVIRONMENT_LABEL];
-  const ready = workers.ready;
-  const desired = workers.desired;
-  const converging = workers.converging;
   const workerCount = spec.workers?.replicas ?? 0;
   const os = spec.workers?.machineTemplate?.os;
   const osVersion = os?.type === 'talos' ? os.talos?.version : os?.version;
