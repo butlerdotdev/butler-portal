@@ -294,9 +294,10 @@ and the plugin does not pretend otherwise.
 Safety the server does not provide: nothing stops removing the last
 direct admin of a team or demoting yourself; the remove dialog says so
 when the target is the team's only direct admin, and the server's
-`canRemove` is false for your own direct membership. Mutations carry no
-resourceVersion (last write wins) and emit no Kubernetes events; the
-audit trail is the server log.
+`canRemove` is false for your own direct membership. Writes update the
+object they read, so a concurrent write is refused by the apiserver's
+resourceVersion check, but the handler reports that as 500 rather than 409. Membership changes emit no Kubernetes events; the audit trail is
+the server log.
 
 Live proof on `platform-engineering` used the disposable principal
 `e2e-parity-nobody@butlerlabs.dev` (a user record with no teams) and an
