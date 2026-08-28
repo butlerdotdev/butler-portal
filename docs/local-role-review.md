@@ -181,3 +181,32 @@ one platform wide and one for a team and environment on the same option
 type, then read that option list as a team member with and without
 `X-Butler-Environment` and compare the `policy.name` in each answer.
 Delete both afterwards and confirm `GET /admin/policies` reports zero.
+
+## Cluster observability: three addons and a pipeline
+
+A cluster's logs, metrics and traces are collected by three ordinary
+addons, `vector-agent`, `prometheus-operator` and `otel-collector`, which
+Butler installs on the cluster and points at the platform pipeline named
+by `GET /observability/config`. The Observability tab on a cluster is an
+interface to those addons and nothing more: their status comes from the
+cluster's `observedState`, an accepted install shows as enabling until
+the platform reports it installed, and the tab polls only while a
+collector is moving.
+
+Reads are served to every role. Enable and Disable are offered to
+platform admin, team admin and team operator, which is what the server's
+`checkOperatePermission` allows; both viewers get 403 from the server
+and see no buttons. Disable is confirmed here even though the console
+removes on a bare click.
+
+The fixture cluster carries a platform auto-enrolled `vector-agent` that
+has been Installing for a long time. Leave it alone; it belongs to the
+platform's auto-enrolment, not to this harness. To prove the lifecycle
+yourself, enable traces with the export endpoint cleared so the debug
+exporter is used and nothing leaves the cluster, watch it reach
+Installed, then disable it and confirm the addon list no longer carries
+it and butler-beta has no `otel-collector-e2e-talos` TenantAddon.
+
+`/observability/status` and the pipeline routes are not in the portal's
+route table and answer 403 for everyone through the portal; that is the
+platform observability page's dependency, not this tab's.
