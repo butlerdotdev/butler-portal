@@ -546,10 +546,13 @@ export const AddonsTab = ({
 
   const installedRows: InstalledAddonRow[] = useMemo(() => {
     return installedAddons.map(addon => {
+      // An installed addon is named after its cluster; the catalog is keyed
+      // by the addon field the server returns alongside it.
+      const catalogKey = (addon.addon ?? addon.name).toLowerCase();
       const catalogEntry = catalog.find(
-        c => c.name.toLowerCase() === addon.name.toLowerCase(),
+        c => c.name.toLowerCase() === catalogKey,
       );
-      const isPlatform = platformAddonNames.has(addon.name.toLowerCase());
+      const isPlatform = platformAddonNames.has(catalogKey);
       return {
         id: addon.name,
         name: addon.name,
