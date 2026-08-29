@@ -231,3 +231,149 @@ every identity as platform admin, which invalidates live authorization
 probes taken while degraded — authorization for this slice was taken from
 `audit.go` and a pre-degradation probe. Neither changes the required
 backend set (#92 to #101) or the merge order.
+
+## Release-candidate closure gate 2026-08-28
+
+The train was reviewed as one increment for merge readiness. Verdict:
+PASS WITH CONDITIONS — one security fix (D9) is a new companion PR that
+should merge with the train; the harness needs a restart before any
+future live authority re-proof.
+
+### Required backend set (updated)
+
+`#92 #93 #94 #95 #96 #97 #98 #99 #100 #101` plus **#102**
+(`fix/audit-scrub-credential-keys`, the D9 fix, based on `main`). All
+OPEN, all based on `main@4dd6f37`, all mergeable/clean. The synthetic
+integration of main + train1 + #100 + #101 + #102 merges with zero
+conflicts, `go build ./...` and `go test ./...` pass, and answers all
+102 Portal-required paths identically.
+
+### D9 — audit scrubber credential retention: CLOSED (server-side, PR #102)
+
+Root cause: `internal/audit/scrub.go` redacted an exact key list;
+Butler's prefixed credential fields (`harvesterKubeconfig`,
+`nutanixPassword`, `proxmoxTokenSecret`, `azureClientSecret`,
+`gcpServiceAccount`, `awsSecretAccessKey`) never matched, so a provider
+or IdP request retained its credential in the in-memory audit ring,
+which `GET /admin/audit` serves to any platform viewer. Confirmed live:
+`POST /providers/test` with a sentinel kubeconfig stored the sentinel
+verbatim. A second, subtler path: the middleware pre-truncated the body
+to 2048 bytes before scrubbing, so a larger body (a kubeconfig is
+multi-KB) became invalid JSON and fell through to a raw-body summary
+that was never scrubbed.
+
+Fix (PR #102): match secret-bearing keys by normalized substring at any
+depth (subsumes the old list, covers the prefixed fields; public CA
+bundles deliberately not redacted), scrub top-level arrays, and never
+return a raw non-JSON body — an unparseable or oversized body is
+summarized as omitted. The middleware no longer pre-truncates into
+invalid JSON. Tests assert a sentinel never survives, for every Butler
+credential field and for nested/array/truncated/oversized/top-level
+bodies, asserting the _stored_ summary. The Portal keeps its own
+render-time redaction as defence in depth.
+
+Existing in-memory events (the 10,000-entry ring) still hold
+pre-fix summaries; they are lost on the next server restart, and no
+restart happens in this pass. After PR #102 deploys, newly recorded
+events cannot retain the identified credentials.
+
+### D10 — dev-identity harness degradation: root cause found, not repaired this pass
+
+The 6-day-old local harness process resolves every `x-butler-dev-identity`
+to `platformRole=admin` (correct email, wrong role). The User CRDs on
+butler-beta are correct (padmin=admin, pviewer=viewer, team roles carry
+no platform role), so this is stale in-process state, not a data change:
+when the long-running user-service's CRD lookup goes stale, the session
+middleware's legacy-admin fallback ("User CRD not found ... legacy admin
+has no User CRD") grants admin. A fresh process resolves correctly.
+
+Repair is a restart, but a safe in-place restart is blocked: the old
+binary is unlinked (cannot be re-run) and the portal signer's private
+key file (`scratchpad/harness/portal-signing.key`, kid
+`local-harness-2026-08-22`) was cleaned from scratchpad, so the matching
+`BUTLER_PORTAL_PUBKEY` cannot be reconstructed to make a new server verify
+the running portal's proofs. Restoring the harness therefore requires
+regenerating the keypair and restarting BOTH the portal dev server and
+the butler-server — heavier than a bounded state repair, and it would
+interrupt the running dev environment. Not done here.
+
+Consequence: the live authority matrix cannot be re-proven against this
+harness in this pass. The authority evidence used is the server source
+(read directly), the pre-degradation live probe captured at the start of
+the audit slice, and the automated tests, which all agree. The all-admin
+harness was not used to "prove" anything.
+
+Restart recipe for a maintainer or next session: rebuild the release
+candidate (`main` + `#92..#102`), generate a fresh Ed25519 keypair, write
+the private key to `butler.signing.keyPath`, set `BUTLER_PORTAL_PUBKEY`
+to the SPKI public key with kid matching `butler.signing.kid`, restart
+the portal dev server and the butler-server together, then confirm role
+differentiation with a discriminating endpoint (`GET /admin/identity-providers`
+must 403 a team role) before trusting any probe.
+
+### Proxy query-forwarding fix is cross-cutting
+
+The plugin-backend proxy forwarded `req.path`, which drops the query
+string, so every server-side query reached the server empty. `upstreamPath`
+now carries it. Affected callers: `listClusters` (`?team=`, intended
+narrowing), both audit lists (filters/paging, proven), and
+`gitops/repos/branches` (`?repo=`, which the server _requires_ — so
+branch selection had always returned 400; the fix repairs that latent
+defect too, row #57). The helper slices the already-encoded query
+verbatim: no double-encoding, repeated params and encoded slashes
+preserved (unit test), no fragment handling needed.
+
+### Remaining MISSING rows, classified (none block the RC)
+
+- Release-required: none. Nav is honest — every rail entry reads real
+  data (Settings row 88 was stale; it reads the real `/admin/config`
+  read-only, re-scored PARTIAL).
+- Post-release P1: 54/55 (GitOps v2 preview/export-cluster), 75 (quota
+  pre-checks), 112 (Images), 113 (Addon catalog admin), 129
+  (NotificationBell realtime), 88-edit (PUT /admin/config by section).
+  Row 41 (Control Plane tab) is implemented; its MISSING is likely stale
+  and should be re-checked, not a blocker.
+- P2: 3, 5, 6, 15, 16 (cluster-list filters/grouping/owner column, team
+  create modal), 76 (per-member cap), 100 (env migration), 127 (device
+  auth), 132 (shadow mode, partially present).
+- P3: 108 (bulk user delete), 131 (permission-change warning).
+
+### Merge order (unchanged, + D9)
+
+Server: (#92, #93, #97) then (#94, #98) then (#95, #96) then #99 then
+(#100, #101), and **#102** any time (independent, based on main; merge it
+with or before the train so the audit log ships without the credential
+leak). Then Portal: #70–#78 (or `integration/train2`) then #79.
+Server-first stays safe; the Portal is never more permissive than either
+server. Only a default-branch push builds the timestamped tag Flux
+auto-deploys, so each merge is its own deployment.
+
+### Rollback
+
+Each repo rolls back independently by reverting the merge (or pinning the
+previous `<ts>-sha` image via the Flux ImagePolicy override). Because
+server-first is additive, rolling back the Portal alone leaves the newer
+server serving the older Portal, which is compatible. Rolling back the
+server while the new Portal stands degrades gracefully: scopes edits 500
+(shown), team-scoped provider reads widen, audit still works. No
+schema/persistent migration is involved (audit is in-memory; Team/Provider
+changes are CRD-compatible), so rollback is a redeploy, not a data repair.
+
+### Post-merge smoke checklist (for the maintainer, after they deploy)
+
+1. Auth: each of the five roles resolves with the right platformRole
+   (`/auth/me`), and `GET /admin/identity-providers` 403s a team role.
+2. Clusters: list, detail, scale/edit/environment offered to admin/operator
+   only; kubeconfig requires operate.
+3. Providers: platform create/edit/validate platform-admin only; team
+   providers scoped (a team cannot read another team's, #100).
+4. Policies read; observability status platform-admin only; addons values
+   round-trip.
+5. Identity providers: update a non-scope field, then a scopes field
+   (must not 500, #101).
+6. Teams: limits editable by platform admin only (webhook), members/groups
+   by platform admin; another team admin refused.
+7. Audit: platform log to admin+viewer, team activity to team admins;
+   operators/viewers refused; a provider-create event shows `[REDACTED]`,
+   not a credential (#102); a filter and a page change the result.
+8. Cross-team denial holds on providers, members, audit.
