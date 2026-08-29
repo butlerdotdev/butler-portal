@@ -96,15 +96,26 @@ export class IdentityResolver {
     try {
       const { email, cacheable } = await this.lookup(entityRef, credentials);
       if (cacheable) {
-        this.cache.set(entityRef, { email, cacheable, expires: Date.now() + CACHE_TTL_MS });
+        this.cache.set(entityRef, {
+          email,
+          cacheable,
+          expires: Date.now() + CACHE_TTL_MS,
+        });
       }
       return email;
     } catch (error) {
       if (error instanceof UnresolvableIdentityError) {
-        this.logger.warn('Backstage user has no resolvable butler-server email', {
-          entityRef,
+        this.logger.warn(
+          'Backstage user has no resolvable butler-server email',
+          {
+            entityRef,
+          },
+        );
+        this.cache.set(entityRef, {
+          error,
+          cacheable: true,
+          expires: Date.now() + FAILURE_TTL_MS,
         });
-        this.cache.set(entityRef, { error, cacheable: true, expires: Date.now() + FAILURE_TTL_MS });
       }
       throw error;
     }
@@ -128,8 +139,9 @@ export class IdentityResolver {
         const entity = await this.catalog.getEntityByRef(entityRef, {
           credentials,
         });
-        const profileEmail = (entity?.spec as { profile?: { email?: string } } | undefined)
-          ?.profile?.email;
+        const profileEmail = (
+          entity?.spec as { profile?: { email?: string } } | undefined
+        )?.profile?.email;
         if (profileEmail) {
           return { email: profileEmail.toLowerCase(), cacheable: true };
         }
@@ -152,7 +164,9 @@ export class IdentityResolver {
     // A catalog outage with no domain fallback is not a verdict about the
     // user; surface it without remembering it so the next request retries.
     if (catalogFailed) {
-      throw new Error(`catalog lookup failed for ${entityRef} and no email domain is configured`);
+      throw new Error(
+        `catalog lookup failed for ${entityRef} and no email domain is configured`,
+      );
     }
     throw new UnresolvableIdentityError(entityRef);
   }

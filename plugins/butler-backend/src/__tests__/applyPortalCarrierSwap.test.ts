@@ -97,8 +97,12 @@ describe('applyPortalCarrierSwap', () => {
         subEmail: 'user@example.com',
       });
 
-      expect(forwardHeaders.Authorization).not.toBe('Bearer legacy-admin-token');
-      expect(forwardHeaders.Authorization).toMatch(/^Bearer [A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/);
+      expect(forwardHeaders.Authorization).not.toBe(
+        'Bearer legacy-admin-token',
+      );
+      expect(forwardHeaders.Authorization).toMatch(
+        /^Bearer [A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/,
+      );
       expect(forwardHeaders).not.toHaveProperty('X-Butler-User-Email');
       // Non-auth headers untouched.
       expect(forwardHeaders['Content-Type']).toBe('application/json');
@@ -118,7 +122,9 @@ describe('applyPortalCarrierSwap', () => {
       });
 
       expect(wsHeaders.Authorization).not.toBe('Bearer legacy-admin-token');
-      expect(wsHeaders.Authorization).toMatch(/^Bearer [A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/);
+      expect(wsHeaders.Authorization).toMatch(
+        /^Bearer [A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/,
+      );
     });
 
     it('produces a proof whose sub claim is the supplied subEmail', () => {
@@ -136,8 +142,12 @@ describe('applyPortalCarrierSwap', () => {
 
       const token = forwardHeaders.Authorization.replace(/^Bearer /, '');
       const payloadB64 = token.split('.')[1];
-      const padded = payloadB64.replace(/-/g, '+').replace(/_/g, '/') + '==='.slice((payloadB64.length + 3) % 4);
-      const payload = JSON.parse(Buffer.from(padded, 'base64').toString('utf8'));
+      const padded =
+        payloadB64.replace(/-/g, '+').replace(/_/g, '/') +
+        '==='.slice((payloadB64.length + 3) % 4);
+      const payload = JSON.parse(
+        Buffer.from(padded, 'base64').toString('utf8'),
+      );
 
       expect(payload.sub).toBe('abagan@butlerlabs.dev');
       expect(payload.iss).toBe('butler-portal');

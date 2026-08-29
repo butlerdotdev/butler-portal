@@ -34,6 +34,7 @@ import {
   IdentityResolver,
   UnresolvableIdentityError,
 } from './service/IdentityResolver';
+import { DevIdentities, DEV_IDENTITY_COOKIE } from './service/DevIdentities';
 
 /**
  * Outcome of the proxy-side authorization check for one request.
@@ -126,7 +127,10 @@ export function createRouteAuthorizationMiddleware(opts: {
       const credentials = await httpAuth.credentials(req, {
         allow: ['user', 'service'],
       });
-      if (credentials.principal && (credentials.principal as { type?: string }).type !== 'user') {
+      if (
+        credentials.principal &&
+        (credentials.principal as { type?: string }).type !== 'user'
+      ) {
         res.status(403).json({
           error: 'forbidden',
           reason: 'only user principals may call the Butler proxy',
@@ -162,7 +166,9 @@ export function createRouteAuthorizationMiddleware(opts: {
         });
         return;
       }
-      res.status(403).json({ error: 'forbidden', permission: decision.permission });
+      res
+        .status(403)
+        .json({ error: 'forbidden', permission: decision.permission });
     })().catch(next);
   };
 }
@@ -204,11 +210,24 @@ export async function createRouter(options: {
   // omitted (tests exercising only the relay) one is built from userInfo
   // and auth without catalog or domain fallback.
   identityResolver?: IdentityResolver;
+  // App origin the dev act-as route redirects a bound session back to.
+  appBaseUrl?: string;
+  // Local review only. When present, a session may name one of the
+  // configured dev identities and the proxy acts as that butler-server
+  // user. Authorization still happens in butler-server; this only stands
+  // in for the Backstage sign-in step. Never constructed in production.
+  devIdentities?: DevIdentities | null;
 }): Promise<Router> {
   const { baseUrl, authManager, httpAuth, userInfo, auth, logger } = options;
   const portalSigner = options.portalSigner ?? null;
   const permissions = options.permissions;
   const allowUnmappedRoutes = options.allowUnmappedRoutes ?? false;
+  const devIdentities = options.devIdentities ?? null;
+  // Where the dev-only act-as route sends a session once it is bound.
+  const appBaseUrl = (options.appBaseUrl ?? 'http://localhost:3000').replace(
+    /\/+$/,
+    '',
+  );
   const identityResolver =
     options.identityResolver ??
     new IdentityResolver({ userInfo, auth, logger });
@@ -250,6 +269,7 @@ export async function createRouter(options: {
     permissions,
     allowUnmappedRoutes,
     identityResolver,
+    devIdentities,
   });
   let upgradeHandlerAttached = false;
 
@@ -271,6 +291,12 @@ export async function createRouter(options: {
    * email, so nothing is forwarded under a guessed identity.
    */
   async function resolveCallerEmail(req: Request): Promise<string | undefined> {
+    // Local review sessions name the user they act as. The email still
+    // travels the normal path below, so butler-server authorizes it.
+    const devEmail = devIdentities?.emailFor(req);
+    if (devEmail) {
+      return devEmail;
+    }
     const credentials = await httpAuth.credentials(req, {
       allow: ['user', 'service'],
     });
@@ -342,6 +368,56 @@ export async function createRouter(options: {
     }
   });
 
+  // ---- Local role review (dev only) -------------------------------
+  // These routes exist only when DevIdentities loaded, which cannot
+  // happen in production. They select which butler-server user this
+  // browser session acts as; every authorization decision still belongs
+  // to butler-server.
+  if (devIdentities) {
+    router.get('/_dev/identities', (_req: Request, res: Response) => {
+      res.json({
+        identities: devIdentities.list().map(i => ({
+          key: i.key,
+          email: i.email,
+          label: i.label ?? i.key,
+        })),
+      });
+    });
+
+    router.get('/_dev/act-as/:key', (req: Request, res: Response) => {
+      const key = String(req.params.key);
+      const identity = devIdentities.get(key);
+      if (!identity) {
+        res.status(404).json({ error: `unknown dev identity '${key}'` });
+        return;
+      }
+      // Session cookie: it dies with the browser context, so a review
+      // window cannot outlive the review.
+      res.cookie(DEV_IDENTITY_COOKIE, key, {
+        httpOnly: false,
+        sameSite: 'lax',
+        path: '/',
+      });
+      logger.info('Local role review session bound', {
+        key,
+        email: identity.email,
+      });
+      const to = typeof req.query.to === 'string' ? req.query.to : '/butler';
+      // Only a path, so this cannot be aimed at another origin. The path
+      // belongs to the app rather than to this backend, so it resolves
+      // against the app's base URL.
+      const path = to.startsWith('/') && !to.startsWith('//') ? to : '/butler';
+      res.redirect(`${appBaseUrl}${path}`);
+    });
+
+    router.get('/_dev/whoami', async (req: Request, res: Response) => {
+      res.json({
+        actingAs: devIdentities.emailFor(req) ?? null,
+        via: 'local role review',
+      });
+    });
+  }
+
   router.get('/_identity', async (req: Request, res: Response) => {
     try {
       let email: string | undefined;
@@ -373,13 +449,19 @@ export async function createRouter(options: {
       const usersResponse = await butlerFetch('/users');
       const users = usersResponse?.users ?? [];
       const matchedUser: any =
-        users.find(
-          (u: any) => String(u.email || '').toLowerCase() === email,
-        ) ?? null;
+        users.find((u: any) => String(u.email || '').toLowerCase() === email) ??
+        null;
 
-      const isPlatformAdmin = matchedUser?.isPlatformAdmin === true ||
+      const isPlatformAdmin =
+        matchedUser?.isPlatformAdmin === true ||
         matchedUser?.isAdmin === true ||
         matchedUser?.role === 'admin';
+
+      // The server grants admin reads to the platform viewer role as well,
+      // so the role travels with the identity and the plugin decides what
+      // a viewer may see rather than collapsing it to "not an admin".
+      const platformRole: string =
+        matchedUser?.platformRole || (isPlatformAdmin ? 'admin' : '');
 
       // Get all teams and check membership for this user
       const teamsResponse = await butlerFetch('/teams');
@@ -408,6 +490,7 @@ export async function createRouter(options: {
       logger.info('Resolved Backstage user identity', {
         email,
         isPlatformAdmin,
+        platformRole,
         teamCount: userTeams.length,
       });
 
@@ -416,6 +499,7 @@ export async function createRouter(options: {
         email,
         displayName: matchedUser?.name || matchedUser?.displayName || email,
         isPlatformAdmin,
+        platformRole,
         teams: userTeams,
       });
     } catch (err) {
@@ -447,9 +531,11 @@ export async function createRouter(options: {
       const token = await authManager.getToken();
 
       // Build the butler-server target path.
-      // req.path is relative to this router's mount point.
-      // All butler-server API endpoints are under /api, so prefix with /api.
-      const targetPath = `/api${req.path}`;
+      // req.path is relative to this router's mount point and carries no
+      // query string; the query is taken from req.url so filters and
+      // pagination reach the server. Authorization is decided on the
+      // path alone, above.
+      const targetPath = upstreamPath(req.path, req.url);
       const targetUrlFull = `${targetUrl}${targetPath}`;
 
       // Build forwarded headers
@@ -484,7 +570,11 @@ export async function createRouter(options: {
       // reaches butler-server byte-identically. When activated, the proof
       // replaces the Authorization Bearer and the impersonation header is
       // dropped.
-      applyPortalCarrierSwap({ forwardHeaders, portalSigner, subEmail: fullEmail });
+      applyPortalCarrierSwap({
+        forwardHeaders,
+        portalSigner,
+        subEmail: fullEmail,
+      });
 
       // Forward content-type if present
       if (req.headers['content-type']) {
@@ -510,9 +600,7 @@ export async function createRouter(options: {
 
       // Forward X-Request-ID for tracing
       if (req.headers['x-request-id']) {
-        forwardHeaders['X-Request-ID'] = req.headers[
-          'x-request-id'
-        ] as string;
+        forwardHeaders['X-Request-ID'] = req.headers['x-request-id'] as string;
       }
 
       logger.debug('Proxying request to butler-server', {
@@ -528,7 +616,11 @@ export async function createRouter(options: {
       // re-serialize req.body when it has already been parsed.
       let body: Buffer | string | undefined;
       if (req.method !== 'GET' && req.method !== 'HEAD') {
-        if (req.body !== undefined && req.body !== null && Object.keys(req.body).length > 0) {
+        if (
+          req.body !== undefined &&
+          req.body !== null &&
+          Object.keys(req.body).length > 0
+        ) {
           // Body was already parsed by Express middleware
           body = JSON.stringify(req.body);
           forwardHeaders['Content-Type'] = 'application/json';
@@ -644,6 +736,7 @@ export function createButlerUpgradeHandler(deps: {
   permissions?: PermissionsService;
   allowUnmappedRoutes?: boolean;
   identityResolver?: IdentityResolver;
+  devIdentities?: DevIdentities | null;
 }): (request: IncomingMessage, socket: Duplex, head: Buffer) => void {
   const {
     httpAuth,
@@ -654,11 +747,16 @@ export function createButlerUpgradeHandler(deps: {
     portalSigner,
     permissions,
     allowUnmappedRoutes,
+    devIdentities,
   } = deps;
   const identityResolver =
     deps.identityResolver ??
     (deps.userInfo && deps.auth
-      ? new IdentityResolver({ userInfo: deps.userInfo, auth: deps.auth, logger })
+      ? new IdentityResolver({
+          userInfo: deps.userInfo,
+          auth: deps.auth,
+          logger,
+        })
       : undefined);
   const refuse = (socket: Duplex, status: string) => {
     socket.end(
@@ -707,11 +805,18 @@ export function createButlerUpgradeHandler(deps: {
         let subEmail: string | undefined;
         if (portalSigner && identityResolver) {
           try {
-            subEmail = await identityResolver.resolveEmail(credentials);
+            // Same review-session override as the proxy, so a relayed
+            // terminal acts as the user the session is reviewing.
+            subEmail =
+              devIdentities?.emailFor(request as unknown as Request) ??
+              (await identityResolver.resolveEmail(credentials));
           } catch (err) {
-            logger.warn('WebSocket upgrade refused: caller identity unresolvable', {
-              error: String(err),
-            });
+            logger.warn(
+              'WebSocket upgrade refused: caller identity unresolvable',
+              {
+                error: String(err),
+              },
+            );
             socket.end(
               'HTTP/1.1 403 Forbidden\r\n' +
                 'Connection: close\r\n' +
@@ -775,7 +880,11 @@ async function handleWsRelay(
     const wsHeaders: Record<string, string> = {
       Authorization: `Bearer ${token}`,
     };
-    applyPortalCarrierSwap({ forwardHeaders: wsHeaders, portalSigner, subEmail });
+    applyPortalCarrierSwap({
+      forwardHeaders: wsHeaders,
+      portalSigner,
+      subEmail,
+    });
 
     const serverWs = new WebSocket(wsTargetUrl, {
       headers: wsHeaders,
@@ -840,7 +949,9 @@ async function handleWsRelay(
       cleanup();
       if (clientWs.readyState === WebSocket.OPEN) {
         const safeCode =
-          code >= 1000 && code <= 4999 && ![1004, 1005, 1006, 1015].includes(code)
+          code >= 1000 &&
+          code <= 4999 &&
+          ![1004, 1005, 1006, 1015].includes(code)
             ? code
             : 1000;
         clientWs.close(safeCode, reason);
@@ -853,7 +964,9 @@ async function handleWsRelay(
       cleanup();
       if (serverWs.readyState === WebSocket.OPEN) {
         const safeCode =
-          code >= 1000 && code <= 4999 && ![1004, 1005, 1006, 1015].includes(code)
+          code >= 1000 &&
+          code <= 4999 &&
+          ![1004, 1005, 1006, 1015].includes(code)
             ? code
             : 1000;
         serverWs.close(safeCode, reason);
@@ -885,4 +998,17 @@ async function handleWsRelay(
       clientWs.close(1011, 'Failed to establish relay');
     }
   }
+}
+
+/**
+ * The path forwarded to butler-server for a proxied request: the router
+ * relative path under `/api`, plus the caller's query string. Express's
+ * `req.path` drops the query, which silently disabled every server-side
+ * filter and page size (`?limit=`, `?offset=`, `?repo=` and the audit
+ * filters) until this was carried across explicitly.
+ */
+export function upstreamPath(routerPath: string, url: string): string {
+  const q = url.indexOf('?');
+  const query = q >= 0 ? url.slice(q) : '';
+  return `/api${routerPath}${query}`;
 }

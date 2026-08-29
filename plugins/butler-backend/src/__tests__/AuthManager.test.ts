@@ -80,9 +80,7 @@ describe('AuthManager.getHealthSnapshot', () => {
     m.lastError = 'butler-server login failed: 401 Unauthorized';
     const snap = m.getHealthSnapshot();
     expect(snap.authenticated).toBe(false);
-    expect(snap.lastError).toBe(
-      'butler-server login failed: 401 Unauthorized',
-    );
+    expect(snap.lastError).toBe('butler-server login failed: 401 Unauthorized');
   });
 
   it('reports authenticated and clears lastError when both are present (last-action-wins)', () => {

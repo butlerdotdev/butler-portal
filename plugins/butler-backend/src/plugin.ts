@@ -22,6 +22,7 @@ import { butlerPermissions } from '@internal/plugin-butler-common';
 import { catalogServiceRef } from '@backstage/plugin-catalog-node';
 import { AuthManager } from './service/AuthManager';
 import { IdentityResolver } from './service/IdentityResolver';
+import { DevIdentities } from './service/DevIdentities';
 import { loadPortalSigner } from './service/PortalSigner';
 import { createRouter } from './router';
 import { validateButlerAuth } from './validation';
@@ -148,6 +149,14 @@ export const butlerPlugin = createBackendPlugin({
           logger: logger.child({ service: 'butler-identity' }),
         });
 
+        // Local role review only. Returns null in production and when
+        // the operator has not opted in, so the harness cannot exist in
+        // a shipped process.
+        const devIdentities = DevIdentities.load({
+          config,
+          logger: logger.child({ service: 'butler-dev-identities' }),
+        });
+
         // Create the proxy router
         const router = await createRouter({
           baseUrl,
@@ -159,9 +168,12 @@ export const butlerPlugin = createBackendPlugin({
           portalSigner,
           permissions,
           allowUnmappedRoutes:
-            config.getOptionalBoolean('butler.authorization.allowUnmappedRoutes') ??
-            false,
+            config.getOptionalBoolean(
+              'butler.authorization.allowUnmappedRoutes',
+            ) ?? false,
           identityResolver,
+          devIdentities,
+          appBaseUrl: config.getOptionalString('app.baseUrl'),
         });
 
         // Router is mounted under Backstage's default-deny auth gate.
@@ -184,6 +196,19 @@ export const butlerPlugin = createBackendPlugin({
           path: '/_health',
           allow: 'unauthenticated',
         });
+
+        // The local review launcher enumerates identities and binds a
+        // session before it has one, so these two routes answer without
+        // Backstage credentials. They exist only when DevIdentities
+        // loaded, which cannot happen in production, and they hand out
+        // nothing but the configured review identities. Everything they
+        // lead to is still authorized by butler-server.
+        if (devIdentities) {
+          httpRouter.addAuthPolicy({
+            path: '/_dev',
+            allow: 'unauthenticated',
+          });
+        }
         httpRouter.use(router);
 
         // Clean up on shutdown

@@ -92,9 +92,7 @@ export class AuthManager {
     // Extract JWT from Set-Cookie header
     const setCookieHeaders = response.headers.raw()['set-cookie'];
     if (!setCookieHeaders) {
-      throw new Error(
-        'butler-server login response missing Set-Cookie header',
-      );
+      throw new Error('butler-server login response missing Set-Cookie header');
     }
 
     let sessionToken: string | null = null;
@@ -207,7 +205,11 @@ export class AuthManager {
     }, refreshInSec * 1000);
 
     // Prevent the timer from keeping Node.js alive on shutdown
-    if (this.refreshTimer && typeof this.refreshTimer === 'object' && 'unref' in this.refreshTimer) {
+    if (
+      this.refreshTimer &&
+      typeof this.refreshTimer === 'object' &&
+      'unref' in this.refreshTimer
+    ) {
       this.refreshTimer.unref();
     }
   }
@@ -229,7 +231,9 @@ export class AuthManager {
         return claims.exp;
       }
     } catch {
-      this.logger.warn('Failed to parse JWT expiry, refresh scheduling disabled');
+      this.logger.warn(
+        'Failed to parse JWT expiry, refresh scheduling disabled',
+      );
     }
     return 0;
   }

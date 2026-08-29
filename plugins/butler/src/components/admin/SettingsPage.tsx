@@ -1,130 +1,177 @@
 // Copyright 2026 The Butler Authors.
 // SPDX-License-Identifier: Apache-2.0
 
-import { useEffect, useState, useCallback } from 'react';
-import { Link as RouterLink } from 'react-router-dom';
+import React, { useCallback, useEffect, useState } from 'react';
 import { useApi } from '@backstage/core-plugin-api';
-import {
-  InfoCard,
-  Progress,
-  EmptyState,
-} from '@backstage/core-components';
-import {
-  Grid,
-  Typography,
-  Button,
-  Divider,
-  Chip,
-  Box,
-  makeStyles,
-} from '@material-ui/core';
-import ArrowBackIcon from '@material-ui/icons/ArrowBack';
-import RefreshIcon from '@material-ui/icons/Refresh';
+import { makeStyles } from '@material-ui/core/styles';
+import type { ReactNode } from 'react';
 import { butlerApiRef } from '../../api/ButlerApi';
-import type { ManagementCluster } from '../../api/types/clusters';
-import type { PlatformConfig } from '../../api/types/config';
-import type { GitProviderConfig } from '../../api/types/gitops';
-import { StatusBadge } from '../StatusBadge/StatusBadge';
+import type {
+  ComponentResources,
+  PlatformConfig,
+} from '../../api/types/config';
 import { useButlerRoutes } from '../../hooks/useButlerRoutes';
+import { useTeamContext } from '../../hooks/useTeamContext';
+import { butlerTokens, rgb } from '../../theme';
+import {
+  ButlerBanner,
+  ButlerAccessDenied,
+  ButlerCard,
+  ButlerErrorState,
+  ButlerInput,
+  ButlerLoading,
+  ButlerPageHeader,
+  ButlerSelect,
+  ButlerStack,
+  ButlerSwitch,
+  ButlerTextarea,
+} from '../ui';
 
-const useStyles = makeStyles(theme => ({
-  header: {
-    display: 'flex',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: theme.spacing(2),
-  },
-  settingRow: {
-    display: 'flex',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    padding: theme.spacing(1.5, 0),
-  },
-  settingLabel: {
-    fontWeight: 600,
-    color: theme.palette.text.secondary,
-    minWidth: 200,
-  },
-  settingValue: {
-    textAlign: 'right',
-  },
-  sectionDescription: {
-    marginBottom: theme.spacing(2),
-    color: theme.palette.text.secondary,
-  },
-}));
-
-// View model for this page, projected from PlatformConfig (GET /admin/config)
-// and the Git provider config. Field names match what the cards render.
-interface SettingsView {
-  mode?: string;
-  hostname?: string;
-  defaultProvider?: string;
-  gitProvider?: {
-    type?: string;
-    configured?: boolean;
-  };
-  teamLimits?: {
-    maxClusters?: number;
-    maxWorkersPerCluster?: number;
-    maxTotalCPU?: string;
-    maxTotalMemory?: string;
-  };
-}
-
-function toSettingsView(
-  config: PlatformConfig | null,
-  git: GitProviderConfig | null,
-): SettingsView {
+const useStyles = makeStyles(theme => {
+  const t = butlerTokens(theme);
+  const p = t.palette;
   return {
-    mode: config?.multiTenancy?.mode,
-    hostname: config?.controlPlaneExposure?.hostname,
-    defaultProvider: config?.defaultProviderRef?.name,
-    gitProvider: git ? { type: git.type, configured: git.configured } : undefined,
-    teamLimits: config?.defaultTeamLimits
-      ? {
-          maxClusters: config.defaultTeamLimits.maxClusters,
-          maxWorkersPerCluster: config.defaultTeamLimits.maxWorkersPerCluster,
-          maxTotalCPU: config.defaultTeamLimits.maxTotalCPU,
-          maxTotalMemory: config.defaultTeamLimits.maxTotalMemory,
-        }
-      : undefined,
+    page: { maxWidth: 896 },
+    counts: {
+      display: 'flex',
+      gap: 16,
+      fontSize: 14,
+      lineHeight: '20px',
+      color: t.text.subtle,
+    },
+    sectionTitle: {
+      margin: '0 0 16px',
+      fontSize: 18,
+      lineHeight: '28px',
+      fontWeight: 500,
+      color: t.text.primary,
+    },
+    intro: {
+      margin: '0 0 16px',
+      fontSize: 12,
+      lineHeight: '16px',
+      color: t.text.subtle,
+    },
+    fields: {
+      display: 'flex',
+      flexDirection: 'column',
+      gap: 16,
+    },
+    grid2: {
+      display: 'grid',
+      gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
+      gap: 16,
+    },
+    grid4: {
+      display: 'grid',
+      gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
+      gap: 12,
+      '@media (min-width: 768px)': {
+        gridTemplateColumns: 'repeat(4, minmax(0, 1fr))',
+      },
+    },
+    rowTitle: {
+      margin: '0 0 8px',
+      fontSize: 14,
+      lineHeight: '20px',
+      fontWeight: 500,
+      color: rgb(p.neutral[300]),
+    },
+    rows: {
+      display: 'flex',
+      flexDirection: 'column',
+      gap: 24,
+    },
+    amber: {
+      margin: 0,
+      fontSize: 12,
+      lineHeight: '16px',
+      color: rgb(p.amber[400]),
+    },
   };
-}
+});
 
+const Section = ({
+  title,
+  intro,
+  children,
+}: {
+  title: string;
+  intro?: ReactNode;
+  children: ReactNode;
+}) => {
+  const classes = useStyles();
+  return (
+    <ButlerCard style={{ padding: 24 }}>
+      <h2 className={classes.sectionTitle}>{title}</h2>
+      {intro && <p className={classes.intro}>{intro}</p>}
+      {children}
+    </ButlerCard>
+  );
+};
+
+const ResourceRow = ({
+  label,
+  value,
+}: {
+  label: string;
+  value?: ComponentResources;
+}) => {
+  const classes = useStyles();
+  return (
+    <div>
+      <h3 className={classes.rowTitle}>{label}</h3>
+      <div className={classes.grid4}>
+        <ButlerInput
+          label="Request CPU"
+          value={value?.requests?.cpu || ''}
+          placeholder="100m"
+          readOnly
+          disabled
+        />
+        <ButlerInput
+          label="Request Memory"
+          value={value?.requests?.memory || ''}
+          placeholder="256Mi"
+          readOnly
+          disabled
+        />
+        <ButlerInput
+          label="Limit CPU"
+          value={value?.limits?.cpu || ''}
+          placeholder="2"
+          readOnly
+          disabled
+        />
+        <ButlerInput
+          label="Limit Memory"
+          value={value?.limits?.memory || ''}
+          placeholder="1Gi"
+          readOnly
+          disabled
+        />
+      </div>
+    </div>
+  );
+};
+
+// Every control is read-only: the Portal API client only exposes
+// GET /admin/config, so the page mirrors the console's viewer state
+// (disabled fields, no Save buttons) until an update call exists.
 export const SettingsPage = () => {
   const classes = useStyles();
   const api = useApi(butlerApiRef);
   const routes = useButlerRoutes();
-  const [management, setManagement] = useState<ManagementCluster | null>(
-    null,
-  );
-  const [config, setConfig] = useState<SettingsView | null>(null);
+  const { isAdmin } = useTeamContext();
+  const [config, setConfig] = useState<PlatformConfig | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<Error | undefined>();
 
-  const fetchData = useCallback(async () => {
+  const load = useCallback(async () => {
     setLoading(true);
     setError(undefined);
     try {
-      const [mgmtRes, configRes, gitRes] = await Promise.allSettled([
-        api.getManagement(),
-        api.getPlatformConfig(),
-        api.getGitOpsConfig(),
-      ]);
-
-      if (mgmtRes.status === 'fulfilled') {
-        setManagement(mgmtRes.value);
-      }
-      if (configRes.status === 'rejected') {
-        throw configRes.reason;
-      }
-      setConfig(
-        toSettingsView(
-          configRes.value,
-          gitRes.status === 'fulfilled' ? gitRes.value : null,
-        ),
-      );
+      setConfig(await api.getPlatformConfig());
     } catch (e) {
       setError(e instanceof Error ? e : new Error(String(e)));
     } finally {
@@ -133,220 +180,352 @@ export const SettingsPage = () => {
   }, [api]);
 
   useEffect(() => {
-    fetchData();
-  }, [fetchData]);
+    if (isAdmin) load();
+  }, [isAdmin, load]);
 
-  if (loading) {
-    return <Progress />;
-  }
-
-  if (error) {
+  let body: React.ReactNode;
+  // Mutating controls on this page are not individually gated yet, so a
+  // platform viewer is told plainly rather than shown actions that would
+  // be refused.
+  if (!isAdmin) {
     return (
-      <EmptyState
-        title="Failed to load settings"
-        description={error.message}
-        missing="info"
+      <ButlerAccessDenied
+        resourceType="page"
+        message="Platform administrator access is required to view platform settings."
+        homeTo={routes.admin()}
       />
     );
   }
 
-  return (
-    <div>
-      <Button
-        startIcon={<ArrowBackIcon />}
-        component={RouterLink}
-        to={routes.admin()}
-        style={{ textTransform: 'none', marginBottom: 16 }}
-      >
-        Back to Admin
-      </Button>
-      <div className={classes.header}>
-        <Typography variant="h4">Platform Settings</Typography>
-        <Button
-          variant="outlined"
-          size="small"
-          startIcon={<RefreshIcon />}
-          onClick={fetchData}
-        >
-          Refresh
-        </Button>
-      </div>
+  if (loading) {
+    body = <ButlerLoading />;
+  } else if (error || !config) {
+    body = (
+      <ButlerErrorState
+        message={error?.message || 'Failed to load platform configuration'}
+        onRetry={load}
+      />
+    );
+  } else {
+    const exposure = config.controlPlaneExposure;
+    const mode = exposure?.mode || 'LoadBalancer';
+    const addons = config.defaultAddonVersions || {};
+    const limits = config.defaultTeamLimits || {};
+    const cp = config.defaultControlPlaneResources || {};
+    const factory = config.imageFactory;
+    const audit = config.audit || {};
+    body = (
+      <>
+        <ButlerBanner
+          title="Read-only"
+          message="Platform settings can be viewed here. Changes must be made from the Butler Console until the Portal supports editing."
+        />
 
-      <Grid container spacing={3}>
-        {/* Platform Info */}
-        <Grid item xs={12} md={6}>
-          <InfoCard title="Platform Information">
-            <Typography
-              variant="body2"
-              className={classes.sectionDescription}
+        <Section title="General Settings">
+          <div className={classes.fields}>
+            <ButlerSelect
+              label="Multi-Tenancy Mode"
+              value={config.multiTenancy?.mode || 'Optional'}
+              help="Enforced: all clusters must belong to a team. Optional: teams available but not required. Disabled: no teams."
+              disabled
             >
-              Core platform configuration and version information.
-            </Typography>
+              <option value="Disabled">Disabled</option>
+              <option value="Optional">Optional</option>
+              <option value="Enforced">Enforced</option>
+            </ButlerSelect>
+            <ButlerInput
+              label="Default Namespace"
+              value={config.defaultNamespace || ''}
+              placeholder="butler-tenants"
+              readOnly
+              disabled
+            />
+            <ButlerInput
+              label="Default Provider"
+              value={config.defaultProviderRef?.name || ''}
+              placeholder="ProviderConfig name (e.g. harvester-prod)"
+              readOnly
+              disabled
+            />
+          </div>
+        </Section>
 
-            <div className={classes.settingRow}>
-              <Typography className={classes.settingLabel}>
-                Platform
-              </Typography>
-              <Typography>Butler</Typography>
-            </div>
-            <Divider />
-
-            <div className={classes.settingRow}>
-              <Typography className={classes.settingLabel}>
-                Mode
-              </Typography>
-              <Chip
-                label={config?.mode || 'Unknown'}
-                size="small"
-                color="primary"
-                variant="outlined"
+        <Section title="Control Plane Exposure">
+          <div className={classes.fields}>
+            <ButlerSelect label="Exposure Mode" value={mode} disabled>
+              <option value="LoadBalancer">
+                LoadBalancer (1 IP per tenant)
+              </option>
+              <option value="Ingress">Ingress (shared IP, SNI routing)</option>
+              <option value="Gateway">Gateway API (shared IP, TLSRoute)</option>
+            </ButlerSelect>
+            {(mode === 'Ingress' || mode === 'Gateway') && (
+              <ButlerInput
+                label="Hostname Pattern"
+                value={exposure?.hostname || ''}
+                placeholder="*.k8s.platform.example.com"
+                readOnly
+                disabled
               />
-            </div>
-            <Divider />
-
-            {management && (
-              <>
-                <div className={classes.settingRow}>
-                  <Typography className={classes.settingLabel}>
-                    Management Cluster
-                  </Typography>
-                  <Box display="flex" alignItems="center" gridGap={8}>
-                    <Typography>{management.name}</Typography>
-                    <StatusBadge status={management.phase} />
-                  </Box>
-                </div>
-                <Divider />
-
-                <div className={classes.settingRow}>
-                  <Typography className={classes.settingLabel}>
-                    Nodes
-                  </Typography>
-                  <Typography>
-                    {management.nodes.ready}/{management.nodes.total} Ready
-                  </Typography>
-                </div>
-                <Divider />
-
-                <div className={classes.settingRow}>
-                  <Typography className={classes.settingLabel}>
-                    Tenant Clusters
-                  </Typography>
-                  <Typography>{management.tenantClusters}</Typography>
-                </div>
-              </>
             )}
-
-            {config?.hostname && (
-              <>
-                <Divider />
-                <div className={classes.settingRow}>
-                  <Typography className={classes.settingLabel}>
-                    Hostname Pattern
-                  </Typography>
-                  <Typography variant="body2">{config.hostname}</Typography>
-                </div>
-              </>
-            )}
-          </InfoCard>
-        </Grid>
-
-        {/* Default Provider Configuration */}
-        <Grid item xs={12} md={6}>
-          <InfoCard title="Default Provider Configuration">
-            <Typography
-              variant="body2"
-              className={classes.sectionDescription}
-            >
-              The default infrastructure provider used when teams do not
-              specify their own.
-            </Typography>
-
-            <div className={classes.settingRow}>
-              <Typography className={classes.settingLabel}>
-                Default Provider
-              </Typography>
-              <Typography>
-                {config?.defaultProvider || 'Not configured'}
-              </Typography>
-            </div>
-            <Divider />
-
-            <div className={classes.settingRow}>
-              <Typography className={classes.settingLabel}>
-                Git Provider
-              </Typography>
-              {config?.gitProvider?.configured ? (
-                <Chip
-                  label={`${config.gitProvider.type || 'Git'} - Configured`}
-                  size="small"
-                  color="primary"
-                  variant="outlined"
+            {mode === 'Ingress' && (
+              <div className={classes.grid2}>
+                <ButlerInput
+                  label="Ingress Class Name"
+                  value={exposure?.ingressClassName || ''}
+                  placeholder="haproxy"
+                  readOnly
+                  disabled
                 />
-              ) : (
-                <Typography color="textSecondary">
-                  Not configured
-                </Typography>
-              )}
+                <ButlerSelect
+                  label="Controller Type"
+                  value={exposure?.controllerType || ''}
+                  disabled
+                >
+                  <option value="">Select controller type</option>
+                  <option value="haproxy">HAProxy</option>
+                  <option value="nginx">NGINX</option>
+                  <option value="traefik">Traefik</option>
+                  <option value="generic">Generic</option>
+                </ButlerSelect>
+              </div>
+            )}
+            {mode === 'Gateway' && (
+              <ButlerInput
+                label="Gateway Reference"
+                value={exposure?.gatewayRef || ''}
+                placeholder="namespace/gateway-name"
+                readOnly
+                disabled
+              />
+            )}
+            {config.status?.tcpProxyRequired && (
+              <p className={classes.amber}>
+                TCP proxy is auto-enabled for all tenants in {mode} mode.
+              </p>
+            )}
+          </div>
+        </Section>
+
+        <Section
+          title="Default Addon Versions"
+          intro="Default versions used when tenant clusters don't specify their own."
+        >
+          <div className={classes.grid2}>
+            <ButlerInput
+              label="Cilium"
+              value={addons.cilium || ''}
+              placeholder="1.16.1"
+              readOnly
+              disabled
+            />
+            <ButlerInput
+              label="MetalLB"
+              value={addons.metallb || ''}
+              placeholder="0.14.8"
+              readOnly
+              disabled
+            />
+            <ButlerInput
+              label="cert-manager"
+              value={addons.certManager || ''}
+              placeholder="1.15.3"
+              readOnly
+              disabled
+            />
+            <ButlerInput
+              label="Longhorn"
+              value={addons.longhorn || ''}
+              placeholder="1.7.2"
+              readOnly
+              disabled
+            />
+            <ButlerInput
+              label="Traefik"
+              value={addons.traefik || ''}
+              placeholder="31.1.1"
+              readOnly
+              disabled
+            />
+            <ButlerInput
+              label="FluxCD"
+              value={addons.fluxcd || ''}
+              placeholder="2.14.0"
+              readOnly
+              disabled
+            />
+          </div>
+        </Section>
+
+        <Section
+          title="Default Team Limits"
+          intro="Default resource limits applied to new teams. Can be overridden per team."
+        >
+          <div className={classes.grid2}>
+            <ButlerInput
+              label="Max Clusters"
+              value={limits.maxClusters ?? ''}
+              placeholder="10"
+              readOnly
+              disabled
+            />
+            <ButlerInput
+              label="Max Workers Per Cluster"
+              value={limits.maxWorkersPerCluster ?? ''}
+              placeholder="20"
+              readOnly
+              disabled
+            />
+            <ButlerInput
+              label="Max Total CPU"
+              value={limits.maxTotalCPU || ''}
+              placeholder="100 (cores)"
+              readOnly
+              disabled
+            />
+            <ButlerInput
+              label="Max Total Memory"
+              value={limits.maxTotalMemory || ''}
+              placeholder="256Gi"
+              readOnly
+              disabled
+            />
+            <ButlerInput
+              label="Max Total Storage"
+              value={limits.maxTotalStorage || ''}
+              placeholder="1Ti"
+              readOnly
+              disabled
+            />
+          </div>
+        </Section>
+
+        <Section
+          title="Default Control Plane Resources"
+          intro="Default resource requests/limits for tenant control plane components. Applied to new clusters without per-cluster overrides. Leave blank for BestEffort QoS."
+        >
+          <div className={classes.rows}>
+            <ResourceRow label="API Server" value={cp.apiServer} />
+            <ResourceRow
+              label="Controller Manager"
+              value={cp.controllerManager}
+            />
+            <ResourceRow label="Scheduler" value={cp.scheduler} />
+          </div>
+        </Section>
+
+        <Section title="Image Factory">
+          <div className={classes.fields}>
+            <ButlerInput
+              label="Factory URL"
+              value={factory?.url || ''}
+              placeholder="https://factory.butlerlabs.dev"
+              readOnly
+              disabled
+            />
+            <ButlerInput
+              label="Credentials Secret"
+              value={factory?.credentialsRef || ''}
+              placeholder="Secret name containing API key"
+              readOnly
+              disabled
+            />
+            <ButlerInput
+              label="Default Schematic ID"
+              value={factory?.defaultSchematicID || ''}
+              placeholder="SHA-256 hex string"
+              readOnly
+              disabled
+              mono
+            />
+            <ButlerSwitch
+              label="Auto Sync"
+              help="Automatically sync images when a cluster references an unavailable image"
+              checked={!!factory?.autoSync}
+              onChange={() => undefined}
+              disabled
+            />
+          </div>
+        </Section>
+
+        <Section
+          title="Audit Log"
+          intro="Configure audit event recording. Events are always emitted as structured logs. Optionally forward to an external system via webhook."
+        >
+          <div className={classes.fields}>
+            <ButlerSwitch
+              label="Enabled"
+              help="Record audit events for mutations and auth actions"
+              checked={!!audit.enabled}
+              onChange={() => undefined}
+              disabled
+            />
+            <ButlerInput
+              label="Webhook URL"
+              value={audit.webhookURL || ''}
+              placeholder="https://siem.company.com/api/v1/audit"
+              help="POST audit events to this URL for external integration (SIEM, log aggregator, etc). Leave empty to disable."
+              readOnly
+              disabled
+            />
+            <ButlerInput
+              label="Buffer Size"
+              value={audit.bufferSize ?? ''}
+              placeholder="10000"
+              help="In-memory ring buffer capacity for recent audit queries in the console. Default 10,000."
+              readOnly
+              disabled
+            />
+          </div>
+        </Section>
+
+        <Section
+          title="Notifications"
+          intro="Forward real-time notifications to external systems (Slack, PagerDuty, Microsoft Teams, etc)."
+        >
+          <ButlerInput
+            label="Webhook URL"
+            value={config.notifications?.webhookURL || ''}
+            placeholder="https://hooks.slack.com/services/..."
+            help="POST notifications to this URL. Leave empty to disable."
+            readOnly
+            disabled
+          />
+        </Section>
+
+        <Section
+          title="SSH Authorized Key"
+          intro="Default SSH public key injected into non-Talos worker nodes for diagnostic access. Can be overridden per cluster."
+        >
+          <ButlerTextarea
+            aria-label="SSH authorized key"
+            value={config.sshAuthorizedKey || ''}
+            placeholder="ssh-ed25519 AAAA..."
+            rows={3}
+            mono
+            readOnly
+            disabled
+          />
+        </Section>
+      </>
+    );
+  }
+
+  return (
+    <ButlerStack className={classes.page}>
+      <ButlerPageHeader
+        title="Platform Settings"
+        subtitle="Configure platform-wide Butler settings"
+        actions={
+          config?.status ? (
+            <div className={classes.counts}>
+              <span>{config.status.teamCount} teams</span>
+              <span>{config.status.clusterCount} clusters</span>
             </div>
-          </InfoCard>
-        </Grid>
-
-        {/* Team Limits */}
-        <Grid item xs={12}>
-          <InfoCard title="Team Limits">
-            <Typography
-              variant="body2"
-              className={classes.sectionDescription}
-            >
-              Default resource limits applied to teams. Individual teams may
-              have custom quotas that override these defaults.
-            </Typography>
-
-            <Grid container spacing={2}>
-              <Grid item xs={12} sm={6} md={3}>
-                <div className={classes.settingRow}>
-                  <Typography className={classes.settingLabel}>
-                    Max Clusters
-                  </Typography>
-                  <Typography>
-                    {config?.teamLimits?.maxClusters ?? 'Unlimited'}
-                  </Typography>
-                </div>
-              </Grid>
-              <Grid item xs={12} sm={6} md={3}>
-                <div className={classes.settingRow}>
-                  <Typography className={classes.settingLabel}>
-                    Max Workers/Cluster
-                  </Typography>
-                  <Typography>
-                    {config?.teamLimits?.maxWorkersPerCluster ?? 'Unlimited'}
-                  </Typography>
-                </div>
-              </Grid>
-              <Grid item xs={12} sm={6} md={3}>
-                <div className={classes.settingRow}>
-                  <Typography className={classes.settingLabel}>
-                    Max Total CPU
-                  </Typography>
-                  <Typography>
-                    {config?.teamLimits?.maxTotalCPU ?? 'Unlimited'}
-                  </Typography>
-                </div>
-              </Grid>
-              <Grid item xs={12} sm={6} md={3}>
-                <div className={classes.settingRow}>
-                  <Typography className={classes.settingLabel}>
-                    Max Total Memory
-                  </Typography>
-                  <Typography>
-                    {config?.teamLimits?.maxTotalMemory ?? 'Unlimited'}
-                  </Typography>
-                </div>
-              </Grid>
-            </Grid>
-          </InfoCard>
-        </Grid>
-      </Grid>
-    </div>
+          ) : undefined
+        }
+      />
+      {body}
+    </ButlerStack>
   );
 };

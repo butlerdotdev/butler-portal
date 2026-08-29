@@ -43,7 +43,9 @@ describe('validateButlerAuth', () => {
   });
 
   it('throws "must be set" when username is valid and password is empty', () => {
-    expect(() => validateButlerAuth('svc-portal', '')).toThrow(mustBeSetMessage);
+    expect(() => validateButlerAuth('svc-portal', '')).toThrow(
+      mustBeSetMessage,
+    );
   });
 
   it('throws "prior insecure default" when password is "admin" (any username)', () => {
@@ -70,9 +72,7 @@ describe('validateButlerAuth', () => {
   });
 
   it('returns void cleanly when both values are valid non-admin', () => {
-    expect(() =>
-      validateButlerAuth('svc-portal', 'hunter2'),
-    ).not.toThrow();
+    expect(() => validateButlerAuth('svc-portal', 'hunter2')).not.toThrow();
   });
 
   it('treats "admin" password comparison as case-sensitive ("Admin" passes)', () => {

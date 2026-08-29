@@ -2,6 +2,42 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { DiscoveryApi, FetchApi } from '@backstage/core-plugin-api';
+import { devIdentityHeader } from './devIdentity';
+import { ButlerApiError } from './ButlerApiError';
+import type {
+  ClusterCreationPolicy,
+  PolicyListResponse,
+} from './types/policies';
+import {
+  auditQueryString,
+  type AuditListResponse,
+  type AuditQuery,
+} from './types/audit';
+import type {
+  ObservabilityConfig,
+  ObservabilityStatus,
+  SetupPipelineRequest,
+  UpdateObservabilityConfigRequest,
+} from './types/observability';
+import type {
+  CAInfoResponse,
+  UpdateProviderRequest,
+  OptionListScope,
+  ProviderClusterListResponse,
+  StorageContainerListResponse,
+} from './types/providers';
+import type {
+  EnvironmentClusterDefaults,
+  EnvironmentRequest,
+  TeamClusterContext,
+  TeamEnvironment,
+} from './types/environments';
+import type {
+  NetworkPool,
+  NetworkPoolListResponse,
+  IPAllocationListResponse,
+} from './types/networks';
+import type { ButlerFieldError } from './ButlerApiError';
 import { ButlerApi } from './ButlerApi';
 
 import type {
@@ -15,6 +51,7 @@ import type {
   ManagementCluster,
   ManagementNode,
   ManagementPod,
+  UpdateClusterRequest,
 } from './types/clusters';
 import type {
   Provider,
@@ -24,7 +61,14 @@ import type {
   ImageListResponse,
   NetworkListResponse,
 } from './types/providers';
-import type { TeamInfo } from './types/teams';
+import type {
+  TeamInfo,
+  TeamResponse,
+  TeamMembersResponse,
+  GroupSyncResponse,
+  UpdateTeamRequest,
+  UserListEntry,
+} from './types/teams';
 import type {
   MachineRequestListResponse,
   LoadBalancerRequestListResponse,
@@ -65,6 +109,7 @@ import type {
   IdentityProvider,
   IdentityProviderListResponse,
   CreateIdentityProviderRequest,
+  UpdateIdentityProviderRequest,
   TestDiscoveryResponse,
 } from './types/identity-providers';
 import type {
@@ -102,6 +147,8 @@ export class ButlerApiClient implements ButlerApi {
     options?: {
       method?: string;
       body?: unknown;
+      /** Scope this one request to an environment (ADR-009). */
+      environment?: string;
     },
   ): Promise<T> {
     const baseUrl = await this.getBaseUrl();
@@ -109,10 +156,16 @@ export class ButlerApiClient implements ButlerApi {
 
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
+      ...devIdentityHeader(),
     };
 
     if (this.teamContext) {
       headers['X-Butler-Team'] = this.teamContext;
+    }
+    // Carried per request rather than held on the client, so two calls in
+    // flight together cannot pick up each other's environment.
+    if (options?.environment) {
+      headers['X-Butler-Environment'] = options.environment;
     }
 
     const response = await this.fetchApi.fetch(url, {
@@ -123,16 +176,35 @@ export class ButlerApiClient implements ButlerApi {
 
     if (!response.ok) {
       let errorMessage: string;
+      let fieldErrors: ButlerFieldError[] = [];
+      let body: unknown;
       try {
         const errorBody = await response.json();
+        body = errorBody;
         errorMessage =
           errorBody.message || errorBody.error || response.statusText;
+        if (Array.isArray(errorBody.errors)) {
+          fieldErrors = errorBody.errors as ButlerFieldError[];
+        } else if (
+          typeof errorBody.field === 'string' &&
+          errorBody.field.length > 0
+        ) {
+          // A webhook denial names one field rather than a list, so it
+          // would otherwise be lost and shown only as a form-level error.
+          fieldErrors = [
+            { field: errorBody.field, reason: errorMessage },
+          ] as ButlerFieldError[];
+        }
       } catch {
         errorMessage = response.statusText;
       }
-      throw new Error(
-        `Butler API error (${response.status}): ${errorMessage}`,
-      );
+      throw new ButlerApiError({
+        status: response.status,
+        // The prefix is kept because existing callers and tests match on it.
+        message: `Butler API error (${response.status}): ${errorMessage}`,
+        fieldErrors,
+        body,
+      });
     }
 
     // Handle 204 No Content
@@ -147,7 +219,10 @@ export class ButlerApiClient implements ButlerApi {
     const baseUrl = await this.getBaseUrl();
     const url = `${baseUrl}${path}`;
 
-    const headers: Record<string, string> = { Accept: accept };
+    const headers: Record<string, string> = {
+      Accept: accept,
+      ...devIdentityHeader(),
+    };
     if (this.teamContext) {
       headers['X-Butler-Team'] = this.teamContext;
     }
@@ -163,20 +238,22 @@ export class ButlerApiClient implements ButlerApi {
       } catch {
         errorMessage = response.statusText;
       }
-      throw new Error(
-        `Butler API error (${response.status}): ${errorMessage}`,
-      );
+      throw new Error(`Butler API error (${response.status}): ${errorMessage}`);
     }
 
     return response.text();
   }
 
-  private get<T>(path: string): Promise<T> {
-    return this.request<T>(path);
+  private get<T>(path: string, options?: { environment?: string }): Promise<T> {
+    return this.request<T>(path, options);
   }
 
-  private post<T>(path: string, body?: unknown): Promise<T> {
-    return this.request<T>(path, { method: 'POST', body });
+  private post<T>(
+    path: string,
+    body?: unknown,
+    options?: { environment?: string },
+  ): Promise<T> {
+    return this.request<T>(path, { method: 'POST', body, ...options });
   }
 
   private put<T>(path: string, body?: unknown): Promise<T> {
@@ -220,6 +297,7 @@ export class ButlerApiClient implements ButlerApi {
     email: string | null;
     displayName: string;
     isPlatformAdmin: boolean;
+    platformRole?: string;
     teams: TeamInfo[];
   }> {
     return this.get('/_identity');
@@ -247,12 +325,67 @@ export class ButlerApiClient implements ButlerApi {
     return this.get<Cluster>(`/clusters/${namespace}/${name}`);
   }
 
-  async createCluster(data: CreateClusterRequest): Promise<Cluster> {
-    return this.post<Cluster>('/clusters', data);
+  /**
+   * The environment is not part of the body. The server reads it from
+   * `X-Butler-Environment` and stamps it on the new cluster as a label,
+   * which is the same path the environment change uses afterwards.
+   */
+  async createCluster(
+    data: CreateClusterRequest,
+    options?: { environment?: string },
+  ): Promise<Cluster> {
+    return this.post<Cluster>('/clusters', data, options);
   }
 
   async deleteCluster(namespace: string, name: string): Promise<void> {
     return this.del(`/clusters/${namespace}/${name}`);
+  }
+
+  // ---- Networks and IP allocations ----
+  // Reads need the platform viewer role; every mutation needs platform
+  // admin. butler-server enforces both.
+
+  async listNetworkPools(): Promise<NetworkPoolListResponse> {
+    return this.get<NetworkPoolListResponse>('/admin/networks');
+  }
+
+  async getNetworkPool(namespace: string, name: string): Promise<NetworkPool> {
+    return this.get<NetworkPool>(`/admin/networks/${namespace}/${name}`);
+  }
+
+  async listPoolAllocations(
+    namespace: string,
+    name: string,
+  ): Promise<IPAllocationListResponse> {
+    return this.get<IPAllocationListResponse>(
+      `/admin/networks/${namespace}/${name}/allocations`,
+    );
+  }
+
+  async listAllIPAllocations(): Promise<IPAllocationListResponse> {
+    return this.get<IPAllocationListResponse>('/admin/ipallocations');
+  }
+
+  async releaseIPAllocation(namespace: string, name: string): Promise<void> {
+    return this.del(`/admin/ipallocations/${namespace}/${name}`);
+  }
+
+  async updateCluster(
+    namespace: string,
+    name: string,
+    request: UpdateClusterRequest,
+  ): Promise<Cluster> {
+    return this.put<Cluster>(`/clusters/${namespace}/${name}`, request);
+  }
+
+  async changeClusterEnvironment(
+    namespace: string,
+    name: string,
+    environment: string,
+  ): Promise<Cluster> {
+    return this.put<Cluster>(`/clusters/${namespace}/${name}/environment`, {
+      environment,
+    });
   }
 
   async scaleCluster(
@@ -278,9 +411,7 @@ export class ButlerApiClient implements ButlerApi {
     namespace: string,
     name: string,
   ): Promise<{ nodes: Node[] }> {
-    return this.get<{ nodes: Node[] }>(
-      `/clusters/${namespace}/${name}/nodes`,
-    );
+    return this.get<{ nodes: Node[] }>(`/clusters/${namespace}/${name}/nodes`);
   }
 
   async getClusterAddons(
@@ -359,15 +490,31 @@ export class ButlerApiClient implements ButlerApi {
   async getManagementPods(
     namespace: string,
   ): Promise<{ pods: ManagementPod[] }> {
-    return this.get<{ pods: ManagementPod[] }>(
-      `/management/pods/${namespace}`,
-    );
+    return this.get<{ pods: ManagementPod[] }>(`/management/pods/${namespace}`);
   }
 
   // ---- Providers ----
 
   async listProviders(): Promise<ProviderListResponse> {
     return this.get<ProviderListResponse>('/providers');
+  }
+
+  async listTeamProviders(team: string): Promise<ProviderListResponse> {
+    return this.get<ProviderListResponse>(
+      `/teams/${encodeURIComponent(team)}/providers`,
+    );
+  }
+
+  async deleteTeamProvider(
+    team: string,
+    namespace: string,
+    name: string,
+  ): Promise<void> {
+    return this.del(
+      `/teams/${encodeURIComponent(team)}/providers/${encodeURIComponent(
+        namespace,
+      )}/${encodeURIComponent(name)}`,
+    );
   }
 
   async getProvider(namespace: string, name: string): Promise<Provider> {
@@ -380,6 +527,21 @@ export class ButlerApiClient implements ButlerApi {
 
   async deleteProvider(namespace: string, name: string): Promise<void> {
     return this.del(`/providers/${namespace}/${name}`);
+  }
+
+  async updateProvider(
+    namespace: string,
+    name: string,
+    data: UpdateProviderRequest,
+  ): Promise<Provider> {
+    return this.put<Provider>(`/providers/${namespace}/${name}`, data);
+  }
+
+  async getProviderCAInfo(
+    namespace: string,
+    name: string,
+  ): Promise<CAInfoResponse> {
+    return this.get<CAInfoResponse>(`/providers/${namespace}/${name}/ca-info`);
   }
 
   async validateProvider(
@@ -401,18 +563,96 @@ export class ButlerApiClient implements ButlerApi {
   async listProviderImages(
     namespace: string,
     name: string,
+    scope?: OptionListScope,
   ): Promise<ImageListResponse> {
     return this.get<ImageListResponse>(
       `/providers/${namespace}/${name}/images`,
+      scope,
     );
   }
 
   async listProviderNetworks(
     namespace: string,
     name: string,
+    scope?: OptionListScope,
   ): Promise<NetworkListResponse> {
     return this.get<NetworkListResponse>(
       `/providers/${namespace}/${name}/networks`,
+      scope,
+    );
+  }
+
+  async listProviderClusters(
+    namespace: string,
+    name: string,
+    scope?: OptionListScope,
+  ): Promise<ProviderClusterListResponse> {
+    return this.get<ProviderClusterListResponse>(
+      `/providers/${namespace}/${name}/clusters`,
+      scope,
+    );
+  }
+
+  async listProviderStorageContainers(
+    namespace: string,
+    name: string,
+    scope?: OptionListScope,
+  ): Promise<StorageContainerListResponse> {
+    return this.get<StorageContainerListResponse>(
+      `/providers/${namespace}/${name}/storage-containers`,
+      scope,
+    );
+  }
+
+  async getObservabilityConfig(): Promise<ObservabilityConfig> {
+    return this.get<ObservabilityConfig>('/observability/config');
+  }
+
+  async listAuditLog(query: AuditQuery = {}): Promise<AuditListResponse> {
+    return this.get<AuditListResponse>(
+      `/admin/audit${auditQueryString(query)}`,
+    );
+  }
+
+  async listTeamAuditLog(
+    team: string,
+    query: AuditQuery = {},
+  ): Promise<AuditListResponse> {
+    return this.get<AuditListResponse>(
+      `/teams/${team}/audit${auditQueryString(query)}`,
+    );
+  }
+
+  async getObservabilityStatus(): Promise<ObservabilityStatus> {
+    return this.get<ObservabilityStatus>('/admin/observability/status');
+  }
+
+  async updateObservabilityConfig(
+    data: UpdateObservabilityConfigRequest,
+  ): Promise<ObservabilityConfig> {
+    return this.put<ObservabilityConfig>('/admin/observability/config', data);
+  }
+
+  async setupObservabilityPipeline(
+    data: SetupPipelineRequest,
+  ): Promise<ObservabilityConfig> {
+    return this.post<ObservabilityConfig>(
+      '/admin/observability/pipeline/setup',
+      data,
+    );
+  }
+
+  async deregisterObservabilityPipeline(): Promise<ObservabilityConfig> {
+    return this.del<ObservabilityConfig>('/admin/observability/pipeline');
+  }
+
+  async listPolicies(): Promise<PolicyListResponse> {
+    return this.get<PolicyListResponse>('/admin/policies');
+  }
+
+  async getPolicy(name: string): Promise<ClusterCreationPolicy> {
+    return this.get<ClusterCreationPolicy>(
+      `/admin/policies/${encodeURIComponent(name)}`,
     );
   }
 
@@ -440,10 +680,7 @@ export class ButlerApiClient implements ButlerApi {
     clusterName: string,
     data: InstallAddonRequest,
   ): Promise<unknown> {
-    return this.post(
-      `/clusters/${namespace}/${clusterName}/addons`,
-      data,
-    );
+    return this.post(`/clusters/${namespace}/${clusterName}/addons`, data);
   }
 
   async getAddonDetails(
@@ -579,16 +816,10 @@ export class ButlerApiClient implements ButlerApi {
     name: string,
     config: any,
   ): Promise<{ success: boolean; message: string }> {
-    return this.post(
-      `/clusters/${namespace}/${name}/gitops/enable`,
-      config,
-    );
+    return this.post(`/clusters/${namespace}/${name}/gitops/enable`, config);
   }
 
-  async disableClusterGitOps(
-    namespace: string,
-    name: string,
-  ): Promise<void> {
+  async disableClusterGitOps(namespace: string, name: string): Promise<void> {
     return this.del(`/clusters/${namespace}/${name}/gitops`);
   }
 
@@ -609,22 +840,14 @@ export class ButlerApiClient implements ButlerApi {
     );
   }
 
-  async exportManagementRelease(
-    request: any,
-  ): Promise<ExportAddonResponse> {
-    return this.post<ExportAddonResponse>(
-      '/management/gitops/export',
-      request,
-    );
+  async exportManagementRelease(request: any): Promise<ExportAddonResponse> {
+    return this.post<ExportAddonResponse>('/management/gitops/export', request);
   }
 
   async migrateManagementReleases(
     request: MigrationRequest,
   ): Promise<MigrationResult> {
-    return this.post<MigrationResult>(
-      '/management/gitops/migrate',
-      request,
-    );
+    return this.post<MigrationResult>('/management/gitops/migrate', request);
   }
 
   async enableManagementGitOps(
@@ -656,9 +879,7 @@ export class ButlerApiClient implements ButlerApi {
     category: CertificateCategory;
     certificates: CertificateInfo[];
   }> {
-    return this.get(
-      `/clusters/${namespace}/${name}/certificates/${category}`,
-    );
+    return this.get(`/clusters/${namespace}/${name}/certificates/${category}`);
   }
 
   async rotateCertificates(
@@ -685,24 +906,27 @@ export class ButlerApiClient implements ButlerApi {
   // ---- Identity Providers ----
 
   async listIdentityProviders(): Promise<IdentityProviderListResponse> {
-    return this.get<IdentityProviderListResponse>(
-      '/admin/identity-providers',
-    );
+    return this.get<IdentityProviderListResponse>('/admin/identity-providers');
   }
 
   async getIdentityProvider(name: string): Promise<IdentityProvider> {
-    return this.get<IdentityProvider>(
+    return this.get<IdentityProvider>(`/admin/identity-providers/${name}`);
+  }
+
+  async updateIdentityProvider(
+    name: string,
+    data: UpdateIdentityProviderRequest,
+  ): Promise<IdentityProvider> {
+    return this.put<IdentityProvider>(
       `/admin/identity-providers/${name}`,
+      data,
     );
   }
 
   async createIdentityProvider(
     data: CreateIdentityProviderRequest,
   ): Promise<IdentityProvider> {
-    return this.post<IdentityProvider>(
-      '/admin/identity-providers',
-      data,
-    );
+    return this.post<IdentityProvider>('/admin/identity-providers', data);
   }
 
   async deleteIdentityProvider(
@@ -711,18 +935,13 @@ export class ButlerApiClient implements ButlerApi {
     return this.del(`/admin/identity-providers/${name}`);
   }
 
-  async testIdPDiscovery(
-    issuerURL: string,
-  ): Promise<TestDiscoveryResponse> {
-    return this.post<TestDiscoveryResponse>(
-      '/admin/identity-providers/test',
-      { issuerURL },
-    );
+  async testIdPDiscovery(issuerURL: string): Promise<TestDiscoveryResponse> {
+    return this.post<TestDiscoveryResponse>('/admin/identity-providers/test', {
+      issuerURL,
+    });
   }
 
-  async validateIdentityProvider(
-    name: string,
-  ): Promise<TestDiscoveryResponse> {
+  async validateIdentityProvider(name: string): Promise<TestDiscoveryResponse> {
     return this.post<TestDiscoveryResponse>(
       `/admin/identity-providers/${name}/validate`,
       {},
@@ -737,7 +956,7 @@ export class ButlerApiClient implements ButlerApi {
 
   // ---- Users ----
 
-  async listUsers(): Promise<any> {
+  async listUsers(): Promise<{ users: UserListEntry[] }> {
     return this.get('/users');
   }
 
@@ -766,22 +985,82 @@ export class ButlerApiClient implements ButlerApi {
 
   // ---- Teams ----
 
-  async getTeam(name: string): Promise<any> {
+  async getTeam(name: string): Promise<TeamResponse> {
     return this.get(`/teams/${name}`);
+  }
+
+  /**
+   * Environments come back on the team itself; there is no list endpoint
+   * of their own. A server that answers without the field reads as "none
+   * defined" rather than an error, and a raw spec is accepted for the
+   * same reason.
+   */
+  /**
+   * The environments a team defines and the defaults it applies to new
+   * clusters, which arrive on the same team read. Keeping them in one
+   * call means the create form cannot show an environment whose defaults
+   * it has not seen.
+   */
+  async getTeamClusterContext(team: string): Promise<TeamClusterContext> {
+    const detail = (await this.get(`/teams/${encodeURIComponent(team)}`)) as {
+      environments?: TeamEnvironment[];
+      clusterDefaults?: EnvironmentClusterDefaults;
+      spec?: {
+        environments?: TeamEnvironment[];
+        clusterDefaults?: EnvironmentClusterDefaults;
+      };
+    };
+    const envs = detail?.environments ?? detail?.spec?.environments ?? [];
+    return {
+      environments: [...envs].sort((a, b) => a.name.localeCompare(b.name)),
+      clusterDefaults:
+        detail?.clusterDefaults ?? detail?.spec?.clusterDefaults ?? undefined,
+    };
+  }
+
+  async createTeamEnvironment(
+    team: string,
+    request: EnvironmentRequest,
+  ): Promise<TeamEnvironment> {
+    return this.post<TeamEnvironment>(
+      `/teams/${encodeURIComponent(team)}/environments`,
+      request,
+    );
+  }
+
+  async updateTeamEnvironment(
+    team: string,
+    name: string,
+    request: EnvironmentRequest,
+  ): Promise<TeamEnvironment> {
+    return this.put<TeamEnvironment>(
+      `/teams/${encodeURIComponent(team)}/environments/${encodeURIComponent(
+        name,
+      )}`,
+      request,
+    );
+  }
+
+  async deleteTeamEnvironment(team: string, name: string): Promise<void> {
+    await this.del<unknown>(
+      `/teams/${encodeURIComponent(team)}/environments/${encodeURIComponent(
+        name,
+      )}`,
+    );
   }
 
   async createTeam(data: {
     name: string;
     displayName?: string;
     description?: string;
-  }): Promise<any> {
+  }): Promise<TeamResponse> {
     return this.post('/admin/teams', data);
   }
 
   async updateTeam(
     name: string,
-    data: { displayName?: string; description?: string },
-  ): Promise<any> {
+    data: UpdateTeamRequest,
+  ): Promise<TeamResponse> {
     return this.put(`/teams/${name}`, data);
   }
 
@@ -790,12 +1069,10 @@ export class ButlerApiClient implements ButlerApi {
   }
 
   async getTeamClusters(name: string): Promise<ClusterListResponse> {
-    return this.get<ClusterListResponse>(
-      `/teams/${name}/clusters`,
-    );
+    return this.get<ClusterListResponse>(`/teams/${name}/clusters`);
   }
 
-  async getTeamMembers(name: string): Promise<any> {
+  async getTeamMembers(name: string): Promise<TeamMembersResponse> {
     return this.get(`/teams/${name}/members`);
   }
 
@@ -807,7 +1084,9 @@ export class ButlerApiClient implements ButlerApi {
   }
 
   async removeTeamMember(teamName: string, email: string): Promise<void> {
-    return this.del(`/admin/teams/${teamName}/members/${encodeURIComponent(email)}`);
+    return this.del(
+      `/admin/teams/${teamName}/members/${encodeURIComponent(email)}`,
+    );
   }
 
   async updateMemberRole(
@@ -815,10 +1094,15 @@ export class ButlerApiClient implements ButlerApi {
     email: string,
     role: string,
   ): Promise<void> {
-    return this.patch(`/admin/teams/${teamName}/members/${encodeURIComponent(email)}`, { role });
+    return this.patch(
+      `/admin/teams/${teamName}/members/${encodeURIComponent(email)}`,
+      { role },
+    );
   }
 
-  async getTeamGroupSyncs(name: string): Promise<any> {
+  async getTeamGroupSyncs(
+    name: string,
+  ): Promise<{ groups: GroupSyncResponse[] }> {
     return this.get(`/teams/${name}/groups`);
   }
 
@@ -830,7 +1114,9 @@ export class ButlerApiClient implements ButlerApi {
   }
 
   async removeGroupSync(teamName: string, groupName: string): Promise<void> {
-    return this.del(`/admin/teams/${teamName}/groups/${encodeURIComponent(groupName)}`);
+    return this.del(
+      `/admin/teams/${teamName}/groups/${encodeURIComponent(groupName)}`,
+    );
   }
 
   async updateGroupSyncRole(
@@ -838,7 +1124,10 @@ export class ButlerApiClient implements ButlerApi {
     groupName: string,
     role: string,
   ): Promise<void> {
-    return this.patch(`/admin/teams/${teamName}/groups/${encodeURIComponent(groupName)}`, { role });
+    return this.patch(
+      `/admin/teams/${teamName}/groups/${encodeURIComponent(groupName)}`,
+      { role },
+    );
   }
 
   // ---- Workspaces ----

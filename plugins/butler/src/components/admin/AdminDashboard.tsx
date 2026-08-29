@@ -1,142 +1,93 @@
 // Copyright 2026 The Butler Authors.
 // SPDX-License-Identifier: Apache-2.0
 
-import React, { useEffect, useState, useCallback } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useApi } from '@backstage/core-plugin-api';
-import {
-  InfoCard,
-  Progress,
-  EmptyState,
-  Link,
-} from '@backstage/core-components';
-import {
-  Grid,
-  Typography,
-  makeStyles,
-  List,
-  ListItem,
-  ListItemText,
-  Avatar,
-  Divider,
-  Box,
-  Card as MuiCard,
-  CardContent,
-  CardActions,
-  Button,
-} from '@material-ui/core';
-import GroupIcon from '@material-ui/icons/Group';
-import CloudIcon from '@material-ui/icons/Cloud';
-import PeopleIcon from '@material-ui/icons/People';
-import CheckCircleIcon from '@material-ui/icons/CheckCircle';
-import ErrorIcon from '@material-ui/icons/Error';
-import HourglassEmptyIcon from '@material-ui/icons/HourglassEmpty';
-import AddIcon from '@material-ui/icons/Add';
-import PersonAddIcon from '@material-ui/icons/PersonAdd';
-import SettingsInputComponentIcon from '@material-ui/icons/SettingsInputComponent';
 import { butlerApiRef } from '../../api/ButlerApi';
-import type { Cluster } from '../../api/types/clusters';
+import type { Cluster, ManagementCluster } from '../../api/types/clusters';
 import type { TeamInfo } from '../../api/types/teams';
-import { StatusBadge } from '../StatusBadge/StatusBadge';
 import { useButlerRoutes } from '../../hooks/useButlerRoutes';
+import {
+  ArchiveIcon,
+  ButlerAvatarTile,
+  ButlerChip,
+  ButlerDashboardStat,
+  ButlerErrorState,
+  ButlerGrid,
+  ButlerList,
+  ButlerListCard,
+  ButlerListEmpty,
+  ButlerListRow,
+  ButlerLoading,
+  ButlerPageHeader,
+  ButlerQuickAction,
+  ButlerStack,
+  ButlerStatDots,
+  ButlerStatGrid,
+  PlusIcon,
+  ServerIcon,
+  TeamsIcon,
+  UserAddIcon,
+  UsersIcon,
+} from '../ui';
 
-const useStyles = makeStyles(theme => ({
-  statCard: {
-    textAlign: 'center',
-    padding: theme.spacing(2),
-  },
-  statValue: {
-    fontSize: '2.5rem',
-    fontWeight: 700,
-    lineHeight: 1.2,
-  },
-  statLabel: {
-    color: theme.palette.text.secondary,
-    marginTop: theme.spacing(0.5),
-  },
-  healthRow: {
-    display: 'flex',
-    justifyContent: 'center',
-    gap: theme.spacing(2),
-    marginTop: theme.spacing(1),
-  },
-  healthItem: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: theme.spacing(0.5),
-  },
-  healthOk: {
-    color: theme.palette.success?.main || '#4caf50',
-  },
-  healthWarning: {
-    color: theme.palette.warning?.main || '#ff9800',
-  },
-  healthError: {
-    color: theme.palette.error?.main || '#f44336',
-  },
-  quickAction: {
-    height: '100%',
-    display: 'flex',
-    flexDirection: 'column',
-    justifyContent: 'space-between',
-    cursor: 'pointer',
-    transition: 'box-shadow 0.2s',
-    '&:hover': {
-      boxShadow: theme.shadows[4],
-    },
-  },
-  quickActionIcon: {
-    fontSize: '2rem',
-    marginBottom: theme.spacing(1),
-    color: theme.palette.primary.main,
-  },
-  teamAvatar: {
-    backgroundColor: theme.palette.primary.main,
-    width: 32,
-    height: 32,
-    fontSize: '0.875rem',
-  },
-}));
+// Console AdminDashboard counts these phases as provisioning.
+const PROVISIONING_PHASES = ['provisioning', 'pending', 'scaling'];
 
 interface DashboardData {
   teams: TeamInfo[];
   clusters: Cluster[];
-  users: any;
-  management: any;
+  userCount: number;
+  management: ManagementCluster | null;
 }
 
+/** Console `AdminDashboard`: whole-estate stats, teams list, quick actions. */
 export const AdminDashboard = () => {
-  const classes = useStyles();
   const api = useApi(butlerApiRef);
   const routes = useButlerRoutes();
   const [data, setData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<Error | undefined>();
+  const [error, setError] = useState<string | null>(null);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
-    setError(undefined);
+    setError(null);
     try {
       const [teamsRes, clustersRes, usersRes, managementRes] =
         await Promise.allSettled([
-          api.getTeams(),
+          api.listAllTeams(),
           api.listClusters(),
           api.listUsers(),
           api.getManagement(),
         ]);
 
+      if (
+        teamsRes.status === 'rejected' &&
+        clustersRes.status === 'rejected' &&
+        usersRes.status === 'rejected'
+      ) {
+        const reason = teamsRes.reason;
+        throw reason instanceof Error ? reason : new Error(String(reason));
+      }
+
       setData({
         teams:
-          teamsRes.status === 'fulfilled' ? teamsRes.value.teams || [] : [],
+          teamsRes.status === 'fulfilled'
+            ? (teamsRes.value.teams ?? []).filter(t => t && t.name)
+            : [],
         clusters:
           clustersRes.status === 'fulfilled'
-            ? clustersRes.value.clusters || []
+            ? clustersRes.value.clusters ?? []
             : [],
-        users: usersRes.status === 'fulfilled' ? usersRes.value : { users: [] },
+        userCount:
+          usersRes.status === 'fulfilled'
+            ? (usersRes.value?.users ?? []).length
+            : 0,
         management:
           managementRes.status === 'fulfilled' ? managementRes.value : null,
       });
     } catch (e) {
-      setError(e instanceof Error ? e : new Error(String(e)));
+      setError(e instanceof Error ? e.message : String(e));
     } finally {
       setLoading(false);
     }
@@ -146,232 +97,132 @@ export const AdminDashboard = () => {
     fetchData();
   }, [fetchData]);
 
+  // The management cluster counts as one more cluster, as in the console.
+  const stats = useMemo(() => {
+    if (!data) return null;
+    const { clusters, management } = data;
+    const phase = (c: Cluster) => (c.status?.phase || '').toLowerCase();
+    return {
+      totalTeams: data.teams.length,
+      totalClusters: clusters.length + (management ? 1 : 0),
+      totalUsers: data.userCount,
+      ready:
+        clusters.filter(c => phase(c) === 'ready').length +
+        (management?.phase?.toLowerCase() === 'ready' ? 1 : 0),
+      provisioning: clusters.filter(c => PROVISIONING_PHASES.includes(phase(c)))
+        .length,
+      failed: clusters.filter(c => phase(c) === 'failed').length,
+    };
+  }, [data]);
+
   if (loading) {
-    return <Progress />;
+    return <ButlerLoading />;
   }
 
-  if (error) {
+  if (error || !data || !stats) {
     return (
-      <EmptyState
-        title="Failed to load dashboard"
-        description={error.message}
-        missing="info"
+      <ButlerErrorState
+        message="Failed to load platform overview"
+        detail={error ?? 'Unable to load platform data.'}
+        onRetry={fetchData}
       />
     );
   }
-
-  if (!data) {
-    return (
-      <EmptyState
-        title="No data available"
-        description="Unable to load platform data."
-        missing="info"
-      />
-    );
-  }
-
-  const { teams, clusters, users } = data;
-  const userList = users?.users || [];
-
-  const readyClusters = clusters.filter(
-    c => c.status?.phase?.toLowerCase() === 'ready',
-  );
-  const provisioningClusters = clusters.filter(c =>
-    ['provisioning', 'installing', 'pending'].includes(
-      c.status?.phase?.toLowerCase() || '',
-    ),
-  );
-  const failedClusters = clusters.filter(
-    c => c.status?.phase?.toLowerCase() === 'failed',
-  );
-
-  const recentTeams = [...teams]
-    .sort((a, b) => b.clusterCount - a.clusterCount)
-    .slice(0, 8);
 
   return (
-    <div>
-      <Typography variant="h4" gutterBottom>
-        Platform Administration
-      </Typography>
+    <ButlerStack>
+      <ButlerPageHeader
+        title="Platform Overview"
+        subtitle="Monitor and manage all teams and resources"
+      />
 
-      {/* Stat Cards */}
-      <Grid container spacing={3}>
-        <Grid item xs={12} sm={6} md={3}>
-          <InfoCard title="">
-            <div className={classes.statCard}>
-              <GroupIcon style={{ fontSize: '2rem', color: '#1976d2' }} />
-              <Typography className={classes.statValue}>
-                {teams.length}
-              </Typography>
-              <Typography className={classes.statLabel}>Total Teams</Typography>
-            </div>
-          </InfoCard>
-        </Grid>
-        <Grid item xs={12} sm={6} md={3}>
-          <InfoCard title="">
-            <div className={classes.statCard}>
-              <CloudIcon style={{ fontSize: '2rem', color: '#388e3c' }} />
-              <Typography className={classes.statValue}>
-                {clusters.length}
-              </Typography>
-              <Typography className={classes.statLabel}>
-                Total Clusters
-              </Typography>
-            </div>
-          </InfoCard>
-        </Grid>
-        <Grid item xs={12} sm={6} md={3}>
-          <InfoCard title="">
-            <div className={classes.statCard}>
-              <PeopleIcon style={{ fontSize: '2rem', color: '#f57c00' }} />
-              <Typography className={classes.statValue}>
-                {userList.length}
-              </Typography>
-              <Typography className={classes.statLabel}>Total Users</Typography>
-            </div>
-          </InfoCard>
-        </Grid>
-        <Grid item xs={12} sm={6} md={3}>
-          <InfoCard title="">
-            <div className={classes.statCard}>
-              <Typography variant="subtitle2" gutterBottom>
-                Cluster Health
-              </Typography>
-              <div className={classes.healthRow}>
-                <div className={classes.healthItem}>
-                  <CheckCircleIcon
-                    fontSize="small"
-                    className={classes.healthOk}
-                  />
-                  <Typography variant="body2">
-                    {readyClusters.length} Ready
-                  </Typography>
-                </div>
-                <div className={classes.healthItem}>
-                  <HourglassEmptyIcon
-                    fontSize="small"
-                    className={classes.healthWarning}
-                  />
-                  <Typography variant="body2">
-                    {provisioningClusters.length} In Progress
-                  </Typography>
-                </div>
-                <div className={classes.healthItem}>
-                  <ErrorIcon
-                    fontSize="small"
-                    className={classes.healthError}
-                  />
-                  <Typography variant="body2">
-                    {failedClusters.length} Failed
-                  </Typography>
-                </div>
-              </div>
-            </div>
-          </InfoCard>
-        </Grid>
-      </Grid>
+      <ButlerStatGrid>
+        <ButlerDashboardStat
+          label="Total Teams"
+          value={stats.totalTeams}
+          icon={<TeamsIcon />}
+          iconTone="violet"
+        />
+        <ButlerDashboardStat
+          label="Total Clusters"
+          value={stats.totalClusters}
+          icon={<ServerIcon size={24} />}
+          iconTone="green"
+        />
+        <ButlerDashboardStat
+          label="Total Users"
+          value={stats.totalUsers}
+          icon={<UsersIcon />}
+          iconTone="blue"
+        />
+        <ButlerStatDots
+          label="Cluster Health"
+          items={[
+            { tone: 'green', value: stats.ready, title: 'Ready' },
+            {
+              tone: 'yellow',
+              value: stats.provisioning,
+              title: 'Provisioning',
+            },
+            { tone: 'red', value: stats.failed, title: 'Failed' },
+          ]}
+        />
+      </ButlerStatGrid>
 
-      <Box mt={3}>
-        <Grid container spacing={3}>
-          {/* Recent Teams */}
-          <Grid item xs={12} md={8}>
-            <InfoCard title="Teams">
-              {recentTeams.length === 0 ? (
-                <Typography color="textSecondary" align="center">
-                  No teams created yet.
-                </Typography>
-              ) : (
-                <List disablePadding>
-                  {recentTeams.map((team, index) => (
-                    <React.Fragment key={team.name}>
-                      {index > 0 && <Divider component="li" />}
-                      <Link to={`../admin/teams/${team.name}`} style={{ textDecoration: 'none', color: 'inherit', display: 'block' }}>
-                      <ListItem button>
-                        <Avatar className={classes.teamAvatar}>
-                          {team.displayName?.charAt(0)?.toUpperCase() ||
-                            team.name.charAt(0).toUpperCase()}
-                        </Avatar>
-                        <ListItemText
-                          primary={team.displayName || team.name}
-                          secondary={`${team.clusterCount} cluster${team.clusterCount !== 1 ? 's' : ''}`}
-                          style={{ marginLeft: 12 }}
-                        />
-                        <StatusBadge status={team.role === 'admin' ? 'Ready' : 'Active'} />
-                      </ListItem>
-                      </Link>
-                    </React.Fragment>
-                  ))}
-                </List>
-              )}
-            </InfoCard>
-          </Grid>
+      <ButlerListCard
+        title="Teams"
+        viewAllTo={routes.adminTeams()}
+        viewAllTone="violet"
+      >
+        {data.teams.length === 0 ? (
+          <ButlerListEmpty>No teams created yet</ButlerListEmpty>
+        ) : (
+          <ButlerList aria-label="Teams">
+            {data.teams.slice(0, 5).map(team => {
+              const displayName = team.displayName || team.name;
+              const count = team.clusterCount ?? 0;
+              return (
+                <ButlerListRow
+                  key={team.name}
+                  to={routes.adminTeamDetail({ teamName: team.name })}
+                  leading={<ButlerAvatarTile name={displayName} size={40} />}
+                  primary={displayName}
+                  secondary={`@${team.name}`}
+                  trailing={
+                    <ButlerChip>
+                      {count} {count === 1 ? 'cluster' : 'clusters'}
+                    </ButlerChip>
+                  }
+                />
+              );
+            })}
+          </ButlerList>
+        )}
+      </ButlerListCard>
 
-          {/* Quick Actions */}
-          <Grid item xs={12} md={4}>
-            <Grid container spacing={2}>
-              <Grid item xs={12}>
-                <MuiCard className={classes.quickAction}>
-                  <CardContent>
-                    <AddIcon className={classes.quickActionIcon} />
-                    <Typography variant="h6">Create Team</Typography>
-                    <Typography variant="body2" color="textSecondary">
-                      Set up a new team with namespace and resource quotas.
-                    </Typography>
-                  </CardContent>
-                  <CardActions>
-                    <Link to={routes.adminTeams()} style={{ textDecoration: 'none' }}>
-                      <Button size="small" color="primary">
-                        Go to Teams
-                      </Button>
-                    </Link>
-                  </CardActions>
-                </MuiCard>
-              </Grid>
-              <Grid item xs={12}>
-                <MuiCard className={classes.quickAction}>
-                  <CardContent>
-                    <PersonAddIcon className={classes.quickActionIcon} />
-                    <Typography variant="h6">Invite User</Typography>
-                    <Typography variant="body2" color="textSecondary">
-                      Add a new user to the platform and assign team
-                      membership.
-                    </Typography>
-                  </CardContent>
-                  <CardActions>
-                    <Link to={routes.adminUsers()} style={{ textDecoration: 'none' }}>
-                      <Button size="small" color="primary">
-                        Go to Users
-                      </Button>
-                    </Link>
-                  </CardActions>
-                </MuiCard>
-              </Grid>
-              <Grid item xs={12}>
-                <MuiCard className={classes.quickAction}>
-                  <CardContent>
-                    <SettingsInputComponentIcon
-                      className={classes.quickActionIcon}
-                    />
-                    <Typography variant="h6">Manage Providers</Typography>
-                    <Typography variant="body2" color="textSecondary">
-                      Configure infrastructure providers for cluster
-                      provisioning.
-                    </Typography>
-                  </CardContent>
-                  <CardActions>
-                    <Link to={routes.adminProviders()} style={{ textDecoration: 'none' }}>
-                      <Button size="small" color="primary">
-                        Go to Providers
-                      </Button>
-                    </Link>
-                  </CardActions>
-                </MuiCard>
-              </Grid>
-            </Grid>
-          </Grid>
-        </Grid>
-      </Box>
-    </div>
+      <ButlerGrid columns={3} gap={16}>
+        <ButlerQuickAction
+          to={routes.adminTeams()}
+          title="Create Team"
+          description="Add a new team"
+          icon={<PlusIcon size={20} />}
+          tone="violet"
+        />
+        <ButlerQuickAction
+          to={routes.adminUsers()}
+          title="Invite User"
+          description="Add users to platform"
+          icon={<UserAddIcon />}
+          tone="blue"
+        />
+        <ButlerQuickAction
+          to={routes.adminProviders()}
+          title="Manage Providers"
+          description="Configure infrastructure"
+          icon={<ArchiveIcon />}
+          tone="green"
+        />
+      </ButlerGrid>
+    </ButlerStack>
   );
 };

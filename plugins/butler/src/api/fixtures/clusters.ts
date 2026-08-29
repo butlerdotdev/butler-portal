@@ -10,6 +10,7 @@
  */
 
 import type { PlatformConfig } from '../types/config';
+import type { ButlerIdentity } from './identities';
 import type {
   Cluster,
   Node,
@@ -18,8 +19,13 @@ import type {
   ManagementNode,
   ManagementPod,
 } from '../types/clusters';
-import type { TeamInfo } from '../types/teams';
-import type { AddonDefinition, CategoryInfo, InstalledAddon } from '../types/addons';
+import type { TeamInfo, TeamResponse } from '../types/teams';
+import type { AuditEntry } from '../types/audit';
+import type {
+  AddonDefinition,
+  CategoryInfo,
+  InstalledAddon,
+} from '../types/addons';
 import type {
   ClusterCertificates,
   CertificateInfo,
@@ -38,7 +44,9 @@ export const FIXTURE_PROVIDER = 'harvester-lab';
 // A fixed reference time keeps ages stable across renders and tests.
 export const FIXTURE_NOW = '2026-08-22T12:00:00Z';
 
-type Condition = NonNullable<NonNullable<Cluster['status']>['conditions']>[number];
+type Condition = NonNullable<
+  NonNullable<Cluster['status']>['conditions']
+>[number];
 
 function cond(
   type: string,
@@ -188,14 +196,39 @@ export const installingCluster: Cluster = makeCluster({
         nodes: ['installing-charlie-worker-0', 'installing-charlie-worker-1'],
       },
       addons: [
-        { name: 'cilium', status: 'Healthy', version: '1.17.4', managedBy: 'butler' },
-        { name: 'metallb', status: 'Installing', version: '0.14.9', managedBy: 'butler' },
-        { name: 'cert-manager', status: 'Pending', version: '1.17.2', managedBy: 'butler' },
+        {
+          name: 'cilium',
+          status: 'Healthy',
+          version: '1.17.4',
+          managedBy: 'butler',
+        },
+        {
+          name: 'metallb',
+          status: 'Installing',
+          version: '0.14.9',
+          managedBy: 'butler',
+        },
+        {
+          name: 'cert-manager',
+          status: 'Pending',
+          version: '1.17.2',
+          managedBy: 'butler',
+        },
       ],
     },
     conditions: [
-      cond('ControlPlaneReady', 'True', 'ControlPlaneReady', 'Control plane is reachable'),
-      cond('InfrastructureReady', 'True', 'InfrastructureReady', 'All machines are running'),
+      cond(
+        'ControlPlaneReady',
+        'True',
+        'ControlPlaneReady',
+        'Control plane is reachable',
+      ),
+      cond(
+        'InfrastructureReady',
+        'True',
+        'InfrastructureReady',
+        'All machines are running',
+      ),
       cond('WorkersReady', 'True', 'WorkersReady', '2 of 2 worker nodes ready'),
       cond(
         'AddonsReady',
@@ -204,7 +237,12 @@ export const installingCluster: Cluster = makeCluster({
         'Installing metallb (1 of 2 remaining)',
         '2026-08-22T11:10:00Z',
       ),
-      cond('Ready', 'False', 'Installing', 'Platform addons are being installed'),
+      cond(
+        'Ready',
+        'False',
+        'Installing',
+        'Platform addons are being installed',
+      ),
     ],
   },
 });
@@ -233,21 +271,75 @@ export const readyCluster: Cluster = makeCluster({
       workers: {
         desired: 3,
         ready: 3,
-        nodes: ['ready-delta-worker-0', 'ready-delta-worker-1', 'ready-delta-worker-2'],
+        nodes: [
+          'ready-delta-worker-0',
+          'ready-delta-worker-1',
+          'ready-delta-worker-2',
+        ],
       },
       addons: [
-        { name: 'cilium', status: 'Healthy', version: '1.17.4', managedBy: 'butler' },
-        { name: 'metallb', status: 'Healthy', version: '0.14.9', managedBy: 'butler' },
-        { name: 'cert-manager', status: 'Healthy', version: '1.17.2', managedBy: 'butler' },
-        { name: 'longhorn', status: 'Healthy', version: '1.8.1', managedBy: 'butler' },
+        {
+          name: 'cilium',
+          status: 'Healthy',
+          version: '1.17.4',
+          managedBy: 'butler',
+        },
+        {
+          name: 'metallb',
+          status: 'Healthy',
+          version: '0.14.9',
+          managedBy: 'butler',
+        },
+        {
+          name: 'cert-manager',
+          status: 'Healthy',
+          version: '1.17.2',
+          managedBy: 'butler',
+        },
+        {
+          name: 'longhorn',
+          status: 'Healthy',
+          version: '1.8.1',
+          managedBy: 'butler',
+        },
       ],
     },
     conditions: [
-      cond('ControlPlaneReady', 'True', 'ControlPlaneReady', 'Control plane is reachable', '2026-07-30T08:20:00Z'),
-      cond('InfrastructureReady', 'True', 'InfrastructureReady', 'All machines are running', '2026-07-30T08:32:00Z'),
-      cond('WorkersReady', 'True', 'WorkersReady', '3 of 3 worker nodes ready', '2026-07-30T08:35:00Z'),
-      cond('AddonsReady', 'True', 'AddonsReady', 'All platform addons are healthy', '2026-07-30T08:41:00Z'),
-      cond('Ready', 'True', 'ClusterReady', 'Cluster is ready for use', '2026-07-30T08:41:00Z'),
+      cond(
+        'ControlPlaneReady',
+        'True',
+        'ControlPlaneReady',
+        'Control plane is reachable',
+        '2026-07-30T08:20:00Z',
+      ),
+      cond(
+        'InfrastructureReady',
+        'True',
+        'InfrastructureReady',
+        'All machines are running',
+        '2026-07-30T08:32:00Z',
+      ),
+      cond(
+        'WorkersReady',
+        'True',
+        'WorkersReady',
+        '3 of 3 worker nodes ready',
+        '2026-07-30T08:35:00Z',
+      ),
+      cond(
+        'AddonsReady',
+        'True',
+        'AddonsReady',
+        'All platform addons are healthy',
+        '2026-07-30T08:41:00Z',
+      ),
+      cond(
+        'Ready',
+        'True',
+        'ClusterReady',
+        'Cluster is ready for use',
+        '2026-07-30T08:41:00Z',
+      ),
     ],
   },
 });
@@ -266,15 +358,39 @@ export const degradedCluster: Cluster = makeCluster({
     workerNodesReady: 2,
     workerNodesDesired: 2,
     observedState: {
-      workers: { desired: 2, ready: 2, nodes: ['degraded-echo-worker-0', 'degraded-echo-worker-1'] },
+      workers: {
+        desired: 2,
+        ready: 2,
+        nodes: ['degraded-echo-worker-0', 'degraded-echo-worker-1'],
+      },
       addons: [
-        { name: 'cilium', status: 'Healthy', version: '1.17.4', managedBy: 'butler' },
-        { name: 'metallb', status: 'Degraded', version: '0.14.9', managedBy: 'butler' },
+        {
+          name: 'cilium',
+          status: 'Healthy',
+          version: '1.17.4',
+          managedBy: 'butler',
+        },
+        {
+          name: 'metallb',
+          status: 'Degraded',
+          version: '0.14.9',
+          managedBy: 'butler',
+        },
       ],
     },
     conditions: [
-      cond('ControlPlaneReady', 'True', 'ControlPlaneReady', 'Control plane is reachable'),
-      cond('InfrastructureReady', 'True', 'InfrastructureReady', 'All machines are running'),
+      cond(
+        'ControlPlaneReady',
+        'True',
+        'ControlPlaneReady',
+        'Control plane is reachable',
+      ),
+      cond(
+        'InfrastructureReady',
+        'True',
+        'InfrastructureReady',
+        'All machines are running',
+      ),
       cond('WorkersReady', 'True', 'WorkersReady', '2 of 2 worker nodes ready'),
       cond(
         'AddonsReady',
@@ -320,8 +436,18 @@ export const staleNodesCluster: Cluster = makeCluster({
       },
     },
     conditions: [
-      cond('ControlPlaneReady', 'True', 'ControlPlaneReady', 'Control plane is reachable'),
-      cond('InfrastructureReady', 'True', 'InfrastructureReady', 'All machines are running'),
+      cond(
+        'ControlPlaneReady',
+        'True',
+        'ControlPlaneReady',
+        'Control plane is reachable',
+      ),
+      cond(
+        'InfrastructureReady',
+        'True',
+        'InfrastructureReady',
+        'All machines are running',
+      ),
       cond(
         'WorkersReady',
         'True',
@@ -355,8 +481,20 @@ export const failedCluster: Cluster = makeCluster({
         'ImageSync talos-1.11.0-harvester-lab failed: image not found in registry',
         '2026-08-21T19:12:00Z',
       ),
-      cond('ControlPlaneReady', 'False', 'WaitingForInfrastructure', 'Infrastructure is not ready', '2026-08-21T19:05:00Z'),
-      cond('WorkersReady', 'False', 'WaitingForInfrastructure', '0 of 3 worker nodes ready', '2026-08-21T19:05:00Z'),
+      cond(
+        'ControlPlaneReady',
+        'False',
+        'WaitingForInfrastructure',
+        'Infrastructure is not ready',
+        '2026-08-21T19:05:00Z',
+      ),
+      cond(
+        'WorkersReady',
+        'False',
+        'WaitingForInfrastructure',
+        '0 of 3 worker nodes ready',
+        '2026-08-21T19:05:00Z',
+      ),
       cond(
         'Ready',
         'False',
@@ -412,10 +550,17 @@ export const fixtureTeams: TeamInfo[] = [
   {
     name: FIXTURE_TEAM,
     displayName: 'Platform Engineering',
+    namespace: FIXTURE_NAMESPACE,
     role: 'admin',
     clusterCount: fixtureClusters.length,
   },
-  { name: 'data', displayName: 'Data Platform', role: 'viewer', clusterCount: 0 },
+  {
+    name: 'data',
+    displayName: 'Data Platform',
+    namespace: 'team-data',
+    role: 'viewer',
+    clusterCount: 0,
+  },
 ];
 
 export interface FixtureTeamMember {
@@ -427,8 +572,18 @@ export interface FixtureTeamMember {
 }
 
 export const fixtureTeamMembers: FixtureTeamMember[] = [
-  { email: 'ada@example.com', name: 'Ada Lovelace', role: 'admin', source: 'direct' },
-  { email: 'grace@example.com', name: 'Grace Hopper', role: 'operator', source: 'direct' },
+  {
+    email: 'ada@example.com',
+    name: 'Ada Lovelace',
+    role: 'admin',
+    source: 'direct',
+  },
+  {
+    email: 'grace@example.com',
+    name: 'Grace Hopper',
+    role: 'operator',
+    source: 'direct',
+  },
   {
     email: 'linus@example.com',
     name: 'Linus Torvalds',
@@ -439,6 +594,44 @@ export const fixtureTeamMembers: FixtureTeamMember[] = [
 ];
 
 /** Team CRD-style detail used by TeamSettingsPage and AdminTeamDetailPage. */
+/**
+ * The flat team as butler-server returns it (`TeamResponse`), shaped like
+ * the live platform-engineering team on 2026-08-28: one limit set, usage
+ * reported by the controller, defaults, and two environments.
+ */
+export const fixtureTeamResponse: TeamResponse = {
+  name: FIXTURE_TEAM,
+  displayName: 'Platform Engineering',
+  description: 'Owns the shared Kubernetes platform and lab clusters.',
+  namespace: FIXTURE_NAMESPACE,
+  phase: 'Ready',
+  clusterCount: fixtureClusters.length,
+  memberCount: 2,
+  groupCount: 1,
+  labels: { 'butler.dev/managed': 'true' },
+  createdAt: '2026-05-01T09:00:00Z',
+  resourceLimits: { defaultNodeCount: 3, maxClusters: 10 },
+  resourceUsage: {
+    clusterUtilization: 60,
+    clusters: 6,
+    totalCPU: '48',
+    totalMemory: '96Gi',
+    totalNodes: 12,
+    totalStorage: '400Gi',
+  },
+  clusterDefaults: {
+    kubernetesVersion: 'v1.31.0',
+    workerCount: 3,
+    workerCPU: 4,
+    workerMemoryGi: 8,
+    workerDiskGi: 50,
+  },
+  environments: [
+    { name: 'e2e-dev' },
+    { name: 'e2e-staging', description: 'Pre-release verification' },
+  ],
+};
+
 export const fixtureTeamDetail = {
   metadata: {
     name: FIXTURE_TEAM,
@@ -475,11 +668,13 @@ export const fixtureGroupSyncs = [
   { name: 'eng-readonly', role: 'viewer', identityProvider: 'corp-oidc' },
 ];
 
-export const fixtureIdentity = {
+export const fixtureIdentity: ButlerIdentity = {
   authenticated: true,
   email: 'ada@example.com',
   displayName: 'Ada Lovelace',
   isPlatformAdmin: true,
+  /** 'admin', 'viewer' or empty, as the server reports it. */
+  platformRole: 'admin',
   teams: fixtureTeams,
 };
 
@@ -492,7 +687,11 @@ export const fixtureCurrentUser = {
   isPlatformAdmin: true,
   role: 'admin',
   provider: 'oidc',
-  teams: fixtureTeams.map(t => ({ name: t.name, displayName: t.displayName, role: t.role })),
+  teams: fixtureTeams.map(t => ({
+    name: t.name,
+    displayName: t.displayName,
+    role: t.role,
+  })),
 };
 
 export const fixtureUsers = [
@@ -532,7 +731,12 @@ export const fixtureUsers = [
 // Nodes and events (keyed by cluster name)
 // ---------------------------------------------------------------------------
 
-function node(name: string, role: 'control-plane' | 'worker', ip: string, ready = true): Node {
+function node(
+  name: string,
+  role: 'control-plane' | 'worker',
+  ip: string,
+  ready = true,
+): Node {
   return {
     name,
     status: ready ? 'Ready' : 'NotReady',
@@ -604,18 +808,50 @@ export const fixtureEvents: Record<string, ClusterEvent[]> = {
     event('Normal', 'AddonInstalled', 'Installed addon longhorn 1.8.1'),
   ],
   'provisioning-bravo': [
-    event('Normal', 'InfrastructureCreated', 'Created CAPI Cluster tc-provisioning-bravo/provisioning-bravo'),
-    event('Normal', 'MachineBooting', 'Machine provisioning-bravo-worker-1 is booting', 3),
+    event(
+      'Normal',
+      'InfrastructureCreated',
+      'Created CAPI Cluster tc-provisioning-bravo/provisioning-bravo',
+    ),
+    event(
+      'Normal',
+      'MachineBooting',
+      'Machine provisioning-bravo-worker-1 is booting',
+      3,
+    ),
   ],
   'degraded-echo': [
-    event('Warning', 'AddonDegraded', 'metallb speaker DaemonSet has 1 unavailable pod', 7),
+    event(
+      'Warning',
+      'AddonDegraded',
+      'metallb speaker DaemonSet has 1 unavailable pod',
+      7,
+    ),
   ],
   'failed-golf': [
-    event('Warning', 'ImageSyncFailed', 'image talos-1.11.0 not found in registry', 5, '2026-08-21T19:12:00Z'),
-    event('Warning', 'ProvisioningFailed', 'Giving up after 5 attempts', 1, '2026-08-21T19:12:00Z'),
+    event(
+      'Warning',
+      'ImageSyncFailed',
+      'image talos-1.11.0 not found in registry',
+      5,
+      '2026-08-21T19:12:00Z',
+    ),
+    event(
+      'Warning',
+      'ProvisioningFailed',
+      'Giving up after 5 attempts',
+      1,
+      '2026-08-21T19:12:00Z',
+    ),
   ],
   'deleting-hotel': [
-    event('Normal', 'Deleting', 'Waiting for CAPI machines to be deleted (2 remaining)', 4, '2026-08-22T11:55:00Z'),
+    event(
+      'Normal',
+      'Deleting',
+      'Waiting for CAPI machines to be deleted (2 remaining)',
+      4,
+      '2026-08-22T11:55:00Z',
+    ),
   ],
 };
 
@@ -651,24 +887,100 @@ function addonDef(
 }
 
 export const fixtureAddonCatalog: AddonDefinition[] = [
-  addonDef('cilium', 'Cilium', 'cni', 'https://helm.cilium.io', 'cilium', '1.17.4', true, 'eBPF-based CNI'),
-  addonDef('metallb', 'MetalLB', 'loadbalancer', 'https://metallb.github.io/metallb', 'metallb', '0.14.9', true, 'Bare-metal load balancer'),
-  addonDef('cert-manager', 'cert-manager', 'certmanager', 'https://charts.jetstack.io', 'cert-manager', '1.17.2', true, 'X.509 certificate automation'),
-  addonDef('longhorn', 'Longhorn', 'storage', 'https://charts.longhorn.io', 'longhorn', '1.8.1', false, 'Distributed block storage'),
-  addonDef('ingress-nginx', 'Ingress NGINX', 'ingress', 'https://kubernetes.github.io/ingress-nginx', 'ingress-nginx', '4.12.1', false, 'NGINX ingress controller', {
-    dependsOn: ['metallb'],
-  }),
-  addonDef('kube-prometheus-stack', 'Prometheus Stack', 'observability', 'https://prometheus-community.github.io/helm-charts', 'kube-prometheus-stack', '72.3.0', false, 'Prometheus, Alertmanager and Grafana', {
-    availableVersions: ['72.3.0', '71.2.0'],
-    defaultNamespace: 'monitoring',
-  }),
-  addonDef('velero', 'Velero', 'backup', 'https://vmware-tanzu.github.io/helm-charts', 'velero', '9.1.1', false, 'Cluster backup and restore'),
-  addonDef('flux', 'Flux CD', 'gitops', 'oci://ghcr.io/fluxcd-community/charts', 'flux2', '2.15.0', false, 'GitOps toolkit', {
-    defaultNamespace: 'flux-system',
-  }),
+  addonDef(
+    'cilium',
+    'Cilium',
+    'cni',
+    'https://helm.cilium.io',
+    'cilium',
+    '1.17.4',
+    true,
+    'eBPF-based CNI',
+  ),
+  addonDef(
+    'metallb',
+    'MetalLB',
+    'loadbalancer',
+    'https://metallb.github.io/metallb',
+    'metallb',
+    '0.14.9',
+    true,
+    'Bare-metal load balancer',
+  ),
+  addonDef(
+    'cert-manager',
+    'cert-manager',
+    'certmanager',
+    'https://charts.jetstack.io',
+    'cert-manager',
+    '1.17.2',
+    true,
+    'X.509 certificate automation',
+  ),
+  addonDef(
+    'longhorn',
+    'Longhorn',
+    'storage',
+    'https://charts.longhorn.io',
+    'longhorn',
+    '1.8.1',
+    false,
+    'Distributed block storage',
+  ),
+  addonDef(
+    'ingress-nginx',
+    'Ingress NGINX',
+    'ingress',
+    'https://kubernetes.github.io/ingress-nginx',
+    'ingress-nginx',
+    '4.12.1',
+    false,
+    'NGINX ingress controller',
+    {
+      dependsOn: ['metallb'],
+    },
+  ),
+  addonDef(
+    'kube-prometheus-stack',
+    'Prometheus Stack',
+    'observability',
+    'https://prometheus-community.github.io/helm-charts',
+    'kube-prometheus-stack',
+    '72.3.0',
+    false,
+    'Prometheus, Alertmanager and Grafana',
+    {
+      availableVersions: ['72.3.0', '71.2.0'],
+      defaultNamespace: 'monitoring',
+    },
+  ),
+  addonDef(
+    'velero',
+    'Velero',
+    'backup',
+    'https://vmware-tanzu.github.io/helm-charts',
+    'velero',
+    '9.1.1',
+    false,
+    'Cluster backup and restore',
+  ),
+  addonDef(
+    'flux',
+    'Flux CD',
+    'gitops',
+    'oci://ghcr.io/fluxcd-community/charts',
+    'flux2',
+    '2.15.0',
+    false,
+    'GitOps toolkit',
+    {
+      defaultNamespace: 'flux-system',
+    },
+  ),
 ];
 
-export const fixtureAddonCategories: CategoryInfo[] = Object.values(CATEGORY_INFO);
+export const fixtureAddonCategories: CategoryInfo[] =
+  Object.values(CATEGORY_INFO);
 
 function installed(
   name: string,
@@ -679,11 +991,13 @@ function installed(
 ): InstalledAddon {
   return {
     name,
-    displayName: fixtureAddonCatalog.find(a => a.name === name)?.displayName ?? name,
+    displayName:
+      fixtureAddonCatalog.find(a => a.name === name)?.displayName ?? name,
     status,
     phase: status,
     version,
-    installedVersion: status === 'Installed' || status === 'Degraded' ? version : undefined,
+    installedVersion:
+      status === 'Installed' || status === 'Degraded' ? version : undefined,
     managedBy,
     namespace: name,
     message,
@@ -705,7 +1019,13 @@ export const fixtureInstalledAddons: Record<string, InstalledAddon[]> = {
   ],
   'degraded-echo': [
     installed('cilium', 'Installed', '1.17.4', 'platform'),
-    installed('metallb', 'Degraded', '0.14.9', 'platform', 'speaker DaemonSet has 1 unavailable pod'),
+    installed(
+      'metallb',
+      'Degraded',
+      '0.14.9',
+      'platform',
+      'speaker DaemonSet has 1 unavailable pod',
+    ),
   ],
   'installing-charlie': [
     installed('cilium', 'Installed', '1.17.4', 'platform'),
@@ -750,27 +1070,83 @@ function cert(
   };
 }
 
-export function makeFixtureCertificates(clusterName: string): ClusterCertificates {
+export function makeFixtureCertificates(
+  clusterName: string,
+): ClusterCertificates {
   const categories: Record<CertificateCategory, CertificateInfo[]> = {
-    apiserver: [cert('apiserver', `${clusterName}-api-server-certificate`, 'CN=kube-apiserver', 301)],
+    apiserver: [
+      cert(
+        'apiserver',
+        `${clusterName}-api-server-certificate`,
+        'CN=kube-apiserver',
+        301,
+      ),
+    ],
     kubeconfig: [
-      cert('kubeconfig', `${clusterName}-admin-kubeconfig`, 'CN=kubernetes-admin,O=system:masters', 301),
-      cert('kubeconfig', `${clusterName}-controller-manager-kubeconfig`, 'CN=system:kube-controller-manager', 301),
-      cert('kubeconfig', `${clusterName}-scheduler-kubeconfig`, 'CN=system:kube-scheduler', 301),
+      cert(
+        'kubeconfig',
+        `${clusterName}-admin-kubeconfig`,
+        'CN=kubernetes-admin,O=system:masters',
+        301,
+      ),
+      cert(
+        'kubeconfig',
+        `${clusterName}-controller-manager-kubeconfig`,
+        'CN=system:kube-controller-manager',
+        301,
+      ),
+      cert(
+        'kubeconfig',
+        `${clusterName}-scheduler-kubeconfig`,
+        'CN=system:kube-scheduler',
+        301,
+      ),
     ],
     ca: [cert('ca', `${clusterName}-ca`, 'CN=kubernetes', 3287, true)],
     'front-proxy': [
-      cert('front-proxy', `${clusterName}-front-proxy-ca-certificate`, 'CN=front-proxy-ca', 3287, true),
-      cert('front-proxy', `${clusterName}-front-proxy-client-certificate`, 'CN=front-proxy-client', 21),
+      cert(
+        'front-proxy',
+        `${clusterName}-front-proxy-ca-certificate`,
+        'CN=front-proxy-ca',
+        3287,
+        true,
+      ),
+      cert(
+        'front-proxy',
+        `${clusterName}-front-proxy-client-certificate`,
+        'CN=front-proxy-client',
+        21,
+      ),
     ],
-    'service-account': [cert('service-account', `${clusterName}-sa-certificate`, 'CN=service-account', 3287)],
-    datastore: [cert('datastore', `${clusterName}-datastore-certificate`, 'CN=etcd-client', 301)],
+    'service-account': [
+      cert(
+        'service-account',
+        `${clusterName}-sa-certificate`,
+        'CN=service-account',
+        3287,
+      ),
+    ],
+    datastore: [
+      cert(
+        'datastore',
+        `${clusterName}-datastore-certificate`,
+        'CN=etcd-client',
+        301,
+      ),
+    ],
     konnectivity: [
-      cert('konnectivity', `${clusterName}-konnectivity-certificate`, 'CN=konnectivity-server', 5),
+      cert(
+        'konnectivity',
+        `${clusterName}-konnectivity-certificate`,
+        'CN=konnectivity-server',
+        5,
+      ),
     ],
   };
   const all = Object.values(categories).flat();
-  const earliest = all.reduce((a, b) => (a.daysUntilExpiry <= b.daysUntilExpiry ? a : b));
+  const earliest = all.reduce((a, b) =>
+    a.daysUntilExpiry <= b.daysUntilExpiry ? a : b,
+  );
   return {
     clusterName,
     namespace: FIXTURE_NAMESPACE,
@@ -820,7 +1196,11 @@ export const fixtureGitOpsStatus: Record<string, GitOpsStatus> = {
       installed: true,
       ready: true,
       version: 'v2.15.0',
-      components: ['source-controller', 'kustomize-controller', 'helm-controller'],
+      components: [
+        'source-controller',
+        'kustomize-controller',
+        'helm-controller',
+      ],
       repository: 'butler-lab/clusters',
       branch: 'main',
       path: 'clusters/ready-delta',
@@ -844,8 +1224,16 @@ export const fixtureRepositories = [
 ];
 
 export const fixtureBranches = [
-  { name: 'main', sha: 'a1b2c3d4e5f60718293a4b5c6d7e8f9012345678', protected: true },
-  { name: 'staging', sha: 'b2c3d4e5f60718293a4b5c6d7e8f901234567890', protected: false },
+  {
+    name: 'main',
+    sha: 'a1b2c3d4e5f60718293a4b5c6d7e8f9012345678',
+    protected: true,
+  },
+  {
+    name: 'staging',
+    sha: 'b2c3d4e5f60718293a4b5c6d7e8f901234567890',
+    protected: false,
+  },
 ];
 
 // ---------------------------------------------------------------------------
@@ -881,14 +1269,48 @@ export const fixtureManagementNodes: ManagementNode[] = [
 
 export const fixtureManagementPods: Record<string, ManagementPod[]> = {
   'butler-system': [
-    { name: 'butler-controller-manager-7c9d8f6b5-x2k9q', namespace: 'butler-system', status: 'Running', ready: '1/1', restarts: 0, age: '12d' },
-    { name: 'butler-server-5f8b7c6d4-p4m2n', namespace: 'butler-system', status: 'Running', ready: '1/1', restarts: 1, age: '12d' },
+    {
+      name: 'butler-controller-manager-7c9d8f6b5-x2k9q',
+      namespace: 'butler-system',
+      status: 'Running',
+      ready: '1/1',
+      restarts: 0,
+      age: '12d',
+    },
+    {
+      name: 'butler-server-5f8b7c6d4-p4m2n',
+      namespace: 'butler-system',
+      status: 'Running',
+      ready: '1/1',
+      restarts: 1,
+      age: '12d',
+    },
   ],
 };
 
 // ---------------------------------------------------------------------------
 // Providers and identity providers
 // ---------------------------------------------------------------------------
+
+/**
+ * A provider scoped to another team. It exists so the team-scoped list
+ * can be proven to exclude it: it appears in the global list and must
+ * never be offered to the fixture team.
+ */
+export const fixtureOtherTeamProvider: Provider = {
+  metadata: {
+    name: 'data-nutanix',
+    namespace: 'butler-system',
+    uid: '7b8c9d0e-0002-4000-8000-0000000000cc',
+    creationTimestamp: '2026-06-01T09:30:00Z',
+  },
+  spec: {
+    provider: 'nutanix',
+    scope: { type: 'team', teamRef: { name: 'data' } },
+    network: { mode: 'ipam' },
+  },
+  status: { ready: true },
+};
 
 export const fixtureProviders: Provider[] = [
   {
@@ -900,13 +1322,26 @@ export const fixtureProviders: Provider[] = [
     },
     spec: {
       provider: 'harvester',
-      credentialsRef: { name: 'harvester-lab-kubeconfig', namespace: 'butler-system', key: 'kubeconfig' },
+      credentialsRef: {
+        name: 'harvester-lab-kubeconfig',
+        namespace: 'butler-system',
+        key: 'kubeconfig',
+      },
+      // The live harvester provider allocates addresses from a pool, so
+      // the fixture does too; a fixture in manual mode would exercise a
+      // path this estate never takes.
+      network: { mode: 'ipam' },
     },
     status: {
       validated: true,
       lastValidationTime: '2026-08-22T06:00:00Z',
       conditions: [
-        { type: 'Ready', status: 'True', reason: 'Validated', message: 'Provider credentials validated' },
+        {
+          type: 'Ready',
+          status: 'True',
+          reason: 'Validated',
+          message: 'Provider credentials validated',
+        },
       ],
     },
   },
@@ -925,7 +1360,11 @@ export const fixtureIdentityProviders: IdentityProvider[] = [
       oidc: {
         issuerURL: 'https://login.example.com',
         clientID: 'butler-portal',
-        clientSecretRef: { name: 'corp-oidc-client-secret', namespace: 'butler-system', key: 'clientSecret' },
+        clientSecretRef: {
+          name: 'corp-oidc-client-secret',
+          namespace: 'butler-system',
+          key: 'clientSecret',
+        },
         redirectURL: 'https://butler.example.com/auth/callback',
         scopes: ['openid', 'profile', 'email', 'groups'],
         groupsClaim: 'groups',
@@ -951,7 +1390,121 @@ export const fixturePlatformConfig: PlatformConfig = {
     controllerType: 'traefik',
     gatewayRef: 'steward-system/steward-gateway',
   },
-  defaultTeamLimits: { maxClusters: 10, maxWorkersPerCluster: 20, maxTotalCPU: '200', maxTotalMemory: '800Gi' },
-  imageFactory: { url: 'https://factory.example.test', credentialsRef: '', defaultSchematicID: '', autoSync: true },
-  status: { teamCount: 1, clusterCount: 8, controlPlaneExposureMode: 'LoadBalancer', tcpProxyRequired: false },
+  defaultTeamLimits: {
+    maxClusters: 10,
+    maxWorkersPerCluster: 20,
+    maxTotalCPU: '200',
+    maxTotalMemory: '800Gi',
+  },
+  imageFactory: {
+    url: 'https://factory.example.test',
+    credentialsRef: '',
+    defaultSchematicID: '',
+    autoSync: true,
+  },
+  status: {
+    teamCount: 1,
+    clusterCount: 8,
+    controlPlaneExposureMode: 'LoadBalancer',
+    tcpProxyRequired: false,
+  },
 };
+
+/**
+ * Audit events shaped like the live buffer on 2026-08-28: team-scoped
+ * actions carry the acting team; platform-level actions do not; one
+ * refused write, one failed one, and a sign-in.
+ */
+export const fixtureAuditEntries: AuditEntry[] = [
+  {
+    timestamp: '2026-08-28T21:47:15.596342Z',
+    user: 'viewer@example.com',
+    action: 'update',
+    resourceType: 'Team',
+    resourceName: FIXTURE_TEAM,
+    httpMethod: 'PUT',
+    path: `/api/teams/${FIXTURE_TEAM}`,
+    statusCode: 403,
+    success: false,
+    requestSummary: '{"displayName":"Platform Engineering"}',
+    errorMessage: 'Forbidden',
+    sourceIP: '[::1]:62123',
+  },
+  {
+    timestamp: '2026-08-28T21:07:07.678635Z',
+    user: 'ada@example.com',
+    action: 'delete',
+    resourceType: 'Unknown',
+    resourceName: FIXTURE_TEAM,
+    httpMethod: 'DELETE',
+    path: `/api/admin/teams/${FIXTURE_TEAM}/groups/e2e-parity-nogroup`,
+    statusCode: 200,
+    success: true,
+    sourceIP: '[::1]:60969',
+  },
+  {
+    timestamp: '2026-08-28T21:07:06.078707Z',
+    user: 'ada@example.com',
+    action: 'create',
+    resourceType: 'Unknown',
+    resourceName: FIXTURE_TEAM,
+    httpMethod: 'POST',
+    path: `/api/admin/teams/${FIXTURE_TEAM}/members`,
+    statusCode: 201,
+    success: true,
+    requestSummary: '{"email":"nobody@example.com","role":"viewer"}',
+    sourceIP: '[::1]:60969',
+  },
+  {
+    timestamp: '2026-08-28T15:53:02.880132Z',
+    user: 'grace@example.com',
+    action: 'delete',
+    resourceType: 'TenantAddon',
+    resourceName: 'ready-delta',
+    resourceNamespace: FIXTURE_NAMESPACE,
+    teamRef: FIXTURE_TEAM,
+    httpMethod: 'DELETE',
+    path: `/api/clusters/${FIXTURE_NAMESPACE}/ready-delta/addons/vector-agent`,
+    statusCode: 200,
+    success: true,
+    sourceIP: '[::1]:51520',
+  },
+  {
+    timestamp: '2026-08-28T15:40:00.000000Z',
+    user: 'grace@example.com',
+    action: 'scale',
+    resourceType: 'TenantCluster',
+    resourceName: 'ready-delta',
+    resourceNamespace: FIXTURE_NAMESPACE,
+    teamRef: FIXTURE_TEAM,
+    httpMethod: 'PATCH',
+    path: `/api/clusters/${FIXTURE_NAMESPACE}/ready-delta/scale`,
+    statusCode: 500,
+    success: false,
+    requestSummary: '{"replicas":4}',
+    errorMessage: 'Internal Server Error',
+    sourceIP: '[::1]:51520',
+  },
+  {
+    timestamp: '2026-08-28T15:30:00.000000Z',
+    user: 'ada@example.com',
+    action: 'create',
+    resourceType: 'ProviderConfig',
+    httpMethod: 'POST',
+    path: '/api/providers',
+    statusCode: 201,
+    success: true,
+    requestSummary:
+      '{"name":"e2e-provider-probe","provider":"harvester","harvesterKubeconfig":"apiVersion: v1\\nclusters: []"}',
+    sourceIP: '[::1]:51000',
+  },
+  {
+    timestamp: '2026-08-28T09:00:00.000000Z',
+    user: 'ada@example.com',
+    action: 'login',
+    success: true,
+    statusCode: 200,
+    provider: 'butlerlabs',
+    sourceIP: '[::1]:40000',
+  },
+];

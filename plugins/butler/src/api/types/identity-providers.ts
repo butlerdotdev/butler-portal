@@ -72,6 +72,17 @@ export interface CreateIdentityProviderRequest {
   insecureSkipVerify?: boolean;
 }
 
+/**
+ * `PUT /admin/identity-providers/{name}`. The server merges every
+ * non-empty string, replaces the Secret only when `clientSecret` is
+ * sent, sets `scopes` only when non-empty, and writes
+ * `insecureSkipVerify` from the request on every call. Name and type
+ * are not accepted.
+ */
+export type UpdateIdentityProviderRequest = Partial<
+  Omit<CreateIdentityProviderRequest, 'name'>
+>;
+
 export interface TestDiscoveryRequest {
   issuerURL: string;
 }

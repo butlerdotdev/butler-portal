@@ -14,7 +14,12 @@
  * limitations under the License.
  */
 
-import { createPrivateKey, KeyObject, randomUUID, sign as cryptoSign } from 'crypto';
+import {
+  createPrivateKey,
+  KeyObject,
+  randomUUID,
+  sign as cryptoSign,
+} from 'crypto';
 import { readFileSync } from 'fs';
 import { LoggerService } from '@backstage/backend-plugin-api';
 
@@ -79,7 +84,11 @@ export class PortalSigner {
     const headerB64 = base64UrlEncodeJson(header);
     const payloadB64 = base64UrlEncodeJson(payload);
     const signingInput = `${headerB64}.${payloadB64}`;
-    const signatureBytes = cryptoSign(null, Buffer.from(signingInput), this.privateKey);
+    const signatureBytes = cryptoSign(
+      null,
+      Buffer.from(signingInput),
+      this.privateKey,
+    );
     const signatureB64 = base64UrlEncodeBuffer(signatureBytes);
     return `${signingInput}.${signatureB64}`;
   }
@@ -108,7 +117,9 @@ export function loadPortalSigner(opts: {
   const { keyPath, kid, logger } = opts;
   if (!keyPath || !kid) {
     logger.info('PortalSigner not configured; using legacy carrier', {
-      reason: !keyPath ? 'butler.signing.keyPath is unset' : 'butler.signing.kid is unset',
+      reason: !keyPath
+        ? 'butler.signing.keyPath is unset'
+        : 'butler.signing.kid is unset',
     });
     return null;
   }
@@ -139,5 +150,9 @@ function base64UrlEncodeJson(obj: unknown): string {
 }
 
 function base64UrlEncodeBuffer(buf: Buffer): string {
-  return buf.toString('base64').replace(/=+$/, '').replace(/\+/g, '-').replace(/\//g, '_');
+  return buf
+    .toString('base64')
+    .replace(/=+$/, '')
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_');
 }

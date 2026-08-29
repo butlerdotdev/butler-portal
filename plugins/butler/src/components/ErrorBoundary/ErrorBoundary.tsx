@@ -13,9 +13,7 @@ interface ErrorBoundaryClassProps {
   children?: React.ReactNode;
 }
 
-type ErrorBoundaryState =
-  | { kind: 'ok' }
-  | { kind: 'failed'; error: Error };
+type ErrorBoundaryState = { kind: 'ok' } | { kind: 'failed'; error: Error };
 
 // React only exposes render-error capture through a class component, so this
 // is the single class allowed in the plugin. Everything else stays functional.

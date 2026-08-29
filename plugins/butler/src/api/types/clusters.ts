@@ -9,11 +9,21 @@ export interface Cluster {
     resourceVersion?: string;
     creationTimestamp?: string;
     labels?: Record<string, string>;
+    annotations?: Record<string, string>;
   };
   spec: {
     kubernetesVersion: string;
     controlPlane?: {
       replicas?: number;
+      resources?: Partial<
+        Record<
+          'apiServer' | 'controllerManager' | 'scheduler',
+          {
+            requests?: { cpu?: string; memory?: string };
+            limits?: { cpu?: string; memory?: string };
+          }
+        >
+      >;
     };
     providerConfigRef?: {
       name: string;
@@ -28,6 +38,13 @@ export interface Cluster {
         cpu?: number;
         memory?: string;
         diskSize?: string;
+        os?: {
+          type?: string;
+          version?: string;
+          talos?: {
+            version?: string;
+          };
+        };
       };
     };
     networking?: {
@@ -69,6 +86,8 @@ export interface Cluster {
     lastTransitionTime?: string;
     workerNodesReady?: number;
     workerNodesDesired?: number;
+    /** Platform IPAM allocation backing this cluster's load balancer addresses. */
+    lbAllocationRef?: { name: string };
     observedState?: {
       kubernetesVersion?: string;
       workers?: {
@@ -111,8 +130,13 @@ export interface CreateClusterRequest {
   workerCPU?: number;
   workerMemory?: string;
   workerDiskSize?: string;
-  loadBalancerStart: string;
-  loadBalancerEnd: string;
+  /**
+   * Only sent when the caller supplies the range. A provider in `ipam`
+   * mode allocates from a pool and a `cloud` provider owns addressing
+   * outright, so in both cases there is nothing for the caller to name.
+   */
+  loadBalancerStart?: string;
+  loadBalancerEnd?: string;
   teamRef?: string;
 
   // Harvester-specific
@@ -133,6 +157,42 @@ export interface CreateClusterRequest {
 
   // Workspaces
   workspacesEnabled?: boolean;
+
+  /**
+   * OS the worker machines run, taken from the selected image rather than
+   * chosen separately. The server writes it to
+   * `workers.machineTemplate.os.type`.
+   */
+  osType?: string;
+
+  /**
+   * Traefik. The server installs it unless this is explicitly false, so
+   * the field is only ever sent to turn it off, and turning it off saves
+   * a load balancer address.
+   */
+  ingressEnabled?: boolean;
+
+  /** NTP servers for the worker nodes, overriding provider defaults. */
+  timeServers?: string[];
+
+  /** Optional control plane resource overrides. */
+  controlPlaneResources?: ControlPlaneResourcesRequest;
+}
+
+export interface ResourceQuantitiesRequest {
+  cpu?: string;
+  memory?: string;
+}
+
+export interface ComponentResourcesRequest {
+  requests?: ResourceQuantitiesRequest;
+  limits?: ResourceQuantitiesRequest;
+}
+
+export interface ControlPlaneResourcesRequest {
+  apiServer?: ComponentResourcesRequest;
+  controllerManager?: ComponentResourcesRequest;
+  scheduler?: ComponentResourcesRequest;
 }
 
 export interface ScaleRequest {
@@ -211,3 +271,28 @@ export interface ManagementPod {
   restarts: number;
   age: string;
 }
+
+/** Fields butler-server accepts on PUT /clusters/{namespace}/{name}. */
+export interface UpdateClusterRequest {
+  /** Required: the server rejects an edit without it. */
+  resourceVersion: string;
+  kubernetesVersion?: string;
+  controlPlane?: {
+    replicas?: number;
+    resources?: Record<string, unknown>;
+  };
+  workers?: {
+    replicas?: number;
+    machineTemplate?: Record<string, unknown>;
+  };
+  /** Platform admin only; the server refuses it for anyone else. */
+  infrastructureOverride?: Record<string, unknown>;
+  /** Required when taking control plane replicas from three to one. */
+  acknowledgeDowngrade?: boolean;
+}
+
+/** An environment a team may place clusters in. */
+// Environments belong to the team, not to the cluster. The canonical
+// shape lives with the environment types; this re-export keeps existing
+// cluster imports working without a second, drifting definition.
+export type { TeamEnvironment } from './environments';

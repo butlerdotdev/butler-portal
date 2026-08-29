@@ -16,6 +16,7 @@ import {
   clustersRouteRef,
   createClusterRouteRef,
   clusterDetailRouteRef,
+  teamProvidersRouteRef,
   teamMembersRouteRef,
   teamSettingsRouteRef,
   adminRouteRef,
@@ -27,8 +28,14 @@ import {
   adminProvidersRouteRef,
   adminCreateProviderRouteRef,
   adminIdentityProvidersRouteRef,
+  adminPoliciesRouteRef,
+  adminPolicyRouteRef,
   adminCreateIdentityProviderRouteRef,
   adminSettingsRouteRef,
+  adminObservabilityRouteRef,
+  adminAccessRouteRef,
+  adminAuditRouteRef,
+  teamAuditRouteRef,
 } from './routes';
 
 export const butlerPlugin = createPlugin({
@@ -39,6 +46,7 @@ export const butlerPlugin = createPlugin({
     clusters: clustersRouteRef,
     createCluster: createClusterRouteRef,
     clusterDetail: clusterDetailRouteRef,
+    teamProviders: teamProvidersRouteRef,
     teamMembers: teamMembersRouteRef,
     teamSettings: teamSettingsRouteRef,
     admin: adminRouteRef,
@@ -50,8 +58,14 @@ export const butlerPlugin = createPlugin({
     adminProviders: adminProvidersRouteRef,
     adminCreateProvider: adminCreateProviderRouteRef,
     adminIdentityProviders: adminIdentityProvidersRouteRef,
+    adminPolicies: adminPoliciesRouteRef,
+    adminPolicy: adminPolicyRouteRef,
     adminCreateIdentityProvider: adminCreateIdentityProviderRouteRef,
     adminSettings: adminSettingsRouteRef,
+    adminObservability: adminObservabilityRouteRef,
+    adminAccess: adminAccessRouteRef,
+    adminAudit: adminAuditRouteRef,
+    teamAudit: teamAuditRouteRef,
   },
   apis: [
     createApiFactory({

@@ -37,11 +37,12 @@ const machines: MachineRequest[] = [
 describe('MachineRequestsCard', () => {
   it('renders ready count, names, IPs and phases', async () => {
     await renderInTestApp(<MachineRequestsCard machineRequests={machines} />);
-    expect(screen.getByText('Provisioning')).toBeInTheDocument();
-    expect(screen.getByText('1/2 VMs ready')).toBeInTheDocument();
+    expect(
+      screen.getByText('Provisioning (1/2 VMs ready)'),
+    ).toBeInTheDocument();
     expect(screen.getByText('c1-cp-0')).toBeInTheDocument();
     expect(screen.getByText('c1-worker-0')).toBeInTheDocument();
-    expect(screen.getByText('10.0.0.11')).toBeInTheDocument();
+    expect(screen.getByText(/IP: 10\.0\.0\.11/)).toBeInTheDocument();
     expect(screen.getByText('Running')).toBeInTheDocument();
     expect(screen.getByText('Creating')).toBeInTheDocument();
   });
@@ -50,6 +51,16 @@ describe('MachineRequestsCard', () => {
     const { container } = await renderInTestApp(
       <MachineRequestsCard machineRequests={[]} />,
     );
-    expect(container.querySelector('h2, h5, table')).toBeNull();
+    expect(container.querySelector('h3')).toBeNull();
+  });
+
+  it('explains an empty list when told why, without implying failure', async () => {
+    await renderInTestApp(
+      <MachineRequestsCard
+        machineRequests={[]}
+        absenceNote="No machine requests are recorded. Workers on this cluster are Cluster API machines managed through the provider; see the Nodes tab."
+      />,
+    );
+    expect(screen.getByText(/Cluster API machines/)).toBeInTheDocument();
   });
 });

@@ -2,51 +2,17 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { useEffect, useState, useCallback, useMemo } from 'react';
+import type { ReactNode } from 'react';
 import { useApi } from '@backstage/core-plugin-api';
-import {
-  Progress,
-  EmptyState,
-  Table,
-  TableColumn,
-} from '@backstage/core-components';
-import {
-  Grid,
-  Typography,
-  Button,
-  Card,
-  CardContent,
-  CardActions,
-  Chip,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
-  TextField,
-  MenuItem,
-  Box,
-  IconButton,
-  Menu,
-  CircularProgress,
-  FormControlLabel,
-  Checkbox,
-  Collapse,
-} from '@material-ui/core';
 import { makeStyles } from '@material-ui/core/styles';
-import { Alert } from '@material-ui/lab';
-import AddIcon from '@material-ui/icons/Add';
-import DeleteIcon from '@material-ui/icons/Delete';
-import RefreshIcon from '@material-ui/icons/Refresh';
-import SettingsIcon from '@material-ui/icons/Settings';
-import MoreVertIcon from '@material-ui/icons/MoreVert';
-import SearchIcon from '@material-ui/icons/Search';
-import CloudUploadIcon from '@material-ui/icons/CloudUpload';
-import SyncIcon from '@material-ui/icons/Sync';
-import WarningIcon from '@material-ui/icons/Warning';
-import VisibilityIcon from '@material-ui/icons/Visibility';
-import VisibilityOffIcon from '@material-ui/icons/VisibilityOff';
-import ExpandMoreIcon from '@material-ui/icons/ExpandMore';
-import ExpandLessIcon from '@material-ui/icons/ExpandLess';
+import clsx from 'clsx';
+import {
+  addonVersionState,
+  formatValuesYaml,
+  parseValuesYaml,
+} from '../../utils/addonValues';
 import { butlerApiRef } from '../../api/ButlerApi';
+import type { ButlerApi } from '../../api/ButlerApi';
 import type {
   InstalledAddon,
   AddonDefinition,
@@ -60,7 +26,32 @@ import type {
   DiscoveryResult,
   GitOpsStatus,
 } from '../../api/types/gitops';
-import { StatusBadge } from '../StatusBadge/StatusBadge';
+import { butlerTokens, rgb, rgba } from '../../theme';
+import {
+  AlertTriangleIcon,
+  ButlerButton,
+  ButlerCallout,
+  ButlerCard,
+  ButlerCheckbox,
+  ButlerChip,
+  ButlerDialog,
+  ButlerEmptyState,
+  ButlerErrorState,
+  ButlerField,
+  ButlerFilePreview,
+  ButlerFormRow,
+  ButlerInput,
+  ButlerMenu,
+  ButlerMenuItem,
+  ButlerPreviewToggle,
+  ButlerSearchInput,
+  ButlerSelect,
+  ButlerSpinner,
+  ButlerStack,
+  ButlerStatusBadge,
+  ButlerTextarea,
+  ButlerToggleBar,
+} from '../ui';
 
 // ---------------------------------------------------------------------------
 // Props
@@ -69,219 +60,285 @@ import { StatusBadge } from '../StatusBadge/StatusBadge';
 interface AddonsTabProps {
   clusterNamespace: string;
   clusterName: string;
+  /** Whether the caller may install, reconfigure and remove addons here. */
+  canOperate: boolean;
 }
+
+export const ADDONS_PLATFORM_EMPTY_TEXT = 'No platform addons detected';
 
 // ---------------------------------------------------------------------------
 // Styles
 // ---------------------------------------------------------------------------
 
-const useStyles = makeStyles(theme => ({
-  root: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: theme.spacing(4),
-  },
-  headerRow: {
-    display: 'flex',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: theme.spacing(2),
-  },
-  sectionTitle: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: theme.spacing(1),
-  },
-  sectionCount: {
-    fontSize: '0.75rem',
-  },
-  gitopsBanner: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: theme.spacing(1.5),
-    padding: theme.spacing(1.5, 2),
-    borderRadius: theme.shape.borderRadius,
-    backgroundColor:
-      theme.palette.type === 'dark'
-        ? 'rgba(156, 39, 176, 0.08)'
-        : 'rgba(156, 39, 176, 0.06)',
-    border: `1px solid ${
-      theme.palette.type === 'dark'
-        ? 'rgba(156, 39, 176, 0.3)'
-        : 'rgba(156, 39, 176, 0.2)'
-    }`,
-  },
-  gitopsBannerText: {
-    color: theme.palette.type === 'dark' ? '#ce93d8' : '#7b1fa2',
-  },
-  // Installed addons table
-  platformChip: {
-    backgroundColor:
-      theme.palette.type === 'dark'
-        ? 'rgba(33, 150, 243, 0.15)'
-        : 'rgba(33, 150, 243, 0.1)',
-    color: theme.palette.info.main,
-    fontWeight: 500,
-  },
-  gitopsChip: {
-    backgroundColor:
-      theme.palette.type === 'dark'
-        ? 'rgba(156, 39, 176, 0.15)'
-        : 'rgba(156, 39, 176, 0.1)',
-    color: theme.palette.type === 'dark' ? '#ce93d8' : '#7b1fa2',
-    fontWeight: 500,
-  },
-  butlerChip: {
-    fontWeight: 500,
-  },
-  // Catalog search and filter
-  searchField: {
-    minWidth: 280,
-  },
-  categoryChips: {
-    display: 'flex',
-    flexWrap: 'wrap',
-    gap: theme.spacing(0.75),
-  },
-  categoryChipActive: {
-    fontWeight: 600,
-  },
-  // Catalog addon cards
-  addonCard: {
-    height: '100%',
-    display: 'flex',
-    flexDirection: 'column',
-    justifyContent: 'space-between',
-    transition: 'border-color 0.2s',
-    '&:hover': {
-      borderColor: theme.palette.primary.main,
+const useStyles = makeStyles(theme => {
+  const t = butlerTokens(theme);
+  const p = t.palette;
+  return {
+    loading: {
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      padding: 48,
+      gap: 12,
+      color: t.text.muted,
+      fontFamily: t.fontSans,
     },
-  },
-  addonDescription: {
-    color: theme.palette.text.secondary,
-    marginTop: theme.spacing(1),
-    display: '-webkit-box',
-    WebkitLineClamp: 2,
-    WebkitBoxOrient: 'vertical',
-    overflow: 'hidden',
-  },
-  addonMeta: {
-    marginTop: theme.spacing(1),
-    display: 'flex',
-    alignItems: 'center',
-    gap: theme.spacing(1),
-    flexWrap: 'wrap',
-  },
-  addonLinks: {
-    display: 'flex',
-    gap: theme.spacing(1.5),
-    marginTop: theme.spacing(1),
-  },
-  addonLink: {
-    fontSize: '0.75rem',
-    color: theme.palette.text.secondary,
-    textDecoration: 'none',
-    '&:hover': {
-      color: theme.palette.primary.main,
-      textDecoration: 'underline',
+    // Console GitOps banner uses untokenized purple; violet tokens here.
+    gitopsBanner: {
+      display: 'flex',
+      alignItems: 'center',
+      gap: 12,
+      padding: 16,
+      borderRadius: t.radius.lg,
+      border: `1px solid ${rgba(p.violet[500], 0.2)}`,
+      backgroundColor: rgba(p.violet[500], 0.1),
+      fontFamily: t.fontSans,
     },
-  },
-  installButtonGroup: {
-    display: 'flex',
-    width: '100%',
-  },
-  installButtonMain: {
-    flexGrow: 1,
-    borderTopRightRadius: 0,
-    borderBottomRightRadius: 0,
-  },
-  installButtonDropdown: {
-    minWidth: 'auto',
-    borderTopLeftRadius: 0,
-    borderBottomLeftRadius: 0,
-    borderLeft: `1px solid ${theme.palette.primary.dark}`,
-    padding: theme.spacing(0.5),
-  },
-  // Category section
-  categoryHeader: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: theme.spacing(1),
-    marginBottom: theme.spacing(1),
-  },
-  categoryDescription: {
-    color: theme.palette.text.secondary,
-    marginBottom: theme.spacing(2),
-  },
-  // Dialog styles
-  dialogSection: {
-    marginTop: theme.spacing(2),
-  },
-  previewContainer: {
-    border: `1px solid ${theme.palette.divider}`,
-    borderRadius: theme.shape.borderRadius,
-    overflow: 'hidden',
-    marginTop: theme.spacing(2),
-  },
-  previewHeader: {
-    backgroundColor: theme.palette.background.default,
-    padding: theme.spacing(1, 2),
-    borderBottom: `1px solid ${theme.palette.divider}`,
-  },
-  previewFileHeader: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: theme.spacing(1),
-    cursor: 'pointer',
-    padding: theme.spacing(1, 2),
-    borderBottom: `1px solid ${theme.palette.divider}`,
-    '&:hover': {
-      backgroundColor: theme.palette.action.hover,
+    gitopsBannerIcon: { fontSize: 20, lineHeight: '28px' },
+    gitopsBannerTitle: {
+      margin: 0,
+      fontSize: 16,
+      lineHeight: '24px',
+      fontWeight: 500,
+      color: rgb(p.violet[300]),
     },
-  },
-  previewContent: {
-    fontFamily: 'monospace',
-    fontSize: '0.75rem',
-    padding: theme.spacing(1.5, 2),
-    backgroundColor:
-      theme.palette.type === 'dark'
-        ? 'rgba(0,0,0,0.2)'
-        : 'rgba(0,0,0,0.03)',
-    overflow: 'auto',
-    maxHeight: 200,
-    whiteSpace: 'pre',
-    margin: 0,
-  },
-  warningBox: {
-    padding: theme.spacing(2),
-    borderRadius: theme.shape.borderRadius,
-    backgroundColor:
-      theme.palette.type === 'dark'
-        ? 'rgba(255, 152, 0, 0.08)'
-        : 'rgba(255, 152, 0, 0.06)',
-    border: `1px solid ${
-      theme.palette.type === 'dark'
-        ? 'rgba(255, 152, 0, 0.3)'
-        : 'rgba(255, 152, 0, 0.2)'
-    }`,
-  },
-  yamlField: {
-    fontFamily: 'monospace',
-    fontSize: '0.85rem',
-  },
-  addonInfoBox: {
-    padding: theme.spacing(1.5, 2),
-    borderRadius: theme.shape.borderRadius,
-    backgroundColor: theme.palette.background.default,
-    border: `1px solid ${theme.palette.divider}`,
-    display: 'flex',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-}));
+    gitopsBannerText: {
+      margin: 0,
+      fontSize: 14,
+      lineHeight: '20px',
+      color: rgba(p.violet[400], 0.7),
+    },
+    sectionHead: {
+      display: 'flex',
+      alignItems: 'center',
+      gap: 8,
+      marginBottom: 16,
+    },
+    sectionTitle: {
+      margin: 0,
+      fontSize: 18,
+      lineHeight: '28px',
+      fontWeight: 500,
+      color: t.text.primary,
+    },
+    sectionDesc: {
+      margin: '0 0 16px',
+      fontSize: 14,
+      lineHeight: '20px',
+      color: t.text.subtle,
+    },
+    countChip: {
+      padding: '2px 8px',
+      borderRadius: t.radius.sm,
+      fontSize: 12,
+      lineHeight: '16px',
+    },
+    chipBlue: {
+      backgroundColor: rgba(p.blue[500], 0.1),
+      color: rgb(p.blue[400]),
+    },
+    chipGreen: {
+      backgroundColor: rgba(p.green[500], 0.1),
+      color: rgb(p.green[400]),
+    },
+    chipViolet: {
+      backgroundColor: rgba(p.violet[500], 0.1),
+      color: rgb(p.violet[400]),
+    },
+    grid: {
+      display: 'grid',
+      gridTemplateColumns: '1fr',
+      gap: 16,
+      '@media (min-width: 768px)': {
+        gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
+      },
+      '@media (min-width: 1024px)': {
+        gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
+      },
+    },
+    toolbar: {
+      display: 'flex',
+      flexDirection: 'column',
+      gap: 16,
+      marginBottom: 24,
+      '@media (min-width: 640px)': { flexDirection: 'row' },
+    },
+    categoryGroup: {},
+    categoryHead: {
+      display: 'flex',
+      alignItems: 'center',
+      gap: 8,
+      marginBottom: 8,
+    },
+    categoryIcon: { fontSize: 20, lineHeight: '28px' },
+    categoryTitle: {
+      margin: 0,
+      fontSize: 16,
+      lineHeight: '24px',
+      fontWeight: 500,
+      color: rgb(p.neutral[200]),
+    },
+    // Addon cards
+    card: {
+      padding: 16,
+      display: 'flex',
+      flexDirection: 'column',
+      transition: 'border-color 150ms',
+      '&:hover': { borderColor: rgb(p.neutral[600]) },
+    },
+    cardInstalled: { borderColor: rgba(p.green[500], 0.2) },
+    cardGitOps: { borderColor: rgba(p.violet[500], 0.3) },
+    cardTop: {
+      display: 'flex',
+      alignItems: 'flex-start',
+      justifyContent: 'space-between',
+      gap: 12,
+    },
+    cardTopSpaced: { marginBottom: 12 },
+    identity: { display: 'flex', alignItems: 'center', gap: 12, minWidth: 0 },
+    iconTile: {
+      width: 48,
+      height: 48,
+      borderRadius: t.radius.lg,
+      backgroundColor: rgb(p.neutral[800]),
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      flexShrink: 0,
+      fontSize: 20,
+    },
+    nameRow: { display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 },
+    name: {
+      margin: 0,
+      fontSize: 16,
+      lineHeight: '24px',
+      fontWeight: 500,
+      color: t.text.strong,
+      whiteSpace: 'nowrap',
+      overflow: 'hidden',
+      textOverflow: 'ellipsis',
+    },
+    // Console TierPill is untokenized indigo; violet tokens here.
+    tierPill: {
+      flexShrink: 0,
+      padding: '2px 8px',
+      borderRadius: t.radius.sm,
+      fontSize: 12,
+      lineHeight: '16px',
+      fontWeight: 500,
+      backgroundColor: rgba(p.violet[500], 0.1),
+      color: rgb(p.violet[400]),
+      border: `1px solid ${rgba(p.violet[500], 0.2)}`,
+    },
+    version: {
+      margin: 0,
+      fontSize: 12,
+      lineHeight: '16px',
+      color: t.text.subtle,
+    },
+    badges: { display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 },
+    gitopsPill: {
+      padding: '4px 8px',
+      borderRadius: t.radius.pill,
+      fontSize: 12,
+      lineHeight: '16px',
+      backgroundColor: rgba(p.violet[500], 0.1),
+      color: rgb(p.violet[400]),
+      border: `1px solid ${rgba(p.violet[500], 0.3)}`,
+    },
+    description: {
+      margin: '0 0 16px',
+      fontSize: 14,
+      lineHeight: '20px',
+      color: t.text.muted,
+      display: '-webkit-box',
+      WebkitLineClamp: 2,
+      WebkitBoxOrient: 'vertical',
+      overflow: 'hidden',
+    },
+    requires: {
+      marginBottom: 12,
+      fontSize: 12,
+      lineHeight: '16px',
+      color: t.text.muted,
+    },
+    requiresLabel: { color: t.text.subtle },
+    links: { display: 'flex', gap: 12, marginBottom: 16, fontSize: 12 },
+    link: {
+      color: t.text.subtle,
+      textDecoration: 'none',
+      '&:hover': { color: rgb(p.neutral[300]) },
+    },
+    cardFooter: { marginTop: 'auto' },
+    manage: {
+      width: '100%',
+      justifyContent: 'space-between',
+    },
+    split: { display: 'flex', width: '100%' },
+    splitMain: {
+      flex: 1,
+      borderTopRightRadius: 0,
+      borderBottomRightRadius: 0,
+    },
+    splitToggle: {
+      borderTopLeftRadius: 0,
+      borderBottomLeftRadius: 0,
+      borderLeft: `1px solid ${rgb(p.green[600])}`,
+      padding: '6px 8px',
+    },
+    chevron: { flexShrink: 0 },
+    // Dialog pieces
+    dialogText: {
+      margin: 0,
+      fontSize: 14,
+      lineHeight: '20px',
+      color: t.text.muted,
+    },
+    dialogCenter: { margin: 0, color: t.text.muted, textAlign: 'center' },
+    strong: { color: rgb(p.neutral[200]), fontWeight: 500 },
+    infoBox: {
+      padding: 12,
+      borderRadius: t.radius.lg,
+      backgroundColor: t.inset,
+      border: `1px solid ${rgb(p.neutral[700])}`,
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      gap: 12,
+    },
+    infoName: { margin: 0, fontWeight: 500, color: rgb(p.neutral[200]) },
+    infoMeta: { margin: 0, fontSize: 14, color: t.text.subtle },
+    mono: { fontFamily: t.fontMono },
+    inlineError: {
+      margin: 0,
+      padding: 12,
+      borderRadius: t.radius.lg,
+      border: `1px solid ${rgba(p.red[500], 0.2)}`,
+      backgroundColor: rgba(p.red[500], 0.1),
+      fontSize: 14,
+      color: rgb(p.red[400]),
+    },
+    emoji: { fontSize: 20 },
+  };
+});
+
+const ChevronDown = ({ className }: { className?: string }) => (
+  <svg
+    width={16}
+    height={16}
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth={2}
+    className={className}
+    aria-hidden
+  >
+    <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+  </svg>
+);
 
 // ---------------------------------------------------------------------------
-// Installed addon row type for the table
+// Installed addon row type
 // ---------------------------------------------------------------------------
 
 type InstalledAddonRow = {
@@ -305,9 +362,17 @@ type InstalledAddonRow = {
 export const AddonsTab = ({
   clusterNamespace,
   clusterName,
+  canOperate,
 }: AddonsTabProps) => {
   const classes = useStyles();
   const api = useApi(butlerApiRef);
+
+  // butler-server lets a team admin or operator, or a platform admin,
+  // install, reconfigure and remove addons (checkOperatePermission). The
+  // console gates these on platform admin alone, which is stricter than the
+  // server; the server is the authority, so the caller's cluster authority
+  // is what gates the actions here.
+  const canMutate = canOperate;
 
   // Data state
   const [installedAddons, setInstalledAddons] = useState<InstalledAddon[]>([]);
@@ -342,17 +407,26 @@ export const AddonsTab = ({
 
   // Configure dialog state
   const [configureOpen, setConfigureOpen] = useState(false);
-  const [configureAddon, setConfigureAddon] = useState<InstalledAddonRow | null>(
+  const [configureAddon, setConfigureAddon] =
+    useState<InstalledAddonRow | null>(null);
+  const [configureValues, setConfigureValues] = useState('');
+  const [configureVersion, setConfigureVersion] = useState('');
+  const [configureLoading, setConfigureLoading] = useState(false);
+  const [configureLoadError, setConfigureLoadError] = useState<string | null>(
     null,
   );
-  const [configureValues, setConfigureValues] = useState('');
+  const [installParseError, setInstallParseError] = useState<string | null>(
+    null,
+  );
+  const [configureParseError, setConfigureParseError] = useState<string | null>(
+    null,
+  );
   const [configuring, setConfiguring] = useState(false);
 
   // Uninstall dialog state
   const [uninstallOpen, setUninstallOpen] = useState(false);
-  const [uninstallTarget, setUninstallTarget] = useState<InstalledAddonRow | null>(
-    null,
-  );
+  const [uninstallTarget, setUninstallTarget] =
+    useState<InstalledAddonRow | null>(null);
   const [uninstalling, setUninstalling] = useState(false);
 
   // GitOps warning dialog state
@@ -372,16 +446,6 @@ export const AddonsTab = ({
   const [migrateAddon, setMigrateAddon] = useState<InstalledAddonRow | null>(
     null,
   );
-
-  // Actions menu anchor (for per-row dropdown)
-  const [menuAnchor, setMenuAnchor] = useState<null | HTMLElement>(null);
-  const [menuRow, setMenuRow] = useState<InstalledAddonRow | null>(null);
-
-  // Install dropdown menu (for catalog cards)
-  const [installMenuAnchor, setInstallMenuAnchor] =
-    useState<null | HTMLElement>(null);
-  const [installMenuAddon, setInstallMenuAddon] =
-    useState<AddonDefinition | null>(null);
 
   // --------------------------------------------------------------------------
   // Data fetching
@@ -456,8 +520,7 @@ export const AddonsTab = ({
   const gitopsEnabled = useMemo(() => {
     if (gitOpsStatus?.enabled) return true;
     return installedAddons.some(
-      a =>
-        a.name.toLowerCase() === 'flux' || a.name.toLowerCase() === 'argocd',
+      a => a.name.toLowerCase() === 'flux' || a.name.toLowerCase() === 'argocd',
     );
   }, [gitOpsStatus, installedAddons]);
 
@@ -481,18 +544,21 @@ export const AddonsTab = ({
     [installedAddons],
   );
 
-  // Table rows
   const installedRows: InstalledAddonRow[] = useMemo(() => {
     return installedAddons.map(addon => {
+      // An installed addon is named after its cluster; the catalog is keyed
+      // by the addon field the server returns alongside it.
+      const catalogKey = (addon.addon ?? addon.name).toLowerCase();
       const catalogEntry = catalog.find(
-        c => c.name.toLowerCase() === addon.name.toLowerCase(),
+        c => c.name.toLowerCase() === catalogKey,
       );
-      const isPlatform = platformAddonNames.has(addon.name.toLowerCase());
+      const isPlatform = platformAddonNames.has(catalogKey);
       return {
         id: addon.name,
         name: addon.name,
-        displayName: addon.displayName || catalogEntry?.displayName || addon.name,
-        version: addon.installedVersion || addon.version || 'N/A',
+        displayName:
+          addon.displayName || catalogEntry?.displayName || addon.name,
+        version: addon.installedVersion || addon.version || 'Unknown version',
         status: addon.status,
         category: catalogEntry?.category || 'other',
         managedBy: addon.managedBy || (isPlatform ? 'platform' : 'butler'),
@@ -503,6 +569,15 @@ export const AddonsTab = ({
       };
     });
   }, [installedAddons, catalog, platformAddonNames]);
+
+  const platformRows = useMemo(
+    () => installedRows.filter(r => r.isPlatform),
+    [installedRows],
+  );
+  const installedOptionalRows = useMemo(
+    () => installedRows.filter(r => !r.isPlatform),
+    [installedRows],
+  );
 
   // Available (not installed) optional addons, filtered
   const availableCatalog = useMemo(() => {
@@ -522,7 +597,6 @@ export const AddonsTab = ({
     });
   }, [optionalCatalog, installedNames, searchQuery, selectedCategory]);
 
-  // Group available by category
   const groupedAvailableCatalog = useMemo(() => {
     const groups: Record<string, AddonDefinition[]> = {};
     optionalCategories.forEach(cat => {
@@ -536,7 +610,6 @@ export const AddonsTab = ({
     return groups;
   }, [availableCatalog, optionalCategories]);
 
-  // Helper to find discovered release for an addon
   const getDiscoveredRelease = useCallback(
     (addonName: string) => {
       const normalized = addonName
@@ -588,14 +661,20 @@ export const AddonsTab = ({
     if (!selectedAddon) return;
     setInstalling(true);
     try {
-      let values: Record<string, unknown> | undefined;
-      if (installValues.trim()) {
-        try {
-          values = parseYaml(installValues);
-        } catch {
-          // Treat as empty values on parse error
-        }
+      // Invalid YAML is refused, not treated as empty: an install with
+      // silently dropped values is worse than no install.
+      const parsed = parseValuesYaml(installValues);
+      if (!parsed.ok) {
+        setInstallParseError(
+          parsed.line
+            ? `Line ${parsed.line}: ${parsed.message}`
+            : parsed.message,
+        );
+        setInstalling(false);
+        return;
       }
+      setInstallParseError(null);
+      const values = parsed.values;
       await api.installAddon(clusterNamespace, clusterName, {
         addon: selectedAddon.name,
         version: selectedVersion,
@@ -614,6 +693,33 @@ export const AddonsTab = ({
   };
 
   // Configure
+  // The editor starts from the addon's current overrides, read from the
+  // server, so a save with no edits sends back what is already there.
+  const openConfigureDialog = async (row: InstalledAddonRow) => {
+    setConfigureAddon(row);
+    setConfigureValues('');
+    setConfigureVersion(row.raw.version || '');
+    setConfigureParseError(null);
+    setConfigureLoadError(null);
+    setConfigureLoading(true);
+    setConfigureOpen(true);
+    try {
+      const details = await api.getAddonDetails(
+        clusterNamespace,
+        clusterName,
+        row.name,
+      );
+      setConfigureValues(formatValuesYaml(details.values));
+      if (details.version) setConfigureVersion(details.version);
+    } catch (e) {
+      setConfigureLoadError(
+        e instanceof Error ? e.message : 'Failed to read current values',
+      );
+    } finally {
+      setConfigureLoading(false);
+    }
+  };
+
   const handleOpenConfigure = (row: InstalledAddonRow) => {
     if (row.isGitOpsManaged) {
       setGitopsWarningTarget(row);
@@ -624,29 +730,36 @@ export const AddonsTab = ({
     openConfigureDialog(row);
   };
 
-  const openConfigureDialog = (row: InstalledAddonRow) => {
-    setConfigureAddon(row);
-    setConfigureValues('');
-    setConfigureOpen(true);
-  };
-
   const handleConfigure = async () => {
     if (!configureAddon) return;
     setConfiguring(true);
     try {
-      let values: Record<string, unknown> | undefined;
-      if (configureValues.trim()) {
-        try {
-          values = parseYaml(configureValues);
-        } catch {
-          // Treat as empty
-        }
+      const parsed = parseValuesYaml(configureValues);
+      if (!parsed.ok) {
+        setConfigureParseError(
+          parsed.line
+            ? `Line ${parsed.line}: ${parsed.message}`
+            : parsed.message,
+        );
+        setConfiguring(false);
+        return;
       }
+      setConfigureParseError(null);
+      // The server replaces the override set wholesale, so an empty editor
+      // clears the overrides rather than leaving them alone. The version is
+      // sent only when it was changed, so editing values never upgrades.
+      const values = parsed.values ?? {};
+      const versionChanged =
+        configureVersion !== '' &&
+        configureVersion !== (configureAddon.raw.version || '');
       await api.updateAddon(
         clusterNamespace,
         clusterName,
         configureAddon.name,
-        { values },
+        {
+          values,
+          ...(versionChanged ? { version: configureVersion } : {}),
+        },
       );
       setConfigureOpen(false);
       setConfigureAddon(null);
@@ -704,43 +817,14 @@ export const AddonsTab = ({
     setGitopsWarningTarget(null);
   };
 
-  // Migrate to GitOps
   const handleOpenMigrate = (row: InstalledAddonRow) => {
     setMigrateAddon(row);
     setMigrateOpen(true);
   };
 
-  // Export to GitOps (from catalog)
   const handleOpenExport = (addon: AddonDefinition) => {
     setExportAddon(addon);
     setExportOpen(true);
-  };
-
-  // Menu handlers
-  const handleMenuOpen = (
-    event: React.MouseEvent<HTMLElement>,
-    row: InstalledAddonRow,
-  ) => {
-    setMenuAnchor(event.currentTarget);
-    setMenuRow(row);
-  };
-
-  const handleMenuClose = () => {
-    setMenuAnchor(null);
-    setMenuRow(null);
-  };
-
-  const handleInstallMenuOpen = (
-    event: React.MouseEvent<HTMLElement>,
-    addon: AddonDefinition,
-  ) => {
-    setInstallMenuAnchor(event.currentTarget);
-    setInstallMenuAddon(addon);
-  };
-
-  const handleInstallMenuClose = () => {
-    setInstallMenuAnchor(null);
-    setInstallMenuAddon(null);
   };
 
   // --------------------------------------------------------------------------
@@ -748,519 +832,186 @@ export const AddonsTab = ({
   // --------------------------------------------------------------------------
 
   if (loading) {
-    return <Progress />;
+    return (
+      <div className={classes.loading} role="progressbar" aria-busy>
+        <ButlerSpinner />
+        <span>Loading addon catalog...</span>
+      </div>
+    );
   }
 
   if (error) {
     return (
-      <EmptyState
-        title="Failed to load addons"
-        description={error.message}
-        missing="info"
+      <ButlerErrorState
+        message="Failed to load addon catalog"
+        detail={error.message}
+        onRetry={fetchData}
       />
     );
   }
 
-  // --------------------------------------------------------------------------
-  // Table columns
-  // --------------------------------------------------------------------------
-
-  const installedColumns: TableColumn<InstalledAddonRow>[] = [
-    {
-      title: 'Name',
-      field: 'displayName',
-      render: (row: InstalledAddonRow) => (
-        <Box display="flex" alignItems="center" style={{ gap: 8 }}>
-          <Typography variant="body2" style={{ fontWeight: 500 }}>
-            {row.displayName}
-          </Typography>
-          {row.isPlatform && (
-            <Chip
-              label="Platform"
-              size="small"
-              className={classes.platformChip}
-            />
-          )}
-        </Box>
-      ),
-    },
-    { title: 'Version', field: 'version' },
-    {
-      title: 'Status',
-      field: 'status',
-      render: (row: InstalledAddonRow) => <StatusBadge status={row.status} />,
-    },
-    {
-      title: 'Category',
-      field: 'category',
-      render: (row: InstalledAddonRow) => (
-        <Chip label={row.category} size="small" variant="outlined" />
-      ),
-    },
-    {
-      title: 'Managed By',
-      field: 'managedBy',
-      render: (row: InstalledAddonRow) => {
-        if (row.isGitOpsManaged) {
-          return (
-            <Chip
-              label="GitOps"
-              size="small"
-              className={classes.gitopsChip}
-            />
-          );
-        }
-        if (row.isPlatform) {
-          return (
-            <Chip
-              label="Platform"
-              size="small"
-              className={classes.platformChip}
-            />
-          );
-        }
-        return (
-          <Chip
-            label={row.managedBy}
-            size="small"
-            variant="outlined"
-            className={classes.butlerChip}
-          />
-        );
-      },
-    },
-    {
-      title: 'Actions',
-      field: 'id',
-      width: '80px',
-      render: (row: InstalledAddonRow) => (
-        <IconButton
-          size="small"
-          onClick={e => handleMenuOpen(e, row)}
-          aria-label="addon actions"
-        >
-          <MoreVertIcon />
-        </IconButton>
-      ),
-    },
+  const categoryOptions = [
+    { value: 'all', label: 'All' },
+    ...optionalCategories.map(cat => ({
+      value: cat.name as string,
+      label: `${cat.icon} ${cat.displayName}`,
+    })),
   ];
 
-  // --------------------------------------------------------------------------
-  // Render
-  // --------------------------------------------------------------------------
-
   return (
-    <div className={classes.root}>
-      {/* GitOps Status Banner */}
+    <ButlerStack gap={32}>
       {gitopsEnabled && (
-        <div className={classes.gitopsBanner}>
-          <SyncIcon className={classes.gitopsBannerText} />
+        <div className={classes.gitopsBanner} role="status">
+          <span className={classes.gitopsBannerIcon} aria-hidden>
+            {'\u{1F504}'}
+          </span>
           <div>
-            <Typography
-              variant="subtitle2"
-              className={classes.gitopsBannerText}
-            >
-              GitOps Enabled
-            </Typography>
-            <Typography variant="caption" color="textSecondary">
-              Addons can be exported to Git or migrated to GitOps management via
-              the actions menu on each addon.
-            </Typography>
+            <p className={classes.gitopsBannerTitle}>GitOps Enabled</p>
+            <p className={classes.gitopsBannerText}>
+              Addons can be exported to Git via the GitOps tab or the Manage
+              menu on each addon.
+            </p>
           </div>
         </div>
       )}
 
-      {/* Installed Addons Section */}
-      <div>
-        <div className={classes.headerRow}>
-          <div className={classes.sectionTitle}>
-            <Typography variant="h6">Installed Addons</Typography>
-            <Chip
-              label={`${installedAddons.length}`}
-              size="small"
-              color="default"
-              className={classes.sectionCount}
-            />
-          </div>
-          <Button
-            variant="outlined"
-            size="small"
-            startIcon={<RefreshIcon />}
-            onClick={() => {
-              fetchData();
-              fetchDiscoveredReleases();
-            }}
-          >
-            Refresh
-          </Button>
+      {/* Platform Addons */}
+      <section>
+        <div className={classes.sectionHead}>
+          <h3 className={classes.sectionTitle}>Platform Addons</h3>
+          <span className={clsx(classes.countChip, classes.chipBlue)}>
+            Core
+          </span>
         </div>
-
-        {installedAddons.length === 0 ? (
-          <EmptyState
-            title="No addons installed"
-            description="Install addons from the catalog below to extend your cluster."
-            missing="content"
-          />
+        <p className={classes.sectionDesc}>
+          Essential components installed during cluster bootstrap. These cannot
+          be removed via the UI.
+        </p>
+        {platformRows.length === 0 ? (
+          <ButlerEmptyState title={ADDONS_PLATFORM_EMPTY_TEXT} />
         ) : (
-          <Table<InstalledAddonRow>
-            title={`Installed (${installedAddons.length})`}
-            options={{
-              search: false,
-              paging: installedAddons.length > 10,
-              padding: 'dense',
-              pageSize: 10,
-            }}
-            columns={installedColumns}
-            data={installedRows}
-          />
-        )}
-      </div>
-
-      {/* Actions menu for installed addons */}
-      <Menu
-        anchorEl={menuAnchor}
-        open={Boolean(menuAnchor)}
-        onClose={handleMenuClose}
-        anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
-        transformOrigin={{ vertical: 'top', horizontal: 'right' }}
-      >
-        {menuRow?.catalogInfo && (
-          <MenuItem
-            onClick={() => {
-              handleMenuClose();
-              if (menuRow) handleOpenConfigure(menuRow);
-            }}
-          >
-            <SettingsIcon fontSize="small" style={{ marginRight: 8 }} />
-            Configure
-            {menuRow?.isGitOpsManaged && (
-              <WarningIcon
-                fontSize="small"
-                style={{ marginLeft: 8, color: '#ff9800' }}
-              />
-            )}
-          </MenuItem>
-        )}
-        {gitopsEnabled && menuRow && !menuRow.isGitOpsManaged && !menuRow.isPlatform && (
-          <MenuItem
-            onClick={() => {
-              const row = menuRow;
-              handleMenuClose();
-              handleOpenMigrate(row);
-            }}
-          >
-            <SyncIcon fontSize="small" style={{ marginRight: 8 }} />
-            Migrate to GitOps
-          </MenuItem>
-        )}
-        <MenuItem
-          onClick={() => {
-            const row = menuRow;
-            handleMenuClose();
-            if (row) handleOpenUninstall(row);
-          }}
-          disabled={menuRow?.isPlatform}
-        >
-          <DeleteIcon
-            fontSize="small"
-            style={{ marginRight: 8, color: menuRow?.isPlatform ? undefined : '#f44336' }}
-          />
-          <Typography
-            variant="inherit"
-            color={menuRow?.isPlatform ? 'textSecondary' : 'secondary'}
-          >
-            Uninstall
-          </Typography>
-          {menuRow?.isGitOpsManaged && (
-            <WarningIcon
-              fontSize="small"
-              style={{ marginLeft: 8, color: '#ff9800' }}
-            />
-          )}
-        </MenuItem>
-      </Menu>
-
-      {/* Available Addons Catalog */}
-      <div>
-        <div className={classes.headerRow}>
-          <div className={classes.sectionTitle}>
-            <Typography variant="h6">Available Addons</Typography>
-            <Chip
-              label={`${availableCatalog.length}`}
-              size="small"
-              color="default"
-              className={classes.sectionCount}
-            />
+          <div className={classes.grid}>
+            {platformRows.map(row => (
+              <PlatformAddonCard key={row.id} row={row} />
+            ))}
           </div>
-        </div>
-        <Typography variant="body2" color="textSecondary" gutterBottom>
-          Additional functionality you can enable for this cluster.
-        </Typography>
+        )}
+      </section>
 
-        {/* Search and Category Filter */}
-        <Box
-          display="flex"
-          flexDirection="row"
-          flexWrap="wrap"
-          alignItems="center"
-          style={{ gap: 16 }}
-          mb={3}
-          mt={2}
-        >
-          <TextField
-            variant="outlined"
-            size="small"
-            placeholder="Search addons..."
-            value={searchQuery}
-            onChange={e => setSearchQuery(e.target.value)}
-            className={classes.searchField}
-            InputProps={{
-              startAdornment: (
-                <SearchIcon
-                  fontSize="small"
-                  color="disabled"
-                  style={{ marginRight: 8 }}
-                />
-              ),
-            }}
-          />
-          <div className={classes.categoryChips}>
-            <Chip
-              label="All"
-              size="small"
-              variant={selectedCategory === 'all' ? 'default' : 'outlined'}
-              color={selectedCategory === 'all' ? 'primary' : 'default'}
-              className={
-                selectedCategory === 'all'
-                  ? classes.categoryChipActive
-                  : undefined
-              }
-              onClick={() => setSelectedCategory('all')}
-              clickable
-            />
-            {optionalCategories.map(cat => (
-              <Chip
-                key={cat.name}
-                label={cat.displayName}
-                size="small"
-                variant={
-                  selectedCategory === cat.name ? 'default' : 'outlined'
-                }
-                color={selectedCategory === cat.name ? 'primary' : 'default'}
-                className={
-                  selectedCategory === cat.name
-                    ? classes.categoryChipActive
-                    : undefined
-                }
-                onClick={() => setSelectedCategory(cat.name)}
-                clickable
+      {/* Installed optional addons */}
+      {installedOptionalRows.length > 0 && (
+        <section>
+          <div className={classes.sectionHead}>
+            <h3 className={classes.sectionTitle}>Installed Addons</h3>
+            <span className={clsx(classes.countChip, classes.chipGreen)}>
+              {installedOptionalRows.length} Active
+            </span>
+          </div>
+          <p className={classes.sectionDesc}>
+            Optional addons currently running on this cluster.
+          </p>
+          <div className={classes.grid}>
+            {installedOptionalRows.map(row => (
+              <InstalledAddonCard
+                key={row.id}
+                row={row}
+                gitopsEnabled={gitopsEnabled}
+                canMutate={canMutate}
+                onConfigure={() => handleOpenConfigure(row)}
+                onUninstall={() => handleOpenUninstall(row)}
+                onMigrateToGitOps={() => handleOpenMigrate(row)}
               />
             ))}
           </div>
-        </Box>
+        </section>
+      )}
 
-        {/* Catalog Cards by Category */}
+      {/* Available Addons */}
+      <section>
+        <div className={classes.sectionHead}>
+          <h3 className={classes.sectionTitle}>Available Addons</h3>
+          <span className={clsx(classes.countChip, classes.chipViolet)}>
+            {availableCatalog.length} Available
+          </span>
+        </div>
+        <p className={classes.sectionDesc}>
+          Additional functionality you can enable for this cluster.
+        </p>
+
+        <div className={classes.toolbar}>
+          <ButlerSearchInput
+            placeholder="Search addons..."
+            aria-label="Search addons"
+            value={searchQuery}
+            onChange={e => setSearchQuery(e.target.value)}
+          />
+          <ButlerToggleBar
+            aria-label="Filter by category"
+            options={categoryOptions}
+            value={selectedCategory}
+            onChange={setSelectedCategory}
+          />
+        </div>
+
         {availableCatalog.length === 0 ? (
-          <Typography color="textSecondary" align="center">
-            {searchQuery || selectedCategory !== 'all'
-              ? 'No addons match your search.'
-              : 'All available addons are already installed.'}
-          </Typography>
+          <ButlerEmptyState
+            title={
+              searchQuery || selectedCategory !== 'all'
+                ? 'No addons match your search'
+                : 'All available addons are installed'
+            }
+          />
         ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 32 }}>
+          <ButlerStack gap={32}>
             {optionalCategories.map(category => {
               const categoryAddons =
                 groupedAvailableCatalog[category.name] || [];
               if (categoryAddons.length === 0) return null;
               return (
-                <div key={category.name}>
-                  <div className={classes.categoryHeader}>
-                    <Typography variant="subtitle1" style={{ fontWeight: 600 }}>
+                <div key={category.name} className={classes.categoryGroup}>
+                  <div className={classes.categoryHead}>
+                    <span className={classes.categoryIcon} aria-hidden>
+                      {category.icon}
+                    </span>
+                    <h4 className={classes.categoryTitle}>
                       {category.displayName}
-                    </Typography>
+                    </h4>
                   </div>
-                  <Typography
-                    variant="body2"
-                    className={classes.categoryDescription}
-                  >
-                    {category.description}
-                  </Typography>
-                  <Grid container spacing={2}>
+                  <p className={classes.sectionDesc}>{category.description}</p>
+                  <div className={classes.grid}>
                     {categoryAddons.map(addon => (
-                      <Grid item xs={12} sm={6} md={4} lg={3} key={addon.name}>
-                        <Card
-                          className={classes.addonCard}
-                          variant="outlined"
-                        >
-                          <CardContent>
-                            <Chip
-                              label={addon.category}
-                              size="small"
-                              variant="outlined"
-                            />
-                            <Typography
-                              variant="subtitle1"
-                              style={{ fontWeight: 500, marginTop: 8 }}
-                            >
-                              {addon.displayName}
-                            </Typography>
-                            <Typography
-                              variant="body2"
-                              className={classes.addonDescription}
-                            >
-                              {addon.description}
-                            </Typography>
-                            <div className={classes.addonMeta}>
-                              <Typography
-                                variant="caption"
-                                color="textSecondary"
-                              >
-                                v{addon.defaultVersion}
-                              </Typography>
-                              {addon.dependsOn &&
-                                addon.dependsOn.length > 0 && (
-                                  <Typography
-                                    variant="caption"
-                                    color="textSecondary"
-                                  >
-                                    Requires: {addon.dependsOn.join(', ')}
-                                  </Typography>
-                                )}
-                            </div>
-                            {addon.links && (
-                              <div className={classes.addonLinks}>
-                                {addon.links.documentation && (
-                                  <a
-                                    href={addon.links.documentation}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    className={classes.addonLink}
-                                  >
-                                    Docs
-                                  </a>
-                                )}
-                                {addon.links.homepage && (
-                                  <a
-                                    href={addon.links.homepage}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    className={classes.addonLink}
-                                  >
-                                    Homepage
-                                  </a>
-                                )}
-                              </div>
-                            )}
-                          </CardContent>
-                          <CardActions>
-                            <div className={classes.installButtonGroup}>
-                              <Button
-                                size="small"
-                                color="primary"
-                                variant="contained"
-                                className={classes.installButtonMain}
-                                startIcon={
-                                  quickInstallingAddon === addon.name ? (
-                                    <CircularProgress
-                                      size={16}
-                                      color="inherit"
-                                    />
-                                  ) : (
-                                    <AddIcon />
-                                  )
-                                }
-                                disabled={
-                                  quickInstallingAddon === addon.name
-                                }
-                                onClick={() => handleQuickInstall(addon)}
-                              >
-                                {quickInstallingAddon === addon.name
-                                  ? 'Installing...'
-                                  : 'Install'}
-                              </Button>
-                              <Button
-                                size="small"
-                                color="primary"
-                                variant="contained"
-                                className={classes.installButtonDropdown}
-                                disabled={
-                                  quickInstallingAddon === addon.name
-                                }
-                                onClick={e =>
-                                  handleInstallMenuOpen(e, addon)
-                                }
-                                aria-label="install options"
-                              >
-                                <ExpandMoreIcon fontSize="small" />
-                              </Button>
-                            </div>
-                          </CardActions>
-                        </Card>
-                      </Grid>
+                      <AvailableAddonCard
+                        key={addon.name}
+                        addon={addon}
+                        installing={quickInstallingAddon === addon.name}
+                        gitopsEnabled={gitopsEnabled}
+                        canMutate={canMutate}
+                        onQuickInstall={() => handleQuickInstall(addon)}
+                        onConfigureInstall={() => handleOpenInstall(addon)}
+                        onGitOpsExport={() => handleOpenExport(addon)}
+                      />
                     ))}
-                  </Grid>
+                  </div>
                 </div>
               );
             })}
-          </div>
+          </ButlerStack>
         )}
-      </div>
+      </section>
 
-      {/* Install options dropdown menu */}
-      <Menu
-        anchorEl={installMenuAnchor}
-        open={Boolean(installMenuAnchor)}
-        onClose={handleInstallMenuClose}
-        anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
-        transformOrigin={{ vertical: 'top', horizontal: 'right' }}
-      >
-        <MenuItem
-          onClick={() => {
-            const addon = installMenuAddon;
-            handleInstallMenuClose();
-            if (addon) handleQuickInstall(addon);
-          }}
-        >
-          <AddIcon fontSize="small" style={{ marginRight: 8 }} />
-          Quick Install
-        </MenuItem>
-        <MenuItem
-          onClick={() => {
-            const addon = installMenuAddon;
-            handleInstallMenuClose();
-            if (addon) handleOpenInstall(addon);
-          }}
-        >
-          <SettingsIcon fontSize="small" style={{ marginRight: 8 }} />
-          Configure and Install
-        </MenuItem>
-        {gitopsEnabled && (
-          <MenuItem
-            onClick={() => {
-              const addon = installMenuAddon;
-              handleInstallMenuClose();
-              if (addon) handleOpenExport(addon);
-            }}
-          >
-            <CloudUploadIcon fontSize="small" style={{ marginRight: 8 }} />
-            Export to GitOps
-          </MenuItem>
-        )}
-      </Menu>
-
-      {/* ================================================================= */}
-      {/* DIALOGS                                                           */}
-      {/* ================================================================= */}
-
-      {/* Install Addon Dialog */}
+      {/* Dialogs */}
       <InstallAddonDialog
         open={installOpen}
         addon={selectedAddon}
         version={selectedVersion}
         values={installValues}
+        parseError={installParseError}
         installing={installing}
         onVersionChange={setSelectedVersion}
-        onValuesChange={setInstallValues}
+        onValuesChange={v => {
+          setInstallValues(v);
+          setInstallParseError(null);
+        }}
         onInstall={handleInstall}
         onClose={() => {
           setInstallOpen(false);
@@ -1268,13 +1019,20 @@ export const AddonsTab = ({
         }}
       />
 
-      {/* Configure Addon Dialog */}
       <ConfigureAddonDialog
         open={configureOpen}
         row={configureAddon}
         values={configureValues}
+        parseError={configureParseError}
+        loading={configureLoading}
+        loadError={configureLoadError}
+        version={configureVersion}
+        onVersionChange={setConfigureVersion}
         configuring={configuring}
-        onValuesChange={setConfigureValues}
+        onValuesChange={v => {
+          setConfigureValues(v);
+          setConfigureParseError(null);
+        }}
         onConfigure={handleConfigure}
         onClose={() => {
           setConfigureOpen(false);
@@ -1282,7 +1040,6 @@ export const AddonsTab = ({
         }}
       />
 
-      {/* Uninstall Confirmation Dialog */}
       <UninstallAddonDialog
         open={uninstallOpen}
         row={uninstallTarget}
@@ -1294,7 +1051,6 @@ export const AddonsTab = ({
         }}
       />
 
-      {/* GitOps Warning Dialog */}
       <GitOpsWarningDialog
         open={gitopsWarningOpen}
         row={gitopsWarningTarget}
@@ -1306,7 +1062,6 @@ export const AddonsTab = ({
         }}
       />
 
-      {/* Export to GitOps Dialog (from catalog) */}
       <ExportToGitOpsDialog
         open={exportOpen}
         addon={exportAddon}
@@ -1326,7 +1081,6 @@ export const AddonsTab = ({
         }}
       />
 
-      {/* Migrate to GitOps Dialog (from installed) */}
       <MigrateToGitOpsDialog
         open={migrateOpen}
         row={migrateAddon}
@@ -1348,12 +1102,432 @@ export const AddonsTab = ({
           setMigrateAddon(null);
         }}
       />
-    </div>
+    </ButlerStack>
   );
 };
 
 // ---------------------------------------------------------------------------
-// Install Addon Dialog
+// Cards (console PlatformAddonCard / InstalledAddonCard / AvailableAddonCard)
+// ---------------------------------------------------------------------------
+
+function AddonIdentity({
+  name,
+  icon,
+  tier,
+  version,
+}: {
+  name: string;
+  icon?: string;
+  tier: boolean;
+  version: string;
+}) {
+  const classes = useStyles();
+  return (
+    <div className={classes.identity}>
+      <div className={classes.iconTile} aria-hidden>
+        {icon || '\u{1F4E6}'}
+      </div>
+      <div style={{ minWidth: 0 }}>
+        <div className={classes.nameRow}>
+          <h4 className={classes.name}>{name}</h4>
+          {tier && (
+            <span className={classes.tierPill} title="Infrastructure tier">
+              Infra
+            </span>
+          )}
+        </div>
+        <p className={classes.version}>{version}</p>
+      </div>
+    </div>
+  );
+}
+
+function PlatformAddonCard({ row }: { row: InstalledAddonRow }) {
+  const classes = useStyles();
+  return (
+    <ButlerCard flush className={classes.card}>
+      <div className={classes.cardTop}>
+        <AddonIdentity
+          name={row.displayName}
+          icon={row.catalogInfo?.icon}
+          tier
+          version={
+            addonVersionState(row.raw).pending
+              ? `${addonVersionState(row.raw).installed} → ${
+                  addonVersionState(row.raw).desired
+                }`
+              : row.version
+          }
+        />
+        <ButlerStatusBadge status={row.status} />
+      </div>
+    </ButlerCard>
+  );
+}
+
+function InstalledAddonCard({
+  row,
+  gitopsEnabled,
+  canMutate,
+  onConfigure,
+  onUninstall,
+  onMigrateToGitOps,
+}: {
+  row: InstalledAddonRow;
+  gitopsEnabled: boolean;
+  canMutate: boolean;
+  onConfigure: () => void;
+  onUninstall: () => void;
+  onMigrateToGitOps: () => void;
+}) {
+  const classes = useStyles();
+  const [anchor, setAnchor] = useState<HTMLElement | null>(null);
+  const close = () => setAnchor(null);
+
+  return (
+    <ButlerCard
+      flush
+      className={clsx(
+        classes.card,
+        row.isGitOpsManaged ? classes.cardGitOps : classes.cardInstalled,
+      )}
+    >
+      <div className={clsx(classes.cardTop, classes.cardTopSpaced)}>
+        <AddonIdentity
+          name={row.displayName}
+          icon={row.catalogInfo?.icon}
+          tier={!!row.catalogInfo?.platform}
+          version={
+            addonVersionState(row.raw).pending
+              ? `${addonVersionState(row.raw).installed} → ${
+                  addonVersionState(row.raw).desired
+                }`
+              : row.version
+          }
+        />
+        <div className={classes.badges}>
+          <ButlerStatusBadge status={row.status} />
+          {row.isGitOpsManaged && (
+            <span className={classes.gitopsPill}>GitOps</span>
+          )}
+        </div>
+      </div>
+
+      {row.catalogInfo?.description && (
+        <p className={classes.description}>{row.catalogInfo.description}</p>
+      )}
+
+      {canMutate && (
+        <div className={classes.cardFooter}>
+          <ButlerButton
+            variant="secondary"
+            size="sm"
+            className={classes.manage}
+            onClick={e => setAnchor(e.currentTarget)}
+            aria-haspopup="menu"
+            aria-expanded={Boolean(anchor)}
+          >
+            Manage
+            <ChevronDown className={classes.chevron} />
+          </ButlerButton>
+          <ButlerMenu
+            anchorEl={anchor}
+            open={Boolean(anchor)}
+            onClose={close}
+            fullWidth
+            align="left"
+          >
+            <ButlerMenuItem
+              icon={<span className={classes.emoji}>{'⚙️'}</span>}
+              label="Configure"
+              description={
+                row.isGitOpsManaged
+                  ? 'Update values (GitOps warning)'
+                  : 'Update Helm values'
+              }
+              warning={row.isGitOpsManaged}
+              onClick={() => {
+                close();
+                onConfigure();
+              }}
+            />
+            {gitopsEnabled && !row.isGitOpsManaged && (
+              <ButlerMenuItem
+                icon={<span className={classes.emoji}>{'\u{1F504}'}</span>}
+                label="Migrate to GitOps"
+                description="Hand off management to Flux/ArgoCD"
+                onClick={() => {
+                  close();
+                  onMigrateToGitOps();
+                }}
+              />
+            )}
+            <ButlerMenuItem
+              icon={<span className={classes.emoji}>{'\u{1F5D1}️'}</span>}
+              label="Uninstall"
+              description={
+                row.isGitOpsManaged
+                  ? 'Remove addon (GitOps warning)'
+                  : 'Remove this addon'
+              }
+              destructive
+              warning={row.isGitOpsManaged}
+              onClick={() => {
+                close();
+                onUninstall();
+              }}
+            />
+          </ButlerMenu>
+        </div>
+      )}
+    </ButlerCard>
+  );
+}
+
+function AvailableAddonCard({
+  addon,
+  installing,
+  gitopsEnabled,
+  canMutate,
+  onQuickInstall,
+  onConfigureInstall,
+  onGitOpsExport,
+}: {
+  addon: AddonDefinition;
+  installing: boolean;
+  gitopsEnabled: boolean;
+  canMutate: boolean;
+  onQuickInstall: () => void;
+  onConfigureInstall: () => void;
+  onGitOpsExport: () => void;
+}) {
+  const classes = useStyles();
+  const [anchor, setAnchor] = useState<HTMLElement | null>(null);
+  const close = () => setAnchor(null);
+
+  return (
+    <ButlerCard flush className={classes.card}>
+      <div className={clsx(classes.cardTop, classes.cardTopSpaced)}>
+        <AddonIdentity
+          name={addon.displayName}
+          icon={addon.icon}
+          tier={addon.platform}
+          version={addon.defaultVersion}
+        />
+      </div>
+
+      <p className={classes.description}>{addon.description}</p>
+
+      {addon.dependsOn && addon.dependsOn.length > 0 && (
+        <div className={classes.requires}>
+          <span className={classes.requiresLabel}>Requires: </span>
+          {addon.dependsOn.join(', ')}
+        </div>
+      )}
+
+      {addon.links && (addon.links.documentation || addon.links.homepage) && (
+        <div className={classes.links}>
+          {addon.links.documentation && (
+            <a
+              href={addon.links.documentation}
+              target="_blank"
+              rel="noopener noreferrer"
+              className={classes.link}
+            >
+              Docs &#8599;
+            </a>
+          )}
+          {addon.links.homepage && (
+            <a
+              href={addon.links.homepage}
+              target="_blank"
+              rel="noopener noreferrer"
+              className={classes.link}
+            >
+              Homepage &#8599;
+            </a>
+          )}
+        </div>
+      )}
+
+      {canMutate && (
+        <div className={classes.cardFooter}>
+          <div className={classes.split}>
+            <ButlerButton
+              size="sm"
+              className={classes.splitMain}
+              onClick={onQuickInstall}
+              disabled={installing}
+            >
+              {installing ? (
+                <>
+                  <ButlerSpinner small />
+                  Installing...
+                </>
+              ) : (
+                'Install'
+              )}
+            </ButlerButton>
+            <ButlerButton
+              size="sm"
+              className={classes.splitToggle}
+              onClick={e => setAnchor(e.currentTarget.parentElement)}
+              disabled={installing}
+              aria-label="Install options"
+              aria-haspopup="menu"
+              aria-expanded={Boolean(anchor)}
+            >
+              <ChevronDown />
+            </ButlerButton>
+          </div>
+          <ButlerMenu
+            anchorEl={anchor}
+            open={Boolean(anchor)}
+            onClose={close}
+            fullWidth
+            align="left"
+          >
+            <ButlerMenuItem
+              icon={<span className={classes.emoji}>{'⚡'}</span>}
+              label="Quick Install"
+              description="Install with default settings"
+              onClick={() => {
+                close();
+                onQuickInstall();
+              }}
+            />
+            <ButlerMenuItem
+              icon={<span className={classes.emoji}>{'⚙️'}</span>}
+              label="Configure & Install"
+              description="Customize Helm values before installing"
+              onClick={() => {
+                close();
+                onConfigureInstall();
+              }}
+            />
+            {gitopsEnabled && (
+              <ButlerMenuItem
+                icon={<span className={classes.emoji}>{'\u{1F4E6}'}</span>}
+                label="Export to GitOps"
+                description="Generate manifests for Flux/ArgoCD"
+                onClick={() => {
+                  close();
+                  onGitOpsExport();
+                }}
+              />
+            )}
+          </ButlerMenu>
+        </div>
+      )}
+    </ButlerCard>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Shared dialog fields
+// ---------------------------------------------------------------------------
+
+function RepositorySelect({
+  value,
+  onChange,
+  repositories,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  repositories: Repository[];
+}) {
+  return (
+    <ButlerSelect
+      label="Target Repository"
+      value={value}
+      onChange={e => onChange(e.target.value)}
+    >
+      <option value="">Select a repository...</option>
+      {repositories.map(repo => (
+        <option key={repo.fullName} value={repo.fullName}>
+          {repo.fullName}
+          {repo.private ? ' (private)' : ''}
+        </option>
+      ))}
+    </ButlerSelect>
+  );
+}
+
+function BranchSelect({
+  value,
+  onChange,
+  branches,
+  loading,
+  createPR,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  branches: Branch[];
+  loading: boolean;
+  createPR: boolean;
+}) {
+  return (
+    <ButlerSelect
+      label={createPR ? 'Target Branch' : 'Branch'}
+      help={createPR ? 'PR will be opened against this branch' : undefined}
+      value={value}
+      onChange={e => onChange(e.target.value)}
+      disabled={loading || branches.length === 0}
+      loading={loading}
+    >
+      {branches.length === 0 ? (
+        <option value={value}>{value}</option>
+      ) : (
+        branches.map(b => (
+          <option key={b.name} value={b.name}>
+            {b.name}
+          </option>
+        ))
+      )}
+    </ButlerSelect>
+  );
+}
+
+function NotConfiguredDialog({
+  open,
+  title,
+  subtitle,
+  icon,
+  verb,
+  onClose,
+}: {
+  open: boolean;
+  title: string;
+  subtitle: string;
+  icon: ReactNode;
+  verb: string;
+  onClose: () => void;
+}) {
+  return (
+    <ButlerDialog
+      open={open}
+      onClose={onClose}
+      title={title}
+      subtitle={subtitle}
+      icon={icon}
+      footer={
+        <ButlerButton variant="secondary" onClick={onClose}>
+          Close
+        </ButlerButton>
+      }
+    >
+      <ButlerCallout tone="warning" title="Git Provider Not Configured">
+        <p>
+          Please configure a Git provider (GitHub/GitLab) in the GitOps tab
+          before {verb} addons.
+        </p>
+      </ButlerCallout>
+    </ButlerDialog>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Install (Configure & Install) dialog
 // ---------------------------------------------------------------------------
 
 function InstallAddonDialog({
@@ -1366,6 +1540,7 @@ function InstallAddonDialog({
   onValuesChange,
   onInstall,
   onClose,
+  parseError,
 }: {
   open: boolean;
   addon: AddonDefinition | null;
@@ -1376,7 +1551,9 @@ function InstallAddonDialog({
   onValuesChange: (v: string) => void;
   onInstall: () => void;
   onClose: () => void;
+  parseError?: string | null;
 }) {
+  const classes = useStyles();
   if (!addon) return null;
 
   const versions = addon.availableVersions?.length
@@ -1384,86 +1561,73 @@ function InstallAddonDialog({
     : [addon.defaultVersion];
 
   return (
-    <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
-      <DialogTitle>Install {addon.displayName}</DialogTitle>
-      <DialogContent>
-        <Typography variant="body2" color="textSecondary" gutterBottom>
-          {addon.description}
-        </Typography>
-
-        <Box mt={2}>
-          <TextField
-            select
-            label="Version"
-            value={version}
-            onChange={e => onVersionChange(e.target.value)}
-            fullWidth
-            variant="outlined"
-            size="small"
+    <ButlerDialog
+      open={open}
+      onClose={onClose}
+      busy={installing}
+      width={512}
+      title={`Configure ${addon.displayName}`}
+      subtitle={`Version ${addon.defaultVersion}`}
+      icon={<span className={classes.emoji}>{addon.icon || '\u{1F4E6}'}</span>}
+      footer={
+        <>
+          <ButlerButton
+            variant="secondary"
+            onClick={onClose}
+            disabled={installing}
           >
-            {versions.map(v => (
-              <MenuItem key={v} value={v}>
-                {v}
-                {v === addon.defaultVersion ? ' (default)' : ''}
-              </MenuItem>
-            ))}
-          </TextField>
-        </Box>
-
-        <Box mt={2}>
-          <Typography variant="caption" color="textSecondary">
-            Chart: {addon.chartRepository}/{addon.chartName}
-          </Typography>
-        </Box>
-
-        <Box mt={2}>
-          <TextField
-            label="Helm Values (YAML)"
-            multiline
-            rows={8}
-            value={values}
-            onChange={e => onValuesChange(e.target.value)}
-            fullWidth
-            variant="outlined"
-            size="small"
-            placeholder="# Optional: custom Helm values in YAML format"
-            InputProps={{
-              style: { fontFamily: 'monospace', fontSize: '0.85rem' },
-            }}
-          />
-          <Typography
-            variant="caption"
-            color="textSecondary"
-            style={{ marginTop: 4, display: 'block' }}
-          >
-            Leave empty to install with default values.
-          </Typography>
-        </Box>
-      </DialogContent>
-      <DialogActions>
-        <Button onClick={onClose} disabled={installing}>
-          Cancel
-        </Button>
-        <Button
-          onClick={onInstall}
-          color="primary"
-          variant="contained"
-          disabled={installing || !version}
-          startIcon={
-            installing ? (
-              <CircularProgress size={16} color="inherit" />
-            ) : undefined
-          }
-        >
-          {installing ? 'Installing...' : 'Install'}
-        </Button>
-      </DialogActions>
-    </Dialog>
+            Cancel
+          </ButlerButton>
+          <ButlerButton onClick={onInstall} disabled={installing || !version}>
+            {installing ? (
+              <>
+                <ButlerSpinner small />
+                Installing...
+              </>
+            ) : (
+              'Install'
+            )}
+          </ButlerButton>
+        </>
+      }
+    >
+      <p className={classes.dialogText}>{addon.description}</p>
+      <ButlerSelect
+        label="Version"
+        value={version}
+        onChange={e => onVersionChange(e.target.value)}
+        help={
+          <>
+            Chart:{' '}
+            <span className={classes.mono}>
+              {addon.chartRepository}/{addon.chartName}
+            </span>
+          </>
+        }
+      >
+        {versions.map(v => (
+          <option key={v} value={v}>
+            {v}
+            {v === addon.defaultVersion ? ' (default)' : ''}
+          </option>
+        ))}
+      </ButlerSelect>
+      <ButlerTextarea
+        label="Helm Values (YAML)"
+        mono
+        rows={8}
+        value={values}
+        onChange={e => onValuesChange(e.target.value)}
+        placeholder="# Optional: custom Helm values in YAML format"
+        help="Leave empty to install with the catalog defaults. Anything here is merged over them."
+        error={parseError ?? undefined}
+      />
+    </ButlerDialog>
   );
 }
 
 // ---------------------------------------------------------------------------
-// Configure Addon Dialog
+// Configure (edit values) dialog
 // ---------------------------------------------------------------------------
 
 function ConfigureAddonDialog({
@@ -1474,6 +1638,11 @@ function ConfigureAddonDialog({
   onValuesChange,
   onConfigure,
   onClose,
+  parseError,
+  loading,
+  loadError,
+  version,
+  onVersionChange,
 }: {
   open: boolean;
   row: InstalledAddonRow | null;
@@ -1482,80 +1651,121 @@ function ConfigureAddonDialog({
   onValuesChange: (v: string) => void;
   onConfigure: () => void;
   onClose: () => void;
+  parseError?: string | null;
+  loading?: boolean;
+  loadError?: string | null;
+  version: string;
+  onVersionChange: (v: string) => void;
 }) {
   const classes = useStyles();
-
   if (!row) return null;
 
   return (
-    <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
-      <DialogTitle>Configure {row.displayName}</DialogTitle>
-      <DialogContent>
-        <div className={classes.addonInfoBox}>
-          <div>
-            <Typography variant="body2" style={{ fontWeight: 500 }}>
-              {row.displayName}
-            </Typography>
-            {row.catalogInfo && (
-              <Typography variant="caption" color="textSecondary">
-                {row.catalogInfo.chartName}:{row.version}
-              </Typography>
+    <ButlerDialog
+      open={open}
+      onClose={onClose}
+      busy={configuring}
+      width={512}
+      title={`Edit ${row.displayName} Values`}
+      subtitle="Modify Helm values for this addon"
+      icon={<span className={classes.emoji}>{'⚙️'}</span>}
+      footer={
+        <>
+          <ButlerButton
+            variant="secondary"
+            onClick={onClose}
+            disabled={configuring}
+          >
+            Cancel
+          </ButlerButton>
+          <ButlerButton onClick={onConfigure} disabled={configuring}>
+            {configuring ? (
+              <>
+                <ButlerSpinner small />
+                Saving...
+              </>
+            ) : (
+              'Save Values'
             )}
-          </div>
-          <Chip label={row.status} size="small" variant="outlined" />
+          </ButlerButton>
+        </>
+      }
+    >
+      <div className={classes.infoBox}>
+        <div>
+          <p className={classes.infoName}>{row.displayName}</p>
+          {row.catalogInfo && (
+            <p className={classes.infoMeta}>
+              {row.catalogInfo.chartName}
+              {addonVersionState(row.raw).pending
+                ? `: ${addonVersionState(row.raw).installed} installed, ${
+                    addonVersionState(row.raw).desired
+                  } requested`
+                : `:${row.version}`}
+            </p>
+          )}
         </div>
+        <ButlerStatusBadge status={row.status} />
+      </div>
 
-        {row.isGitOpsManaged && (
-          <Box mt={2}>
-            <Alert severity="warning">
-              This addon is managed by GitOps. Any configuration changes made
-              here may be overwritten the next time GitOps reconciles from your
-              Git repository.
-            </Alert>
-          </Box>
-        )}
-
-        <Box mt={2}>
-          <TextField
-            label="Helm Values Override (YAML)"
-            multiline
-            rows={10}
-            value={values}
-            onChange={e => onValuesChange(e.target.value)}
-            fullWidth
-            variant="outlined"
-            size="small"
-            placeholder="# Enter Helm values in YAML format to override current configuration"
-            InputProps={{
-              style: { fontFamily: 'monospace', fontSize: '0.85rem' },
-            }}
-          />
-        </Box>
-      </DialogContent>
-      <DialogActions>
-        <Button onClick={onClose} disabled={configuring}>
-          Cancel
-        </Button>
-        <Button
-          onClick={onConfigure}
-          color="primary"
-          variant="contained"
-          disabled={configuring}
-          startIcon={
-            configuring ? (
-              <CircularProgress size={16} color="inherit" />
-            ) : undefined
-          }
+      {row.catalogInfo?.availableVersions?.length ? (
+        <ButlerSelect
+          label="Version"
+          value={version}
+          onChange={e => onVersionChange(e.target.value)}
+          disabled={loading || configuring}
+          help="Changing this asks the platform to move the addon to that chart version. Leave it as is to change values only."
         >
-          {configuring ? 'Saving...' : 'Save Configuration'}
-        </Button>
-      </DialogActions>
-    </Dialog>
+          {row.catalogInfo.availableVersions.map(v => (
+            <option key={v} value={v}>
+              {v}
+              {v === row.raw.installedVersion ? ' (installed)' : ''}
+              {v === row.catalogInfo?.defaultVersion ? ' (default)' : ''}
+            </option>
+          ))}
+        </ButlerSelect>
+      ) : null}
+
+      {loadError && (
+        <ButlerCallout tone="danger" title="Current values could not be read">
+          <p>{loadError}</p>
+        </ButlerCallout>
+      )}
+
+      {row.isGitOpsManaged && (
+        <ButlerCallout tone="warning" title="Changes may be overwritten">
+          <p>
+            This addon is managed by GitOps. Any configuration changes made here
+            may be overwritten the next time GitOps reconciles from your Git
+            repository.
+          </p>
+        </ButlerCallout>
+      )}
+
+      <p className={classes.dialogText}>
+        These are the addon's current overrides, read from the platform. Saving
+        replaces them in full; the catalog defaults still apply underneath.
+        Clearing the editor removes every override.
+      </p>
+      <ButlerTextarea
+        aria-label="Helm values override (YAML)"
+        mono
+        rows={10}
+        value={loading ? '# Reading current values...' : values}
+        disabled={loading}
+        error={parseError ?? undefined}
+        onChange={e => onValuesChange(e.target.value)}
+        placeholder={
+          '# Enter Helm values in YAML format\n# Example:\n# replicas: 3\n# resources:\n#   limits:\n#     memory: 512Mi'
+        }
+      />
+    </ButlerDialog>
   );
 }
 
 // ---------------------------------------------------------------------------
-// Uninstall Confirmation Dialog
+// Uninstall confirmation (the console uninstalls without a prompt; the
+// portal keeps a destructive confirmation in the console's delete recipe)
 // ---------------------------------------------------------------------------
 
 function UninstallAddonDialog({
@@ -1571,57 +1781,61 @@ function UninstallAddonDialog({
   onUninstall: () => void;
   onClose: () => void;
 }) {
+  const classes = useStyles();
   if (!row) return null;
 
   return (
-    <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
-      <DialogTitle>Uninstall Addon</DialogTitle>
-      <DialogContent>
-        <Typography>
-          Are you sure you want to uninstall{' '}
-          <strong>{row.displayName}</strong> from this cluster?
-        </Typography>
-        <Box mt={1}>
-          <Typography variant="body2" color="textSecondary">
-            This action is irreversible. The addon and all its associated
-            resources will be removed from the tenant cluster.
-          </Typography>
-        </Box>
-        {row.isGitOpsManaged && (
-          <Box mt={2}>
-            <Alert severity="warning">
-              This addon is managed by GitOps. If you uninstall it here, GitOps
-              will automatically re-create it from your Git repository. To
-              permanently remove it, delete the addon from your Git repository
-              first.
-            </Alert>
-          </Box>
-        )}
-      </DialogContent>
-      <DialogActions>
-        <Button onClick={onClose} disabled={uninstalling}>
-          Cancel
-        </Button>
-        <Button
-          onClick={onUninstall}
-          color="secondary"
-          variant="contained"
-          disabled={uninstalling}
-          startIcon={
-            uninstalling ? (
-              <CircularProgress size={16} color="inherit" />
-            ) : undefined
-          }
-        >
-          {uninstalling ? 'Uninstalling...' : 'Uninstall'}
-        </Button>
-      </DialogActions>
-    </Dialog>
+    <ButlerDialog
+      open={open}
+      onClose={onClose}
+      busy={uninstalling}
+      title="Uninstall Addon"
+      subtitle="This action cannot be undone"
+      icon={<AlertTriangleIcon />}
+      iconTone="danger"
+      footer={
+        <>
+          <ButlerButton
+            variant="secondary"
+            onClick={onClose}
+            disabled={uninstalling}
+          >
+            Cancel
+          </ButlerButton>
+          <ButlerButton
+            variant="danger"
+            onClick={onUninstall}
+            disabled={uninstalling}
+          >
+            {uninstalling ? 'Uninstalling...' : 'Uninstall'}
+          </ButlerButton>
+        </>
+      }
+    >
+      <ButlerCallout tone="danger" compact>
+        <p>
+          You are about to uninstall{' '}
+          <span className={classes.strong}>{row.displayName}</span> from this
+          cluster. The addon and all its associated resources will be removed
+          from the tenant cluster.
+        </p>
+      </ButlerCallout>
+      {row.isGitOpsManaged && (
+        <ButlerCallout tone="warning" title="Addon will be re-created">
+          <p>
+            This addon is managed by GitOps. If you uninstall it here, GitOps
+            will automatically re-create it from your Git repository. To
+            permanently remove it, delete the addon from your Git repository
+            first.
+          </p>
+        </ButlerCallout>
+      )}
+    </ButlerDialog>
   );
 }
 
 // ---------------------------------------------------------------------------
-// GitOps Warning Dialog
+// GitOps warning dialog (console GitOpsEditWarningModal)
 // ---------------------------------------------------------------------------
 
 function GitOpsWarningDialog({
@@ -1637,73 +1851,63 @@ function GitOpsWarningDialog({
   onProceed: () => void;
   onClose: () => void;
 }) {
+  const classes = useStyles();
   if (!row) return null;
 
   const actionLabel = action === 'configure' ? 'Configure' : 'Uninstall';
 
   return (
-    <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
-      <DialogTitle>
-        <Box display="flex" alignItems="center" style={{ gap: 8 }}>
-          <WarningIcon style={{ color: '#ff9800' }} />
-          GitOps-Managed Addon
-        </Box>
-      </DialogTitle>
-      <DialogContent>
-        <Typography gutterBottom>
-          <strong>{row.displayName}</strong> is managed by GitOps.
-        </Typography>
-
-        {action === 'configure' ? (
-          <Alert severity="warning" style={{ marginTop: 8 }}>
-            <Typography variant="body2" style={{ fontWeight: 500 }}>
-              Changes may be overwritten
-            </Typography>
-            <Typography variant="body2">
-              Any configuration changes made here will be overwritten the next
-              time GitOps reconciles from your Git repository.
-            </Typography>
-          </Alert>
-        ) : (
-          <Alert severity="warning" style={{ marginTop: 8 }}>
-            <Typography variant="body2" style={{ fontWeight: 500 }}>
-              Addon will be re-created
-            </Typography>
-            <Typography variant="body2">
-              If you uninstall this addon, GitOps will automatically re-create
-              it from your Git repository. To permanently remove it, delete it
-              from Git first.
-            </Typography>
-          </Alert>
-        )}
-
-        <Box mt={2}>
-          <Alert severity="info">
-            <Typography variant="body2">
-              <strong>Recommended:</strong>{' '}
-              {action === 'configure'
-                ? 'Make changes in your Git repository instead for a proper audit trail.'
-                : 'Remove the addon from your Git repository to permanently uninstall it.'}
-            </Typography>
-          </Alert>
-        </Box>
-      </DialogContent>
-      <DialogActions>
-        <Button onClick={onClose}>Cancel</Button>
-        <Button
-          onClick={onProceed}
-          color={action === 'uninstall' ? 'secondary' : 'primary'}
-          variant="contained"
-        >
-          {actionLabel} Anyway
-        </Button>
-      </DialogActions>
-    </Dialog>
+    <ButlerDialog
+      open={open}
+      onClose={onClose}
+      title="GitOps-Managed Addon"
+      subtitle={`${row.displayName} is managed by GitOps`}
+      icon={<AlertTriangleIcon />}
+      iconTone={action === 'uninstall' ? 'danger' : 'neutral'}
+      footer={
+        <>
+          <ButlerButton variant="secondary" onClick={onClose}>
+            Cancel
+          </ButlerButton>
+          <ButlerButton
+            variant={action === 'uninstall' ? 'danger' : 'primary'}
+            onClick={onProceed}
+          >
+            {actionLabel} Anyway
+          </ButlerButton>
+        </>
+      }
+    >
+      {action === 'configure' ? (
+        <ButlerCallout tone="warning" title="Changes may be overwritten">
+          <p>
+            Any configuration changes made here will be overwritten the next
+            time GitOps reconciles from your Git repository.
+          </p>
+        </ButlerCallout>
+      ) : (
+        <ButlerCallout tone="warning" title="Addon will be re-created">
+          <p>
+            If you uninstall this addon, GitOps will automatically re-create it
+            from your Git repository. To permanently remove it, delete it from
+            Git first.
+          </p>
+        </ButlerCallout>
+      )}
+      <ButlerCallout tone="neutral" compact>
+        <p>
+          <span className={classes.strong}>Recommended:</span>{' '}
+          {action === 'configure'
+            ? 'Make changes in your Git repository instead for a proper audit trail.'
+            : 'Remove the addon from your Git repository to permanently uninstall it.'}
+        </p>
+      </ButlerCallout>
+    </ButlerDialog>
   );
 }
 
 // ---------------------------------------------------------------------------
-// Export to GitOps Dialog
+// Export to GitOps dialog (from catalog)
 // ---------------------------------------------------------------------------
 
 function ExportToGitOpsDialog({
@@ -1723,7 +1927,7 @@ function ExportToGitOpsDialog({
   clusterNamespace: string;
   repositories: Repository[];
   gitConfigured: boolean;
-  api: any;
+  api: ButlerApi;
   onSuccess: () => void;
   onClose: () => void;
 }) {
@@ -1745,7 +1949,6 @@ function ExportToGitOpsDialog({
   const [loadingPreview, setLoadingPreview] = useState(false);
   const [exporting, setExporting] = useState(false);
 
-  // Reset state when dialog opens with new addon
   useEffect(() => {
     if (open && addon) {
       const newPath = addon.platform
@@ -1760,7 +1963,6 @@ function ExportToGitOpsDialog({
     }
   }, [open, addon, clusterName, repositories, repository]);
 
-  // Load branches when repository changes
   useEffect(() => {
     if (!repository || !open) {
       setBranches([]);
@@ -1832,184 +2034,111 @@ function ExportToGitOpsDialog({
 
   if (!addon) return null;
 
+  const icon = <span className={classes.emoji}>{'\u{1F4E6}'}</span>;
+
   if (!gitConfigured) {
     return (
-      <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
-        <DialogTitle>Export to GitOps</DialogTitle>
-        <DialogContent>
-          <Alert severity="warning">
-            <Typography variant="body2" style={{ fontWeight: 500 }}>
-              Git Provider Not Configured
-            </Typography>
-            <Typography variant="body2">
-              Please configure a Git provider (GitHub/GitLab) in the GitOps tab
-              before exporting addons.
-            </Typography>
-          </Alert>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={onClose}>Close</Button>
-        </DialogActions>
-      </Dialog>
+      <NotConfiguredDialog
+        open={open}
+        title="Export to GitOps"
+        subtitle={addon.displayName}
+        icon={icon}
+        verb="exporting"
+        onClose={onClose}
+      />
     );
   }
 
   return (
-    <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
-      <DialogTitle>Export to GitOps - {addon.displayName}</DialogTitle>
-      <DialogContent>
-        {/* Addon info */}
-        <div className={classes.addonInfoBox}>
-          <div>
-            <Typography variant="body2" style={{ fontWeight: 500 }}>
-              {addon.displayName}
-            </Typography>
-            <Typography variant="caption" color="textSecondary">
-              {addon.chartName}:{addon.defaultVersion}
-            </Typography>
-          </div>
-          <Chip label="From Catalog" size="small" color="primary" variant="outlined" />
-        </div>
-
-        {/* Repository Selection */}
-        <Box mt={2}>
-          <TextField
-            select
-            label="Target Repository"
-            value={repository}
-            onChange={e => setRepository(e.target.value)}
-            fullWidth
-            variant="outlined"
-            size="small"
+    <ButlerDialog
+      open={open}
+      onClose={onClose}
+      busy={exporting}
+      width={512}
+      title="Export to GitOps"
+      subtitle={addon.displayName}
+      icon={icon}
+      footer={
+        <>
+          <ButlerButton
+            variant="secondary"
+            onClick={onClose}
+            disabled={exporting}
           >
-            <MenuItem value="">Select a repository...</MenuItem>
-            {repositories.map(repo => (
-              <MenuItem key={repo.fullName} value={repo.fullName}>
-                {repo.fullName}
-                {repo.private ? ' (private)' : ''}
-              </MenuItem>
-            ))}
-          </TextField>
-        </Box>
-
-        {/* Branch and Path */}
-        <Box mt={2} display="flex" style={{ gap: 16 }}>
-          <TextField
-            select
-            label="Branch"
-            value={branch}
-            onChange={e => setBranch(e.target.value)}
-            variant="outlined"
-            size="small"
-            style={{ flex: 1 }}
-            disabled={loadingBranches || branches.length === 0}
-            InputProps={{
-              endAdornment: loadingBranches ? (
-                <CircularProgress size={16} />
-              ) : undefined,
-            }}
+            Cancel
+          </ButlerButton>
+          <ButlerButton
+            onClick={handleExport}
+            disabled={exporting || !repository}
           >
-            {branches.length === 0 ? (
-              <MenuItem value={branch}>{branch}</MenuItem>
+            {exporting ? (
+              <>
+                <ButlerSpinner small />
+                Exporting...
+              </>
+            ) : createPR ? (
+              'Create Pull Request'
             ) : (
-              branches.map(b => (
-                <MenuItem key={b.name} value={b.name}>
-                  {b.name}
-                </MenuItem>
-              ))
+              'Export'
             )}
-          </TextField>
-          <TextField
-            label="Path"
-            value={path}
-            onChange={e => setPath(e.target.value)}
-            variant="outlined"
-            size="small"
-            style={{ flex: 1 }}
-            placeholder="clusters/my-cluster"
-          />
-        </Box>
+          </ButlerButton>
+        </>
+      }
+    >
+      <div className={classes.infoBox}>
+        <div>
+          <p className={classes.infoName}>{addon.displayName}</p>
+          <p className={classes.infoMeta}>
+            {addon.chartName}:{addon.defaultVersion}
+          </p>
+        </div>
+        <ButlerChip tone="blue">From Catalog</ButlerChip>
+      </div>
 
-        {/* Create PR */}
-        <Box mt={1}>
-          <FormControlLabel
-            control={
-              <Checkbox
-                checked={createPR}
-                onChange={e => setCreatePR(e.target.checked)}
-                color="primary"
-                size="small"
-              />
-            }
-            label={
-              <div>
-                <Typography variant="body2">Create Pull Request</Typography>
-                <Typography variant="caption" color="textSecondary">
-                  Create a PR for review instead of committing directly
-                </Typography>
-              </div>
-            }
-          />
-        </Box>
+      <RepositorySelect
+        value={repository}
+        onChange={setRepository}
+        repositories={repositories}
+      />
 
-        {/* Preview Button */}
-        {repository && (
-          <Box mt={1}>
-            <Button
-              size="small"
-              color="primary"
-              startIcon={
-                loadingPreview ? (
-                  <CircularProgress size={14} />
-                ) : preview ? (
-                  <VisibilityOffIcon fontSize="small" />
-                ) : (
-                  <VisibilityIcon fontSize="small" />
-                )
-              }
-              onClick={handleTogglePreview}
-              disabled={loadingPreview}
-            >
-              {loadingPreview
-                ? 'Loading preview...'
-                : preview
-                  ? 'Hide generated manifests'
-                  : 'Preview generated manifests'}
-            </Button>
-          </Box>
-        )}
+      <ButlerFormRow>
+        <BranchSelect
+          value={branch}
+          onChange={setBranch}
+          branches={branches}
+          loading={loadingBranches}
+          createPR={createPR}
+        />
+        <ButlerInput
+          label="Path"
+          value={path}
+          onChange={e => setPath(e.target.value)}
+          placeholder="clusters/my-cluster"
+        />
+      </ButlerFormRow>
 
-        {/* Preview Content */}
-        {preview && <ManifestPreview files={preview} />}
-      </DialogContent>
-      <DialogActions>
-        <Button onClick={onClose} disabled={exporting}>
-          Cancel
-        </Button>
-        <Button
-          onClick={handleExport}
-          color="primary"
-          variant="contained"
-          disabled={exporting || !repository}
-          startIcon={
-            exporting ? (
-              <CircularProgress size={16} color="inherit" />
-            ) : undefined
-          }
-        >
-          {exporting
-            ? 'Exporting...'
-            : createPR
-              ? 'Create Pull Request'
-              : 'Export'}
-        </Button>
-      </DialogActions>
-    </Dialog>
+      <ButlerCheckbox
+        checked={createPR}
+        onChange={e => setCreatePR(e.target.checked)}
+        label="Create Pull Request"
+        description="Create a PR for review instead of committing directly"
+      />
+
+      {repository && (
+        <ButlerPreviewToggle
+          open={!!preview}
+          loading={loadingPreview}
+          onToggle={handleTogglePreview}
+        />
+      )}
+
+      {preview && <ButlerFilePreview files={preview} />}
+    </ButlerDialog>
   );
 }
 
 // ---------------------------------------------------------------------------
-// Migrate to GitOps Dialog
+// Migrate to GitOps dialog (from installed)
 // ---------------------------------------------------------------------------
 
 function MigrateToGitOpsDialog({
@@ -2031,13 +2160,12 @@ function MigrateToGitOpsDialog({
   repositories: Repository[];
   gitConfigured: boolean;
   discoveredRelease?: DiscoveredRelease;
-  api: any;
+  api: ButlerApi;
   onSuccess: () => void;
   onClose: () => void;
 }) {
-  const defaultPath = row
-    ? `clusters/${clusterName}/apps/${row.name}`
-    : '';
+  const classes = useStyles();
+  const defaultPath = row ? `clusters/${clusterName}/apps/${row.name}` : '';
 
   const [repository, setRepository] = useState('');
   const [branch, setBranch] = useState('main');
@@ -2052,7 +2180,6 @@ function MigrateToGitOpsDialog({
   const [loadingPreview, setLoadingPreview] = useState(false);
   const [migrating, setMigrating] = useState(false);
 
-  // Reset state when dialog opens
   useEffect(() => {
     if (open && row) {
       setPath(`clusters/${clusterName}/apps/${row.name}`);
@@ -2065,7 +2192,6 @@ function MigrateToGitOpsDialog({
     }
   }, [open, row, clusterName, discoveredRelease, repositories, repository]);
 
-  // Load branches when repository changes
   useEffect(() => {
     if (!repository || !open) {
       setBranches([]);
@@ -2143,238 +2269,117 @@ function MigrateToGitOpsDialog({
 
   if (!row) return null;
 
+  const icon = <span className={classes.emoji}>{'\u{1F504}'}</span>;
+
   if (!gitConfigured) {
     return (
-      <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
-        <DialogTitle>Migrate to GitOps</DialogTitle>
-        <DialogContent>
-          <Alert severity="warning">
-            <Typography variant="body2" style={{ fontWeight: 500 }}>
-              Git Provider Not Configured
-            </Typography>
-            <Typography variant="body2">
-              Please configure a Git provider (GitHub/GitLab) in the GitOps tab
-              before migrating addons.
-            </Typography>
-          </Alert>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={onClose}>Close</Button>
-        </DialogActions>
-      </Dialog>
+      <NotConfiguredDialog
+        open={open}
+        title="Migrate to GitOps"
+        subtitle={row.displayName}
+        icon={icon}
+        verb="migrating"
+        onClose={onClose}
+      />
     );
   }
 
   return (
-    <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
-      <DialogTitle>Migrate to GitOps - {row.displayName}</DialogTitle>
-      <DialogContent>
-        {/* Warning */}
-        <Alert severity="info">
+    <ButlerDialog
+      open={open}
+      onClose={onClose}
+      busy={migrating}
+      width={512}
+      title="Migrate to GitOps"
+      subtitle={row.displayName}
+      icon={icon}
+      footer={
+        <>
+          <ButlerButton
+            variant="secondary"
+            onClick={onClose}
+            disabled={migrating}
+          >
+            Cancel
+          </ButlerButton>
+          <ButlerButton
+            onClick={handleMigrate}
+            disabled={migrating || !repository}
+          >
+            {migrating ? (
+              <>
+                <ButlerSpinner small />
+                Exporting...
+              </>
+            ) : createPR ? (
+              'Create Pull Request'
+            ) : (
+              'Export'
+            )}
+          </ButlerButton>
+        </>
+      }
+    >
+      <ButlerCallout tone="warning" compact>
+        <p>
           This will export the current configuration to Git and mark the addon
           as GitOps-managed. Future changes should be made through your Git
           repository.
-        </Alert>
+        </p>
+      </ButlerCallout>
 
-        {/* Repository Selection */}
-        <Box mt={2}>
-          <TextField
-            select
-            label="Target Repository"
-            value={repository}
-            onChange={e => setRepository(e.target.value)}
-            fullWidth
-            variant="outlined"
-            size="small"
-          >
-            <MenuItem value="">Select a repository...</MenuItem>
-            {repositories.map(repo => (
-              <MenuItem key={repo.fullName} value={repo.fullName}>
-                {repo.fullName}
-                {repo.private ? ' (private)' : ''}
-              </MenuItem>
-            ))}
-          </TextField>
-        </Box>
+      <RepositorySelect
+        value={repository}
+        onChange={setRepository}
+        repositories={repositories}
+      />
 
-        {/* Branch and Path */}
-        <Box mt={2} display="flex" style={{ gap: 16 }}>
-          <TextField
-            select
-            label="Branch"
-            value={branch}
-            onChange={e => setBranch(e.target.value)}
-            variant="outlined"
-            size="small"
-            style={{ flex: 1 }}
-            disabled={loadingBranches || branches.length === 0}
-            InputProps={{
-              endAdornment: loadingBranches ? (
-                <CircularProgress size={16} />
-              ) : undefined,
-            }}
-          >
-            {branches.length === 0 ? (
-              <MenuItem value={branch}>{branch}</MenuItem>
-            ) : (
-              branches.map(b => (
-                <MenuItem key={b.name} value={b.name}>
-                  {b.name}
-                </MenuItem>
-              ))
-            )}
-          </TextField>
-          <TextField
-            label="Path"
-            value={path}
-            onChange={e => setPath(e.target.value)}
-            variant="outlined"
-            size="small"
-            style={{ flex: 1 }}
-            placeholder="clusters/my-cluster"
-          />
-        </Box>
+      <ButlerFormRow>
+        <BranchSelect
+          value={branch}
+          onChange={setBranch}
+          branches={branches}
+          loading={loadingBranches}
+          createPR={createPR}
+        />
+        <ButlerInput
+          label="Path"
+          value={path}
+          onChange={e => setPath(e.target.value)}
+          placeholder="clusters/my-cluster"
+        />
+      </ButlerFormRow>
 
-        {/* Helm Repo URL */}
-        <Box mt={2}>
-          <TextField
-            label="Helm Repository URL (optional)"
-            value={helmRepoUrl}
-            onChange={e => setHelmRepoUrl(e.target.value)}
-            fullWidth
-            variant="outlined"
-            size="small"
-            placeholder="https://charts.example.com"
-            helperText="Override the Helm repository URL if auto-detection fails"
-          />
-        </Box>
+      <ButlerField
+        label="Helm Repository URL"
+        optional
+        help="Override the Helm repository URL if auto-detection fails"
+      >
+        <ButlerInput
+          type="url"
+          value={helmRepoUrl}
+          onChange={e => setHelmRepoUrl(e.target.value)}
+          placeholder="https://charts.example.com"
+        />
+      </ButlerField>
 
-        {/* Create PR */}
-        <Box mt={1}>
-          <FormControlLabel
-            control={
-              <Checkbox
-                checked={createPR}
-                onChange={e => setCreatePR(e.target.checked)}
-                color="primary"
-                size="small"
-              />
-            }
-            label={
-              <div>
-                <Typography variant="body2">Create Pull Request</Typography>
-                <Typography variant="caption" color="textSecondary">
-                  Create a PR for review instead of committing directly
-                </Typography>
-              </div>
-            }
-          />
-        </Box>
+      <ButlerCheckbox
+        checked={createPR}
+        onChange={e => setCreatePR(e.target.checked)}
+        label="Create Pull Request"
+        description="Create a PR for review instead of committing directly"
+      />
 
-        {/* Preview Button */}
-        {repository && (
-          <Box mt={1}>
-            <Button
-              size="small"
-              color="primary"
-              startIcon={
-                loadingPreview ? (
-                  <CircularProgress size={14} />
-                ) : preview ? (
-                  <VisibilityOffIcon fontSize="small" />
-                ) : (
-                  <VisibilityIcon fontSize="small" />
-                )
-              }
-              onClick={handleTogglePreview}
-              disabled={loadingPreview}
-            >
-              {loadingPreview
-                ? 'Loading preview...'
-                : preview
-                  ? 'Hide generated manifests'
-                  : 'Preview generated manifests'}
-            </Button>
-          </Box>
-        )}
+      {repository && (
+        <ButlerPreviewToggle
+          open={!!preview}
+          loading={loadingPreview}
+          onToggle={handleTogglePreview}
+        />
+      )}
 
-        {/* Preview Content */}
-        {preview && <ManifestPreview files={preview} />}
-      </DialogContent>
-      <DialogActions>
-        <Button onClick={onClose} disabled={migrating}>
-          Cancel
-        </Button>
-        <Button
-          onClick={handleMigrate}
-          color="primary"
-          variant="contained"
-          disabled={migrating || !repository}
-          startIcon={
-            migrating ? (
-              <CircularProgress size={16} color="inherit" />
-            ) : undefined
-          }
-        >
-          {migrating
-            ? 'Migrating...'
-            : createPR
-              ? 'Create Pull Request'
-              : 'Migrate'}
-        </Button>
-      </DialogActions>
-    </Dialog>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Manifest Preview Component
-// ---------------------------------------------------------------------------
-
-function ManifestPreview({ files }: { files: Record<string, string> }) {
-  const classes = useStyles();
-  const [expandedFiles, setExpandedFiles] = useState<Set<string>>(new Set());
-
-  const toggleFile = (filename: string) => {
-    setExpandedFiles(prev => {
-      const next = new Set(prev);
-      if (next.has(filename)) {
-        next.delete(filename);
-      } else {
-        next.add(filename);
-      }
-      return next;
-    });
-  };
-
-  return (
-    <div className={classes.previewContainer}>
-      <div className={classes.previewHeader}>
-        <Typography variant="caption" color="textSecondary">
-          Generated Files
-        </Typography>
-      </div>
-      <div style={{ maxHeight: 300, overflow: 'auto' }}>
-        {Object.entries(files).map(([filename, content]) => (
-          <div key={filename}>
-            <div
-              className={classes.previewFileHeader}
-              onClick={() => toggleFile(filename)}
-            >
-              {expandedFiles.has(filename) ? (
-                <ExpandLessIcon fontSize="small" color="action" />
-              ) : (
-                <ExpandMoreIcon fontSize="small" color="action" />
-              )}
-              <Typography variant="body2">{filename}</Typography>
-            </div>
-            <Collapse in={expandedFiles.has(filename)}>
-              <pre className={classes.previewContent}>{content}</pre>
-            </Collapse>
-          </div>
-        ))}
-      </div>
-    </div>
+      {preview && <ButlerFilePreview files={preview} />}
+    </ButlerDialog>
   );
 }
 
@@ -2386,43 +2391,3 @@ function ManifestPreview({ files }: { files: Record<string, string> }) {
  * Minimal YAML parser that handles simple key: value pairs and nested objects.
  * For production, a full YAML library should be used.
  */
-function parseYaml(yaml: string): Record<string, unknown> {
-  const result: Record<string, unknown> = {};
-  const lines = yaml.split('\n');
-  const stack: { obj: Record<string, unknown>; indent: number }[] = [
-    { obj: result, indent: -1 },
-  ];
-
-  for (const line of lines) {
-    if (!line.trim() || line.trim().startsWith('#')) continue;
-
-    const indent = line.search(/\S/);
-    const match = line.trim().match(/^([^:]+):\s*(.*)$/);
-    if (!match) continue;
-
-    const [, key, value] = match;
-
-    while (stack.length > 1 && stack[stack.length - 1].indent >= indent) {
-      stack.pop();
-    }
-
-    const parent = stack[stack.length - 1].obj;
-
-    if (value === '' || value === undefined) {
-      const newObj: Record<string, unknown> = {};
-      parent[key] = newObj;
-      stack.push({ obj: newObj, indent });
-    } else {
-      let parsedValue: unknown = value;
-      if (value === 'true') parsedValue = true;
-      else if (value === 'false') parsedValue = false;
-      else if (!isNaN(Number(value)) && value.trim() !== '')
-        parsedValue = Number(value);
-      else if (value.startsWith('"') && value.endsWith('"'))
-        parsedValue = value.slice(1, -1);
-      parent[key] = parsedValue;
-    }
-  }
-
-  return result;
-}

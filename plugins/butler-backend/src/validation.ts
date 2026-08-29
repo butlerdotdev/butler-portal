@@ -62,7 +62,8 @@ export function validateButlerAuth(
   }
 
   if (trimmedPassword === 'admin') {
-    const optOut = process.env.BUTLER_ALLOW_INSECURE_ADMIN_CREDENTIALS === 'true';
+    const optOut =
+      process.env.BUTLER_ALLOW_INSECURE_ADMIN_CREDENTIALS === 'true';
 
     if (optOut) {
       const warning = `butler.auth.password is set to the insecure default "admin". BUTLER_ALLOW_INSECURE_ADMIN_CREDENTIALS=true is set; continuing despite the insecure credentials. Rotate the password to remove this warning.`;

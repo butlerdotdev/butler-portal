@@ -10,6 +10,8 @@ import {
   clustersRouteRef,
   createClusterRouteRef,
   clusterDetailRouteRef,
+  teamEnvironmentsRouteRef,
+  teamProvidersRouteRef,
   teamMembersRouteRef,
   teamSettingsRouteRef,
   adminRouteRef,
@@ -21,8 +23,16 @@ import {
   adminProvidersRouteRef,
   adminCreateProviderRouteRef,
   adminIdentityProvidersRouteRef,
+  adminPoliciesRouteRef,
+  adminPolicyRouteRef,
   adminCreateIdentityProviderRouteRef,
   adminSettingsRouteRef,
+  adminNetworksRouteRef,
+  adminNetworkPoolRouteRef,
+  adminObservabilityRouteRef,
+  adminAccessRouteRef,
+  adminAuditRouteRef,
+  teamAuditRouteRef,
 } from '../routes';
 
 export interface ButlerRoutes {
@@ -35,6 +45,8 @@ export interface ButlerRoutes {
     namespace: string;
     name: string;
   }) => string;
+  teamEnvironments: (params: { team: string }) => string;
+  teamProviders: (params: { team: string }) => string;
   teamMembers: (params: { team: string }) => string;
   teamSettings: (params: { team: string }) => string;
   admin: () => string;
@@ -46,8 +58,16 @@ export interface ButlerRoutes {
   adminProviders: () => string;
   adminCreateProvider: () => string;
   adminIdentityProviders: () => string;
+  adminPolicies: () => string;
+  adminPolicy: (params: { name: string }) => string;
   adminCreateIdentityProvider: () => string;
   adminSettings: () => string;
+  adminNetworks: () => string;
+  adminNetworkPool: (params: { namespace: string; name: string }) => string;
+  adminObservability: () => string;
+  adminAccess: () => string;
+  adminAudit: () => string;
+  teamAudit: (params: { team: string }) => string;
 }
 
 /**
@@ -69,6 +89,8 @@ export const useButlerRoutes = (): ButlerRoutes => {
   const clusters = useRouteRef(clustersRouteRef);
   const createCluster = useRouteRef(createClusterRouteRef);
   const clusterDetail = useRouteRef(clusterDetailRouteRef);
+  const teamEnvironments = useRouteRef(teamEnvironmentsRouteRef);
+  const teamProviders = useRouteRef(teamProvidersRouteRef);
   const teamMembers = useRouteRef(teamMembersRouteRef);
   const teamSettings = useRouteRef(teamSettingsRouteRef);
   const admin = useRouteRef(adminRouteRef);
@@ -80,10 +102,18 @@ export const useButlerRoutes = (): ButlerRoutes => {
   const adminProviders = useRouteRef(adminProvidersRouteRef);
   const adminCreateProvider = useRouteRef(adminCreateProviderRouteRef);
   const adminIdentityProviders = useRouteRef(adminIdentityProvidersRouteRef);
+  const adminPolicies = useRouteRef(adminPoliciesRouteRef);
+  const adminPolicy = useRouteRef(adminPolicyRouteRef);
   const adminCreateIdentityProvider = useRouteRef(
     adminCreateIdentityProviderRouteRef,
   );
   const adminSettings = useRouteRef(adminSettingsRouteRef);
+  const adminNetworks = useRouteRef(adminNetworksRouteRef);
+  const adminNetworkPool = useRouteRef(adminNetworkPoolRouteRef);
+  const adminObservability = useRouteRef(adminObservabilityRouteRef);
+  const adminAccess = useRouteRef(adminAccessRouteRef);
+  const adminAudit = useRouteRef(adminAuditRouteRef);
+  const teamAudit = useRouteRef(teamAuditRouteRef);
 
   return useMemo(
     () => ({
@@ -92,6 +122,8 @@ export const useButlerRoutes = (): ButlerRoutes => {
       clusters: params => normalizeMountPath(clusters(params)),
       createCluster: params => normalizeMountPath(createCluster(params)),
       clusterDetail: params => normalizeMountPath(clusterDetail(params)),
+      teamEnvironments: params => normalizeMountPath(teamEnvironments(params)),
+      teamProviders: params => normalizeMountPath(teamProviders(params)),
       teamMembers: params => normalizeMountPath(teamMembers(params)),
       teamSettings: params => normalizeMountPath(teamSettings(params)),
       admin: () => normalizeMountPath(admin()),
@@ -102,9 +134,19 @@ export const useButlerRoutes = (): ButlerRoutes => {
       adminUsers: () => normalizeMountPath(adminUsers()),
       adminProviders: () => normalizeMountPath(adminProviders()),
       adminCreateProvider: () => normalizeMountPath(adminCreateProvider()),
-      adminIdentityProviders: () => normalizeMountPath(adminIdentityProviders()),
-      adminCreateIdentityProvider: () => normalizeMountPath(adminCreateIdentityProvider()),
+      adminIdentityProviders: () =>
+        normalizeMountPath(adminIdentityProviders()),
+      adminPolicies: () => normalizeMountPath(adminPolicies()),
+      adminPolicy: params => normalizeMountPath(adminPolicy(params)),
+      adminCreateIdentityProvider: () =>
+        normalizeMountPath(adminCreateIdentityProvider()),
       adminSettings: () => normalizeMountPath(adminSettings()),
+      adminNetworks: () => normalizeMountPath(adminNetworks()),
+      adminNetworkPool: params => normalizeMountPath(adminNetworkPool(params)),
+      adminObservability: () => normalizeMountPath(adminObservability()),
+      adminAccess: () => normalizeMountPath(adminAccess()),
+      adminAudit: () => normalizeMountPath(adminAudit()),
+      teamAudit: params => normalizeMountPath(teamAudit(params)),
     }),
     [
       root,
@@ -123,8 +165,18 @@ export const useButlerRoutes = (): ButlerRoutes => {
       adminProviders,
       adminCreateProvider,
       adminIdentityProviders,
+      adminPolicies,
+      adminPolicy,
       adminCreateIdentityProvider,
       adminSettings,
+      adminNetworks,
+      adminNetworkPool,
+      adminObservability,
+      adminAccess,
+      adminAudit,
+      teamAudit,
+      teamEnvironments,
+      teamProviders,
     ],
   );
 };

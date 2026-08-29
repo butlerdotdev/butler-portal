@@ -33,8 +33,18 @@ const STABLE_CONNECTION_MS = 10000;
 // every 30 seconds for a decision that will not change.
 const MAX_NEVER_OPENED_ATTEMPTS = 5;
 const MAX_NOTIFICATIONS = 50;
-const SEVERITIES: NotificationSeverity[] = ['success', 'warning', 'error', 'info'];
-const CATEGORIES: NotificationCategory[] = ['cluster', 'team', 'infra', 'security'];
+const SEVERITIES: NotificationSeverity[] = [
+  'success',
+  'warning',
+  'error',
+  'info',
+];
+const CATEGORIES: NotificationCategory[] = [
+  'cluster',
+  'team',
+  'infra',
+  'security',
+];
 
 export interface ClusterWatchProviderProps {
   children: React.ReactNode;
@@ -106,7 +116,9 @@ export const ClusterWatchProvider = ({
   }, []);
 
   const markAllRead = useCallback(() => {
-    setNotifications(prev => prev.map(n => (n.read ? n : { ...n, read: true })));
+    setNotifications(prev =>
+      prev.map(n => (n.read ? n : { ...n, read: true })),
+    );
     setUnreadCount(0);
   }, []);
 
@@ -214,7 +226,10 @@ export const ClusterWatchProvider = ({
       ws.onclose = () => {
         if (socketRef.current === ws) socketRef.current = null;
         if (disposedRef.current) return;
-        if (openedAt !== null && Date.now() - openedAt >= STABLE_CONNECTION_MS) {
+        if (
+          openedAt !== null &&
+          Date.now() - openedAt >= STABLE_CONNECTION_MS
+        ) {
           reconnectAttemptsRef.current = 0;
         }
         setConnected(false);
@@ -250,7 +265,14 @@ export const ClusterWatchProvider = ({
       clearNotifications,
       subscribe,
     }),
-    [connected, notifications, unreadCount, markAllRead, clearNotifications, subscribe],
+    [
+      connected,
+      notifications,
+      unreadCount,
+      markAllRead,
+      clearNotifications,
+      subscribe,
+    ],
   );
 
   return (

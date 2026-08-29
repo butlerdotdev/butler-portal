@@ -1,58 +1,60 @@
 // Copyright 2026 The Butler Authors.
 // SPDX-License-Identifier: Apache-2.0
 
-import { InfoCard, Table, TableColumn } from '@backstage/core-components';
 import type { LoadBalancerRequest } from '../../api/types/machines';
-import { StatusBadge } from '../StatusBadge/StatusBadge';
+import { ButlerCard, ButlerStatusBadge } from '../ui';
+import { makeStyles } from '@material-ui/core/styles';
+import { butlerTokens } from '../../theme';
+
+const useNoteStyles = makeStyles(theme => ({
+  note: { margin: 0, fontSize: 13, color: butlerTokens(theme).text.subtle },
+}));
+import { RequestRow, useRequestRowStyles } from './RequestRow';
 
 interface LoadBalancerRequestsCardProps {
   loadBalancerRequests: LoadBalancerRequest[];
+  /**
+   * Why there are none, when that is the normal case for this cluster.
+   * Without it an empty list renders nothing, as the console does.
+   */
+  absenceNote?: string;
 }
 
-type LoadBalancerRow = {
-  id: string;
-  name: string;
-  vip: string;
-  phase: string;
-};
-
-const columns: TableColumn<LoadBalancerRow>[] = [
-  { title: 'Name', field: 'name' },
-  { title: 'VIP', field: 'vip' },
-  {
-    title: 'Phase',
-    field: 'phase',
-    render: (row: LoadBalancerRow) => <StatusBadge status={row.phase} />,
-  },
-];
-
+/**
+ * Console "Load Balancer Requests" card: one inset row per request with
+ * its VIP and phase. Hidden when there are no requests.
+ */
 export const LoadBalancerRequestsCard = ({
   loadBalancerRequests,
+  absenceNote,
 }: LoadBalancerRequestsCardProps) => {
+  const classes = useRequestRowStyles();
+  const noteClasses = useNoteStyles();
   if (loadBalancerRequests.length === 0) {
-    return null;
+    if (!absenceNote) return null;
+    return (
+      <ButlerCard title="Load Balancer Requests">
+        <p className={noteClasses.note}>{absenceNote}</p>
+      </ButlerCard>
+    );
   }
-
-  // The CR exposes the VIP as status.endpoint.
-  const rows: LoadBalancerRow[] = loadBalancerRequests.map(lb => ({
-    id: lb.metadata.name,
-    name: lb.metadata.name,
-    vip: lb.status?.endpoint || '',
-    phase: lb.status?.phase || 'Unknown',
-  }));
-
   return (
-    <InfoCard title="Load Balancer Requests">
-      <Table<LoadBalancerRow>
-        options={{
-          search: false,
-          paging: false,
-          padding: 'dense',
-          toolbar: false,
-        }}
-        columns={columns}
-        data={rows}
-      />
-    </InfoCard>
+    <ButlerCard title="Load Balancer Requests">
+      <div className={classes.list}>
+        {loadBalancerRequests.map(lb => (
+          <RequestRow
+            key={lb.metadata.name}
+            name={lb.metadata.name}
+            // The CR exposes the VIP as status.endpoint.
+            detail={
+              lb.status?.endpoint ? `VIP: ${lb.status.endpoint}` : undefined
+            }
+            trailing={
+              <ButlerStatusBadge status={lb.status?.phase || 'Pending'} />
+            }
+          />
+        ))}
+      </div>
+    </ButlerCard>
   );
 };

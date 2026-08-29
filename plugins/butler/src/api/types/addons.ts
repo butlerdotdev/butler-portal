@@ -43,6 +43,8 @@ export interface CategoryInfo {
 
 export interface InstalledAddon {
   name: string;
+  /** The catalog addon this was installed from; the name may differ. */
+  addon?: string;
   displayName?: string;
   status: AddonStatus;
   phase?: string;
@@ -51,6 +53,8 @@ export interface InstalledAddon {
   managedBy?: 'butler' | 'platform' | 'gitops';
   namespace?: string;
   message?: string;
+  /** The override values on the TenantAddon spec, exactly as stored. */
+  values?: Record<string, unknown>;
   helmRelease?: {
     name: string;
     namespace: string;
@@ -221,9 +225,7 @@ export function getBuiltinAddons(
   return catalog.filter(addon => addon.source === 'builtin');
 }
 
-export function getCustomAddons(
-  catalog: AddonDefinition[],
-): AddonDefinition[] {
+export function getCustomAddons(catalog: AddonDefinition[]): AddonDefinition[] {
   return catalog.filter(addon => addon.source === 'custom');
 }
 

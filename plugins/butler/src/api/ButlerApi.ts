@@ -1,6 +1,29 @@
 // Copyright 2026 The Butler Authors.
 // SPDX-License-Identifier: Apache-2.0
 
+import type {
+  ClusterCreationPolicy,
+  PolicyListResponse,
+} from './types/policies';
+import type { AuditListResponse, AuditQuery } from './types/audit';
+import type {
+  ObservabilityConfig,
+  ObservabilityStatus,
+  SetupPipelineRequest,
+  UpdateObservabilityConfigRequest,
+} from './types/observability';
+import type {
+  CAInfoResponse,
+  UpdateProviderRequest,
+  OptionListScope,
+  ProviderClusterListResponse,
+  StorageContainerListResponse,
+} from './types/providers';
+import type {
+  EnvironmentRequest,
+  TeamClusterContext,
+  TeamEnvironment,
+} from './types/environments';
 import { createApiRef } from '@backstage/core-plugin-api';
 
 import type {
@@ -14,6 +37,7 @@ import type {
   ManagementCluster,
   ManagementNode,
   ManagementPod,
+  UpdateClusterRequest,
 } from './types/clusters';
 import type {
   Provider,
@@ -23,7 +47,14 @@ import type {
   ImageListResponse,
   NetworkListResponse,
 } from './types/providers';
-import type { TeamInfo } from './types/teams';
+import type {
+  TeamInfo,
+  TeamResponse,
+  TeamMembersResponse,
+  GroupSyncResponse,
+  UpdateTeamRequest,
+  UserListEntry,
+} from './types/teams';
 import type {
   MachineRequestListResponse,
   LoadBalancerRequestListResponse,
@@ -55,6 +86,11 @@ import type {
 } from './types/gitops';
 import type { PlatformConfig } from './types/config';
 import type {
+  NetworkPool,
+  NetworkPoolListResponse,
+  IPAllocationListResponse,
+} from './types/networks';
+import type {
   ClusterCertificates,
   RotationEvent,
   CertificateCategory,
@@ -64,6 +100,7 @@ import type {
   IdentityProvider,
   IdentityProviderListResponse,
   CreateIdentityProviderRequest,
+  UpdateIdentityProviderRequest,
   TestDiscoveryResponse,
 } from './types/identity-providers';
 import type {
@@ -101,14 +138,38 @@ export interface ButlerApi {
     email: string | null;
     displayName: string;
     isPlatformAdmin: boolean;
+    platformRole?: string;
     teams: TeamInfo[];
   }>;
 
   // Clusters
   listClusters(options?: ClusterListOptions): Promise<ClusterListResponse>;
   getCluster(namespace: string, name: string): Promise<Cluster>;
-  createCluster(data: CreateClusterRequest): Promise<Cluster>;
+  createCluster(
+    data: CreateClusterRequest,
+    options?: { environment?: string },
+  ): Promise<Cluster>;
   deleteCluster(namespace: string, name: string): Promise<void>;
+  // Networks and IP allocations
+  listNetworkPools(): Promise<NetworkPoolListResponse>;
+  getNetworkPool(namespace: string, name: string): Promise<NetworkPool>;
+  listPoolAllocations(
+    namespace: string,
+    name: string,
+  ): Promise<IPAllocationListResponse>;
+  listAllIPAllocations(): Promise<IPAllocationListResponse>;
+  releaseIPAllocation(namespace: string, name: string): Promise<void>;
+
+  updateCluster(
+    namespace: string,
+    name: string,
+    request: UpdateClusterRequest,
+  ): Promise<Cluster>;
+  changeClusterEnvironment(
+    namespace: string,
+    name: string,
+    environment: string,
+  ): Promise<Cluster>;
   scaleCluster(
     namespace: string,
     name: string,
@@ -118,10 +179,7 @@ export interface ButlerApi {
     namespace: string,
     name: string,
   ): Promise<{ kubeconfig: string }>;
-  getClusterNodes(
-    namespace: string,
-    name: string,
-  ): Promise<{ nodes: Node[] }>;
+  getClusterNodes(namespace: string, name: string): Promise<{ nodes: Node[] }>;
   getClusterAddons(
     namespace: string,
     name: string,
@@ -152,30 +210,104 @@ export interface ButlerApi {
   // Management
   getManagement(): Promise<ManagementCluster>;
   getManagementNodes(): Promise<{ nodes: ManagementNode[] }>;
-  getManagementPods(
-    namespace: string,
-  ): Promise<{ pods: ManagementPod[] }>;
+  getManagementPods(namespace: string): Promise<{ pods: ManagementPod[] }>;
 
   // Providers
   listProviders(): Promise<ProviderListResponse>;
+  /**
+   * Providers a team may create clusters against: every platform-scoped
+   * provider plus the ones scoped to this team. This, not the global
+   * list, is what a team's create form must offer.
+   */
+  listTeamProviders(team: string): Promise<ProviderListResponse>;
+  /** Removes a provider scoped to this team; the server refuses any other. */
+  deleteTeamProvider(
+    team: string,
+    namespace: string,
+    name: string,
+  ): Promise<void>;
   getProvider(namespace: string, name: string): Promise<Provider>;
   createProvider(data: CreateProviderRequest): Promise<Provider>;
   deleteProvider(namespace: string, name: string): Promise<void>;
-  validateProvider(
+  validateProvider(namespace: string, name: string): Promise<ValidateResponse>;
+  /**
+   * Updates a provider in place. Only the fields present change; the
+   * provider type and scope cannot. Credentials sent here replace the
+   * matching keys of the provider's Secret and are never read back.
+   */
+  updateProvider(
     namespace: string,
     name: string,
-  ): Promise<ValidateResponse>;
+    data: UpdateProviderRequest,
+  ): Promise<Provider>;
+  /** Certificate details of a provider's CA bundle, without the bundle. */
+  getProviderCAInfo(namespace: string, name: string): Promise<CAInfoResponse>;
   testProviderConnection(
     data: CreateProviderRequest,
   ): Promise<ValidateResponse>;
   listProviderImages(
     namespace: string,
     name: string,
+    scope?: OptionListScope,
   ): Promise<ImageListResponse>;
   listProviderNetworks(
     namespace: string,
     name: string,
+    scope?: OptionListScope,
   ): Promise<NetworkListResponse>;
+  /** Nutanix only: the Prism clusters machines may be placed in. */
+  listProviderClusters(
+    namespace: string,
+    name: string,
+    scope?: OptionListScope,
+  ): Promise<ProviderClusterListResponse>;
+  /** Nutanix only. */
+  listProviderStorageContainers(
+    namespace: string,
+    name: string,
+    scope?: OptionListScope,
+  ): Promise<StorageContainerListResponse>;
+
+  /**
+   * The platform observability pipeline and collection defaults. Any
+   * authenticated caller may read it; the server answers 404 when no
+   * pipeline has been registered at all.
+   */
+  getObservabilityConfig(): Promise<ObservabilityConfig>;
+
+  /**
+   * Platform observability administration. All four are platform admin
+   * only on the server; a platform viewer is refused the fleet status
+   * as well as the mutations. Setup and deregister edit the ButlerConfig
+   * pipeline reference and label the pipeline cluster; neither touches
+   * any collector addon.
+   */
+  getObservabilityStatus(): Promise<ObservabilityStatus>;
+
+  /**
+   * Audit history. The platform log is served to platform admins and
+   * viewers; a team's log to platform roles or an admin of that team.
+   * Team entries are those recorded while the caller acted as that team
+   * (its X-Butler-Team context), not entries about the team's resources.
+   */
+  listAuditLog(query?: AuditQuery): Promise<AuditListResponse>;
+  listTeamAuditLog(
+    team: string,
+    query?: AuditQuery,
+  ): Promise<AuditListResponse>;
+  updateObservabilityConfig(
+    data: UpdateObservabilityConfigRequest,
+  ): Promise<ObservabilityConfig>;
+  setupObservabilityPipeline(
+    data: SetupPipelineRequest,
+  ): Promise<ObservabilityConfig>;
+  deregisterObservabilityPipeline(): Promise<ObservabilityConfig>;
+
+  // Cluster creation policies (ADR-018). Reads need a platform role; the
+  // server resolves them inside the option-list reads above, so a team
+  // sees only their effect.
+  listPolicies(): Promise<PolicyListResponse>;
+  getPolicy(name: string): Promise<ClusterCreationPolicy>;
 
   // Addons
   getAddonCatalog(): Promise<CatalogResponse>;
@@ -213,9 +345,7 @@ export interface ButlerApi {
 
   // GitOps
   getGitOpsConfig(): Promise<GitProviderConfig>;
-  saveGitOpsConfig(
-    request: SaveGitProviderRequest,
-  ): Promise<GitProviderConfig>;
+  saveGitOpsConfig(request: SaveGitProviderRequest): Promise<GitProviderConfig>;
   clearGitOpsConfig(): Promise<void>;
   listRepositories(): Promise<Repository[]>;
   listBranches(owner: string, repo: string): Promise<Branch[]>;
@@ -284,10 +414,7 @@ export interface ButlerApi {
     type: string,
     acknowledge?: boolean,
   ): Promise<RotationEvent>;
-  getRotationStatus(
-    namespace: string,
-    name: string,
-  ): Promise<RotationEvent>;
+  getRotationStatus(namespace: string, name: string): Promise<RotationEvent>;
 
   // Identity Providers
   listIdentityProviders(): Promise<IdentityProviderListResponse>;
@@ -299,15 +426,18 @@ export interface ButlerApi {
     name: string,
   ): Promise<{ status: string; message: string }>;
   testIdPDiscovery(issuerURL: string): Promise<TestDiscoveryResponse>;
-  validateIdentityProvider(
+  validateIdentityProvider(name: string): Promise<TestDiscoveryResponse>;
+  /** Platform admin only; see UpdateIdentityProviderRequest for the merge rules. */
+  updateIdentityProvider(
     name: string,
-  ): Promise<TestDiscoveryResponse>;
+    data: UpdateIdentityProviderRequest,
+  ): Promise<IdentityProvider>;
 
   // Settings
   getPlatformConfig(): Promise<PlatformConfig>;
 
   // Users
-  listUsers(): Promise<any>;
+  listUsers(): Promise<{ users: UserListEntry[] }>;
   createUser(data: {
     email: string;
     name?: string;
@@ -317,20 +447,37 @@ export interface ButlerApi {
   enableUser(username: string): Promise<void>;
   resendInvite(username: string): Promise<{ inviteUrl: string }>;
 
-  // Teams
-  getTeam(name: string): Promise<any>;
+  // Team environments (ADR-009). Environments live in
+  // Team.spec.environments[], so the read is a team read and the three
+  // mutations are the only way to change that list.
+  getTeamClusterContext(team: string): Promise<TeamClusterContext>;
+  createTeamEnvironment(
+    team: string,
+    request: EnvironmentRequest,
+  ): Promise<TeamEnvironment>;
+  updateTeamEnvironment(
+    team: string,
+    name: string,
+    request: EnvironmentRequest,
+  ): Promise<TeamEnvironment>;
+  deleteTeamEnvironment(team: string, name: string): Promise<void>;
+
+  // Teams. The server answers with the flat TeamResponse, never the CRD.
+  // Reads: any authenticated user may read any team (limits, usage,
+  // environments, group mappings); members need team membership or a
+  // platform role. Writes: displayName/description by a team admin or
+  // platform admin, resourceLimits by a platform admin only (admission
+  // webhook); member and group mutations are platform admin only.
+  getTeam(name: string): Promise<TeamResponse>;
   createTeam(data: {
     name: string;
     displayName?: string;
     description?: string;
-  }): Promise<any>;
-  updateTeam(
-    name: string,
-    data: { displayName?: string; description?: string },
-  ): Promise<any>;
+  }): Promise<TeamResponse>;
+  updateTeam(name: string, data: UpdateTeamRequest): Promise<TeamResponse>;
   deleteTeam(name: string): Promise<void>;
   getTeamClusters(name: string): Promise<ClusterListResponse>;
-  getTeamMembers(name: string): Promise<any>;
+  getTeamMembers(name: string): Promise<TeamMembersResponse>;
   addTeamMember(
     teamName: string,
     data: { email: string; role: string },
@@ -341,7 +488,7 @@ export interface ButlerApi {
     email: string,
     role: string,
   ): Promise<void>;
-  getTeamGroupSyncs(name: string): Promise<any>;
+  getTeamGroupSyncs(name: string): Promise<{ groups: GroupSyncResponse[] }>;
   addGroupSync(
     teamName: string,
     data: { group: string; role: string; identityProvider?: string },
@@ -424,10 +571,7 @@ export interface ButlerApi {
     name: string,
     data: Partial<CreateWorkspaceTemplateRequest>,
   ): Promise<WorkspaceTemplate>;
-  deleteWorkspaceTemplate(
-    namespace: string,
-    name: string,
-  ): Promise<void>;
+  deleteWorkspaceTemplate(namespace: string, name: string): Promise<void>;
 
   // SSH Keys
   listSSHKeys(): Promise<SSHKeyListResponse>;

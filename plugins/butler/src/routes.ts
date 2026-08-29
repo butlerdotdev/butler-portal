@@ -29,6 +29,18 @@ export const clusterDetailRouteRef = createSubRouteRef({
   parent: rootRouteRef,
 });
 
+export const teamEnvironmentsRouteRef = createSubRouteRef({
+  id: 'butler.team.environments',
+  path: '/t/:team/environments',
+  parent: rootRouteRef,
+});
+
+export const teamProvidersRouteRef = createSubRouteRef({
+  id: 'butler.team.providers',
+  path: '/t/:team/providers',
+  parent: rootRouteRef,
+});
+
 export const teamMembersRouteRef = createSubRouteRef({
   id: 'butler.team.members',
   path: '/t/:team/members',
@@ -38,6 +50,12 @@ export const teamMembersRouteRef = createSubRouteRef({
 export const teamSettingsRouteRef = createSubRouteRef({
   id: 'butler.team.settings',
   path: '/t/:team/settings',
+  parent: rootRouteRef,
+});
+
+export const teamAuditRouteRef = createSubRouteRef({
+  id: 'butler.team.audit',
+  path: '/t/:team/audit',
   parent: rootRouteRef,
 });
 
@@ -99,6 +117,48 @@ export const adminCreateIdentityProviderRouteRef = createSubRouteRef({
   id: 'butler.admin.identity-providers.create',
   path: '/admin/identity-providers/create',
   parent: rootRouteRef,
+});
+
+export const adminNetworksRouteRef = createSubRouteRef({
+  id: 'butler.admin.networks',
+  parent: rootRouteRef,
+  path: '/admin/networks',
+});
+
+export const adminNetworkPoolRouteRef = createSubRouteRef({
+  id: 'butler.admin.networks.pool',
+  parent: rootRouteRef,
+  path: '/admin/networks/:namespace/:name',
+});
+
+export const adminPoliciesRouteRef = createSubRouteRef({
+  id: 'butler.admin.policies',
+  parent: rootRouteRef,
+  path: '/admin/policies',
+});
+
+export const adminPolicyRouteRef = createSubRouteRef({
+  id: 'butler.admin.policies.detail',
+  parent: rootRouteRef,
+  path: '/admin/policies/:name',
+});
+
+export const adminAuditRouteRef = createSubRouteRef({
+  id: 'butler.admin.audit',
+  parent: rootRouteRef,
+  path: '/admin/audit',
+});
+
+export const adminAccessRouteRef = createSubRouteRef({
+  id: 'butler.admin.access',
+  parent: rootRouteRef,
+  path: '/admin/access',
+});
+
+export const adminObservabilityRouteRef = createSubRouteRef({
+  id: 'butler.admin.observability',
+  parent: rootRouteRef,
+  path: '/admin/observability',
 });
 
 export const adminSettingsRouteRef = createSubRouteRef({

@@ -85,7 +85,9 @@ describe('createButlerUpgradeHandler', () => {
       jest.fn((_req, _socket, _head, cb) => {
         cb({} as any);
       });
-    const wss = { handleUpgrade: handleUpgradeSpy } as unknown as WebSocketServer;
+    const wss = {
+      handleUpgrade: handleUpgradeSpy,
+    } as unknown as WebSocketServer;
     const authManager = {
       getToken: jest.fn(() => Promise.resolve('test-token')),
     } as any;
@@ -187,10 +189,19 @@ describe('createButlerUpgradeHandler credential options', () => {
       wss: { handleUpgrade: jest.fn() } as any,
       targetUrl: 'http://butler',
       authManager: { getToken: async () => 't' } as any,
-      logger: { info: jest.fn(), warn: jest.fn(), error: jest.fn(), debug: jest.fn() } as any,
+      logger: {
+        info: jest.fn(),
+        warn: jest.fn(),
+        error: jest.fn(),
+        debug: jest.fn(),
+      } as any,
     });
     const socket = { end: jest.fn() } as any;
-    handler({ url: '/api/butler/ws/clusters', headers: {} } as any, socket, Buffer.alloc(0));
+    handler(
+      { url: '/api/butler/ws/clusters', headers: {} } as any,
+      socket,
+      Buffer.alloc(0),
+    );
     await new Promise(r => setTimeout(r, 0));
     expect(credentials).toHaveBeenCalledWith(
       expect.anything(),
@@ -204,15 +215,26 @@ describe('createButlerUpgradeHandler identity', () => {
     const resolveEmail = jest.fn(async () => 'dev@example.com');
     const handleUpgrade = jest.fn();
     const handler = createButlerUpgradeHandler({
-      httpAuth: { credentials: jest.fn(async () => ({ principal: { type: 'user' } })) } as any,
+      httpAuth: {
+        credentials: jest.fn(async () => ({ principal: { type: 'user' } })),
+      } as any,
       wss: { handleUpgrade } as any,
       targetUrl: 'http://butler',
       authManager: { getToken: async () => 't' } as any,
-      logger: { info: jest.fn(), warn: jest.fn(), error: jest.fn(), debug: jest.fn() } as any,
+      logger: {
+        info: jest.fn(),
+        warn: jest.fn(),
+        error: jest.fn(),
+        debug: jest.fn(),
+      } as any,
       portalSigner: { sign: () => 'proof' } as any,
       identityResolver: { resolveEmail } as any,
     });
-    handler({ url: '/api/butler/ws/clusters', headers: {} } as any, { end: jest.fn() } as any, Buffer.alloc(0));
+    handler(
+      { url: '/api/butler/ws/clusters', headers: {} } as any,
+      { end: jest.fn() } as any,
+      Buffer.alloc(0),
+    );
     await new Promise(r => setTimeout(r, 0));
     expect(resolveEmail).toHaveBeenCalled();
     expect(handleUpgrade).toHaveBeenCalled();

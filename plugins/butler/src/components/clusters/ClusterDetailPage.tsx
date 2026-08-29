@@ -1,46 +1,32 @@
 // Copyright 2026 The Butler Authors.
 // SPDX-License-Identifier: Apache-2.0
 
-import React, { useEffect, useState, useCallback } from 'react';
-import { useParams, useNavigate, Link as RouterLink } from 'react-router-dom';
+import { useEffect, useRef, useState, useCallback } from 'react';
+import {
+  useParams,
+  useNavigate,
+  useSearchParams,
+  Link as RouterLink,
+} from 'react-router-dom';
 import { useApi, alertApiRef } from '@backstage/core-plugin-api';
-import {
-  Table,
-  TableColumn,
-  InfoCard,
-  Progress,
-  EmptyState,
-} from '@backstage/core-components';
-import {
-  Grid,
-  Typography,
-  Button,
-  Tabs,
-  Tab,
-  Box,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
-  Chip,
-} from '@material-ui/core';
 import { makeStyles } from '@material-ui/core/styles';
-import { Alert } from '@material-ui/lab';
-import GetAppIcon from '@material-ui/icons/GetApp';
-import DeleteIcon from '@material-ui/icons/Delete';
-import ArrowBackIcon from '@material-ui/icons/ArrowBack';
-import RefreshIcon from '@material-ui/icons/Refresh';
-import Switch from '@material-ui/core/Switch';
 import { butlerApiRef } from '../../api/ButlerApi';
 import { useButlerResource } from '../../hooks/useButlerResource';
-import type { Cluster, Node, ClusterEvent } from '../../api/types/clusters';
+import type {
+  Cluster,
+  Node,
+  ClusterEvent,
+  UpdateClusterRequest,
+} from '../../api/types/clusters';
 import type {
   MachineRequest,
   LoadBalancerRequest,
 } from '../../api/types/machines';
-import { StatusBadge } from '../StatusBadge/StatusBadge';
 import { useClusterWatch } from '../../hooks/useClusterWatch';
+import { useTeamContext } from '../../hooks/useTeamContext';
+import { useTeamEnvironments } from '../../hooks/useTeamEnvironments';
 import { AddonsTab } from './AddonsTab';
+import { ObservabilityTab } from './observability/ObservabilityTab';
 import { GitOpsTab } from './GitOpsTab';
 import { CertificatesTab } from './CertificatesTab';
 import { TerminalTab } from './TerminalTab';
@@ -49,97 +35,139 @@ import { ControlPlaneTab } from './ControlPlaneTab';
 import { MachineRequestsCard } from './MachineRequestsCard';
 import { LoadBalancerRequestsCard } from './LoadBalancerRequestsCard';
 import { InfrastructureOverrideCard } from './InfrastructureOverrideCard';
+import { NetworkAllocationsCard } from './NetworkAllocationsCard';
+import { DeleteClusterDialog } from './DeleteClusterDialog';
+import { EditClusterDialog } from './EditClusterDialog';
+import { ScaleWorkersDialog } from './ScaleWorkersDialog';
+import { ChangeEnvironmentDialog } from './ChangeEnvironmentDialog';
+import { ControlPlaneResourcesCard } from './ControlPlaneResourcesCard';
+import {
+  clusterBanners,
+  clusterOwner,
+  controlPlaneState,
+  requestsAbsenceNote,
+  workersState,
+} from '../../utils/clusterHealth';
+import { ENVIRONMENT_LABEL } from '../../utils/environment';
+import { butlerTokens, rgb } from '../../theme';
+import {
+  ButlerBanner,
+  ButlerButton,
+  ButlerCard,
+  ButlerChip,
+  ButlerEmptyState,
+  ButlerGrid,
+  ButlerKeyValueList,
+  ButlerKeyValueRow,
+  ButlerLoading,
+  ButlerPageHeader,
+  ButlerStack,
+  ButlerStatusBadge,
+  ButlerTable,
+  ButlerTabPanel,
+  ButlerTabs,
+  DownloadIcon,
+  TerminalIcon,
+} from '../ui';
+import type { ButlerColumn, ButlerTabItem } from '../ui';
 
-const useStyles = makeStyles(theme => ({
-  header: {
-    display: 'flex',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    marginBottom: theme.spacing(3),
-  },
-  headerLeft: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: theme.spacing(2),
-  },
-  headerInfo: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: theme.spacing(0.5),
-  },
-  headerMeta: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: theme.spacing(1),
-  },
-  headerActions: {
-    display: 'flex',
-    gap: theme.spacing(1),
-  },
-  tabContent: {
-    paddingTop: theme.spacing(3),
-  },
-  conditionRow: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: theme.spacing(1),
-    padding: theme.spacing(0.5, 0),
-  },
-  specLabel: {
-    fontWeight: 600,
-    color: theme.palette.text.secondary,
-    minWidth: 160,
-  },
-  specValue: {
-    color: theme.palette.text.primary,
-  },
-  specRow: {
-    display: 'flex',
-    padding: theme.spacing(1, 0),
-    borderBottom: `1px solid ${theme.palette.divider}`,
-    '&:last-child': {
-      borderBottom: 'none',
+const useStyles = makeStyles(theme => {
+  const t = butlerTokens(theme);
+  return {
+    '@keyframes butlerSpin': { to: { transform: 'rotate(360deg)' } },
+    converging: {
+      display: 'inline-flex',
+      alignItems: 'center',
+      gap: 8,
+      color: rgb(t.palette.amber[400]),
     },
-  },
-  deleteDialogWarning: {
-    color: theme.palette.error.main,
-    fontWeight: 600,
-    marginTop: theme.spacing(1),
-  },
-}));
+    spin: { animation: '$butlerSpin 1s linear infinite' },
+    conditionMessage: {
+      margin: '4px 0 0',
+      fontSize: 12,
+      lineHeight: '16px',
+      color: t.text.muted,
+      textAlign: 'right',
+    },
+    conditionValue: {
+      display: 'flex',
+      flexDirection: 'column',
+      alignItems: 'flex-end',
+      gap: 4,
+    },
+    conditionBadges: {
+      display: 'inline-flex',
+      alignItems: 'center',
+      gap: 8,
+    },
+    truncate: {
+      display: 'block',
+      maxWidth: 448,
+      whiteSpace: 'nowrap',
+      overflow: 'hidden',
+      textOverflow: 'ellipsis',
+    },
+    toggle: {
+      appearance: 'none',
+      position: 'relative',
+      width: 36,
+      height: 20,
+      borderRadius: 9999,
+      border: 'none',
+      backgroundColor: rgb(t.palette.neutral[700]),
+      cursor: 'pointer',
+      transition: 'background-color 150ms',
+      '&::after': {
+        content: '""',
+        position: 'absolute',
+        top: 2,
+        left: 2,
+        width: 16,
+        height: 16,
+        borderRadius: '50%',
+        backgroundColor: '#fff',
+        transition: 'transform 150ms',
+      },
+      '&[aria-checked="true"]': { backgroundColor: rgb(t.palette.green[600]) },
+      '&[aria-checked="true"]::after': { transform: 'translateX(16px)' },
+      '&:disabled': { opacity: 0.5, cursor: 'not-allowed' },
+      '&:focus-visible': {
+        outline: 'none',
+        boxShadow: `0 0 0 2px ${t.surface}, 0 0 0 4px ${t.accent}`,
+      },
+    },
+  };
+});
 
-interface TabPanelProps {
-  children?: React.ReactNode;
-  index: number;
-  value: number;
-}
+// Console tab order. Observability is not ported yet.
+const TABS = [
+  'overview',
+  'control-plane',
+  'nodes',
+  'addons',
+  'gitops',
+  'events',
+  'certificates',
+  'observability',
+  'terminal',
+] as const;
+type TabType = (typeof TABS)[number];
 
-function TabPanel({ children, value, index }: TabPanelProps) {
-  return (
-    <div role="tabpanel" hidden={value !== index}>
-      {value === index && <Box>{children}</Box>}
-    </div>
-  );
-}
-
-type NodeRow = {
-  id: string;
-  name: string;
-  status: string;
-  roles: string;
-  version: string;
-  ip: string;
+const TAB_LABELS: Record<TabType, string> = {
+  overview: 'Overview',
+  'control-plane': 'Control Plane',
+  nodes: 'Nodes',
+  addons: 'Addons',
+  gitops: 'GitOps',
+  events: 'Events',
+  certificates: 'Certificates',
+  observability: 'Observability',
+  terminal: 'Terminal',
 };
 
-type EventRow = {
-  id: string;
-  type: string;
-  reason: string;
-  message: string;
-  count: number;
-  source: string;
-  lastTimestamp: string;
-};
+function isValidTab(tab: string | null): tab is TabType {
+  return tab !== null && (TABS as readonly string[]).includes(tab);
+}
 
 const CLUSTER_POLL_MS = 5000;
 
@@ -156,8 +184,13 @@ export function clusterPollInterval(
     workerNodesReady !== undefined &&
     workerNodesDesired !== undefined &&
     workerNodesReady !== workerNodesDesired;
+  // A scale the server accepted but the controller has not targeted yet.
+  const scalePending =
+    cluster.spec?.workers?.replicas !== undefined &&
+    workerNodesDesired !== undefined &&
+    cluster.spec.workers.replicas !== workerNodesDesired;
   const notReady = Boolean(phase) && phase !== 'Ready';
-  return workersConverging || notReady ? CLUSTER_POLL_MS : null;
+  return workersConverging || scalePending || notReady ? CLUSTER_POLL_MS : null;
 }
 
 function errorMessage(e: unknown, prefix: string): string {
@@ -178,9 +211,19 @@ export const ClusterDetailPage = () => {
   }>();
   const clustersPath = routes.clusters({ team: team ?? '' });
 
-  const [activeTab, setActiveTab] = useState(0);
+  const [searchParams, setSearchParams] = useSearchParams();
+  const tabParam = searchParams.get('tab');
+  const activeTab: TabType = isValidTab(tabParam) ? tabParam : 'overview';
+  const setActiveTab = (tab: TabType) => {
+    const next = new URLSearchParams(searchParams);
+    if (tab === 'overview') next.delete('tab');
+    else next.set('tab', tab);
+    setSearchParams(next, { replace: true });
+  };
   const [deleteOpen, setDeleteOpen] = useState(false);
-  const [deleting, setDeleting] = useState(false);
+  const [editOpen, setEditOpen] = useState(false);
+  const [scaleOpen, setScaleOpen] = useState(false);
+  const [envOpen, setEnvOpen] = useState(false);
   const [downloading, setDownloading] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [togglingWorkspaces, setTogglingWorkspaces] = useState(false);
@@ -198,7 +241,9 @@ export const ClusterDetailPage = () => {
   const clusterState = useButlerResource<Cluster>(
     () => {
       if (!namespace || !name) {
-        return Promise.reject(new Error('Cluster namespace and name are required'));
+        return Promise.reject(
+          new Error('Cluster namespace and name are required'),
+        );
       }
       return api.getCluster(namespace, name);
     },
@@ -264,7 +309,7 @@ export const ClusterDetailPage = () => {
   }, [api, alertApi, namespace, name]);
 
   useEffect(() => {
-    if (activeTab === 0 && loadedCluster && !provisioningLoaded) {
+    if (activeTab === 'overview' && loadedCluster && !provisioningLoaded) {
       fetchProvisioning();
     }
   }, [activeTab, loadedCluster, provisioningLoaded, fetchProvisioning]);
@@ -341,8 +386,30 @@ export const ClusterDetailPage = () => {
     }
   }, [api, alertApi, namespace, name]);
 
+  // The server refuses cluster mutations to viewers only, so an operator
+  // and a team admin keep the destructive action the console hides from
+  // them. Offering it to a viewer would be a dead control.
+  // The role must come from the team in the route, not the stored active
+  // team, or a stale selection would gate a destructive action against the
+  // wrong team.
+  const { isAdmin, teams } = useTeamContext();
+  const routeTeamRole = teams.find(t => t.name === team)?.role;
+  const canOperate =
+    isAdmin || routeTeamRole === 'admin' || routeTeamRole === 'operator';
+
+  // The environments a cluster may move between come from its team, read
+  // through the same hook the environments page uses so a newly created
+  // environment is offered here and a deleted one stops being offered.
+  // With none configured the move is not offered: there is nowhere to go.
+  const { environments } = useTeamEnvironments(
+    loadedCluster?.spec.teamRef?.name ?? team,
+  );
+
   const { subscribe } = useClusterWatch();
   const [deletedRemotely, setDeletedRemotely] = useState(false);
+  // Read through a ref so the subscription does not churn on every poll.
+  const loadedClusterRef = useRef(loadedCluster);
+  loadedClusterRef.current = loadedCluster;
 
   useEffect(
     () =>
@@ -354,22 +421,25 @@ export const ClusterDetailPage = () => {
           ) {
             // A live update overrides the fetched object until the next
             // fetch replaces the base, same mechanism as the workspace toggle.
-            setClusterOverride({ base: loadedCluster, value: event.cluster });
+            setClusterOverride({
+              base: loadedClusterRef.current,
+              value: event.cluster,
+            });
             setDeletedRemotely(false);
           }
         } else if (event.name === name && event.namespace === namespace) {
           setDeletedRemotely(true);
         }
       }),
-    [subscribe, name, namespace, loadedCluster],
+    [subscribe, name, namespace],
   );
 
   // Lazy-load tab data
   useEffect(() => {
-    if (activeTab === 2 && !nodesLoaded) {
+    if (activeTab === 'nodes' && !nodesLoaded) {
       fetchNodes();
     }
-    if (activeTab === 6 && !eventsLoaded) {
+    if (activeTab === 'events' && !eventsLoaded) {
       fetchEvents();
     }
   }, [activeTab, nodesLoaded, eventsLoaded, fetchNodes, fetchEvents]);
@@ -398,21 +468,55 @@ export const ClusterDetailPage = () => {
     }
   };
 
+  // Each of these lets the failure propagate so the dialog can show what
+  // the server said, and refreshes so the page reflects the new spec.
+  const handleEdit = async (request: UpdateClusterRequest) => {
+    if (!namespace || !name) throw new Error('cluster is not addressable');
+    const updated = await api.updateCluster(namespace, name, request);
+    clusterState.refresh();
+    alertApi.post({ message: `${name} updated`, severity: 'success' });
+    return updated;
+  };
+
+  const handleScale = async (replicas: number) => {
+    if (!namespace || !name) throw new Error('cluster is not addressable');
+    const scaled = await api.scaleCluster(namespace, name, replicas);
+    clusterState.refresh();
+    alertApi.post({
+      message: `${name} scaling to ${replicas} worker${
+        replicas === 1 ? '' : 's'
+      }`,
+      severity: 'success',
+    });
+    return scaled;
+  };
+
+  const handleChangeEnvironment = async (environment: string) => {
+    if (!namespace || !name) throw new Error('cluster is not addressable');
+    const moved = await api.changeClusterEnvironment(
+      namespace,
+      name,
+      environment,
+    );
+    clusterState.refresh();
+    alertApi.post({
+      message: environment
+        ? `${name} moved to ${environment}`
+        : `${name} environment cleared`,
+      severity: 'success',
+    });
+    return moved;
+  };
+
+  // The dialog renders the failure inline, so this lets errors propagate.
   const handleDelete = async () => {
     if (!namespace || !name) return;
-    setDeleting(true);
-    try {
-      await api.deleteCluster(namespace, name);
-      setDeleteOpen(false);
-      navigate(clustersPath);
-    } catch (e) {
-      alertApi.post({
-        message: errorMessage(e, 'Failed to delete cluster'),
-        severity: 'error',
-      });
-    } finally {
-      setDeleting(false);
-    }
+    await api.deleteCluster(namespace, name);
+    alertApi.post({
+      message: `Cluster ${name} has been deleted`,
+      severity: 'success',
+    });
+    navigate(clustersPath);
   };
 
   const handleToggleWorkspaces = async (enabled: boolean) => {
@@ -436,472 +540,517 @@ export const ClusterDetailPage = () => {
   };
 
   if (clusterState.status === 'loading') {
-    return <Progress />;
+    return <ButlerLoading />;
   }
 
   if (!effectiveCluster) {
     const error =
       clusterState.status === 'error' ? clusterState.error : undefined;
     return (
-      <EmptyState
+      <ButlerEmptyState
         title="Cluster not found"
-        description={error?.message || `Cluster ${namespace}/${name} could not be loaded.`}
-        missing="info"
+        description={
+          error?.message || `Cluster ${namespace}/${name} could not be loaded.`
+        }
         action={
-          <Button
+          <ButlerButton
+            variant="secondary"
             component={RouterLink}
             to={clustersPath}
-            variant="outlined"
-            startIcon={<ArrowBackIcon />}
           >
             Back to Clusters
-          </Button>
+          </ButlerButton>
         }
       />
     );
   }
 
   const cluster: Cluster = effectiveCluster;
-  const phase = cluster.status?.phase || 'Unknown';
-  const conditions = cluster.status?.conditions || [];
+  const spec = cluster.spec;
+  const status = cluster.status;
+  const phase = status?.phase || 'Unknown';
+  const conditions = status?.conditions || [];
+  const workersReady = conditions.find(c => c.type === 'WorkersReady');
+  const networkReady = conditions.find(c => c.type === 'NetworkReady');
+  const banners = clusterBanners(cluster, new Date());
+  const workers = workersState(cluster);
+  const controlPlane = controlPlaneState(cluster);
+  const owner = clusterOwner(cluster);
+  const environment = cluster.metadata.labels?.[ENVIRONMENT_LABEL];
+  const workerCount = spec.workers?.replicas ?? 0;
+  const os = spec.workers?.machineTemplate?.os;
+  const osVersion = os?.type === 'talos' ? os.talos?.version : os?.version;
 
-  // Node table columns
-  const nodeColumns: TableColumn<NodeRow>[] = [
-    { title: 'Name', field: 'name' },
+  const nodeColumns: ButlerColumn<Node>[] = [
+    { id: 'name', header: 'Name', primary: true, render: n => n.name },
     {
-      title: 'Status',
-      field: 'status',
-      render: (row: NodeRow) => <StatusBadge status={row.status} />,
-    },
-    { title: 'Roles', field: 'roles' },
-    { title: 'Version', field: 'version' },
-    { title: 'IP', field: 'ip' },
-  ];
-
-  const nodeData: NodeRow[] = nodes.map(node => ({
-    id: node.name,
-    name: node.name,
-    status: node.status,
-    roles: node.roles.join(', ') || 'worker',
-    version: node.version,
-    ip: node.internalIP,
-  }));
-
-  // Event table columns
-  const eventColumns: TableColumn<EventRow>[] = [
-    {
-      title: 'Type',
-      field: 'type',
-      render: (row: EventRow) => (
-        <Chip
-          label={row.type}
-          size="small"
-          color={row.type === 'Warning' ? 'secondary' : 'default'}
-          variant="outlined"
-        />
+      id: 'status',
+      header: 'Status',
+      render: n => (
+        <ButlerChip tone={n.status === 'Ready' ? 'green' : 'yellow'}>
+          {n.status}
+        </ButlerChip>
       ),
     },
-    { title: 'Reason', field: 'reason' },
-    { title: 'Message', field: 'message' },
-    { title: 'Count', field: 'count', type: 'numeric' },
-    { title: 'Source', field: 'source' },
+    {
+      id: 'roles',
+      header: 'Roles',
+      render: n => n.roles.join(', ') || 'worker',
+    },
+    { id: 'version', header: 'Version', render: n => n.version },
+    { id: 'ip', header: 'IP', mono: true, render: n => n.internalIP },
   ];
 
-  const eventData: EventRow[] = events.map((event, idx) => ({
+  type EventRow = ClusterEvent & { id: string };
+  const eventColumns: ButlerColumn<EventRow>[] = [
+    {
+      id: 'type',
+      header: 'Type',
+      render: e => (
+        <ButlerChip tone={e.type === 'Normal' ? 'blue' : 'yellow'}>
+          {e.type}
+        </ButlerChip>
+      ),
+    },
+    { id: 'reason', header: 'Reason', primary: true, render: e => e.reason },
+    {
+      id: 'message',
+      header: 'Message',
+      render: e => (
+        <span className={classes.truncate} title={e.message}>
+          {e.message}
+        </span>
+      ),
+    },
+    { id: 'count', header: 'Count', render: e => e.count },
+  ];
+  const eventRows: EventRow[] = events.map((event, idx) => ({
+    ...event,
     id: `${event.reason}-${idx}`,
-    type: event.type,
-    reason: event.reason,
-    message: event.message,
-    count: event.count,
-    source: event.source,
-    lastTimestamp: event.lastTimestamp,
   }));
 
+  const tabs: ButlerTabItem<TabType>[] = TABS.map(id => ({
+    id,
+    label: TAB_LABELS[id],
+    disabled: id === 'terminal' && phase !== 'Ready',
+  }));
+
+  const conditionBadge = (c: { status: string; reason?: string }) => {
+    if (c.status === 'True') return 'Ready';
+    if (c.status === 'False') {
+      return c.reason === 'WorkersProvisioning' ? 'Provisioning' : 'Failed';
+    }
+    return 'Pending';
+  };
+
+  const workspacesEnabled = spec.workspaces?.enabled ?? false;
+
   return (
-    <div>
-      <Button
-        startIcon={<ArrowBackIcon />}
-        component={RouterLink}
-        to={clustersPath}
-        style={{ textTransform: 'none', marginBottom: 16 }}
-      >
-        Back to Clusters
-      </Button>
+    <ButlerStack>
       {deletedRemotely && (
-        <Alert severity="warning" style={{ marginBottom: 16 }}>
-          This cluster was deleted. The details below are the last known state.
-        </Alert>
+        <ButlerBanner
+          severity="danger"
+          title="This cluster was deleted"
+          message="The details below are the last known state."
+        />
       )}
-      {/* Header */}
-      <div className={classes.header}>
-        <div className={classes.headerLeft}>
-          <Button
-            component={RouterLink}
-            to={clustersPath}
-            size="small"
-            startIcon={<ArrowBackIcon />}
-          >
-            Back
-          </Button>
-          <div className={classes.headerInfo}>
-            <Typography variant="h4">{cluster.metadata.name}</Typography>
-            <div className={classes.headerMeta}>
-              <Typography variant="body2" color="textSecondary">
-                {cluster.metadata.namespace}
-              </Typography>
-              <StatusBadge status={phase} />
-              <Chip
-                label={cluster.spec.kubernetesVersion}
-                size="small"
-                variant="outlined"
-              />
-            </div>
-          </div>
-        </div>
-        <div className={classes.headerActions}>
-          <Button
-            variant="outlined"
-            size="small"
-            startIcon={<RefreshIcon />}
-            onClick={() => clusterState.refresh()}
-          >
-            Refresh
-          </Button>
-          <Button
-            variant="outlined"
-            size="small"
-            startIcon={<GetAppIcon />}
-            onClick={handleDownloadKubeconfig}
-            disabled={downloading || phase !== 'Ready'}
-          >
-            {downloading ? 'Downloading...' : 'Kubeconfig'}
-          </Button>
-          <Button
-            variant="outlined"
-            size="small"
-            startIcon={<GetAppIcon />}
-            onClick={handleExportYAML}
-            disabled={exporting}
-          >
-            {exporting ? 'Exporting...' : 'Export YAML'}
-          </Button>
-          <Button
-            variant="outlined"
-            size="small"
-            color="secondary"
-            startIcon={<DeleteIcon />}
-            onClick={() => setDeleteOpen(true)}
-          >
-            Delete
-          </Button>
-        </div>
-      </div>
 
-      {/* Tabs */}
-      <Tabs
+      <ButlerPageHeader
+        title={cluster.metadata.name}
+        titleAdornment={
+          <>
+            <ButlerStatusBadge status={phase} />
+            {environment && (
+              <ButlerChip tone="neutral" title="Environment">
+                {environment}
+              </ButlerChip>
+            )}
+          </>
+        }
+        subtitle={cluster.metadata.namespace}
+        onBack={() => navigate(clustersPath)}
+        actions={
+          <>
+            <ButlerButton
+              variant="secondary"
+              onClick={() => setActiveTab('terminal')}
+              disabled={phase !== 'Ready'}
+              startIcon={<TerminalIcon />}
+            >
+              Terminal
+            </ButlerButton>
+            <ButlerButton
+              variant="secondary"
+              onClick={handleExportYAML}
+              disabled={exporting}
+              startIcon={<DownloadIcon />}
+            >
+              {exporting ? 'Exporting...' : 'Export YAML'}
+            </ButlerButton>
+            <ButlerButton
+              variant="secondary"
+              onClick={handleDownloadKubeconfig}
+              disabled={downloading || phase !== 'Ready'}
+            >
+              {downloading ? 'Downloading...' : 'Download Kubeconfig'}
+            </ButlerButton>
+            {canOperate && (
+              <>
+                <ButlerButton
+                  variant="secondary"
+                  onClick={() => setEditOpen(true)}
+                  disabled={phase === 'Failed' || phase === 'Deleting'}
+                >
+                  Edit
+                </ButlerButton>
+                <ButlerButton
+                  variant="secondary"
+                  onClick={() => setScaleOpen(true)}
+                >
+                  Scale Workers
+                </ButlerButton>
+                {environments.length > 0 && (
+                  <ButlerButton
+                    variant="secondary"
+                    onClick={() => setEnvOpen(true)}
+                    disabled={phase === 'Deleting'}
+                  >
+                    Change Environment
+                  </ButlerButton>
+                )}
+                <ButlerButton
+                  variant="danger"
+                  onClick={() => setDeleteOpen(true)}
+                >
+                  Delete
+                </ButlerButton>
+              </>
+            )}
+          </>
+        }
+      />
+
+      <ButlerTabs
+        tabs={tabs}
         value={activeTab}
-        onChange={(_, newValue) => setActiveTab(newValue)}
-        indicatorColor="primary"
-        textColor="primary"
-        variant="scrollable"
-        scrollButtons="auto"
-      >
-        <Tab label="Overview" />
-        <Tab label="Control Plane" />
-        <Tab label="Nodes" />
-        <Tab label="Addons" />
-        <Tab label="GitOps" />
-        <Tab label="Certificates" />
-        <Tab label="Events" />
-        <Tab label="Terminal" />
-      </Tabs>
+        onChange={setActiveTab}
+        idPrefix="cluster"
+        aria-label="Cluster sections"
+      />
 
-      <div className={classes.tabContent}>
-        {/* Overview Tab */}
-        <TabPanel value={activeTab} index={0}>
-          <Grid container spacing={3}>
-            <Grid item xs={12} md={6}>
-              <InfoCard title="Specification">
-                <div>
-                  <div className={classes.specRow}>
-                    <Typography className={classes.specLabel}>
-                      Kubernetes Version
-                    </Typography>
-                    <Typography className={classes.specValue}>
-                      {cluster.spec.kubernetesVersion}
-                    </Typography>
-                  </div>
-                  <div className={classes.specRow}>
-                    <Typography className={classes.specLabel}>
-                      Provider
-                    </Typography>
-                    <Typography className={classes.specValue}>
-                      {cluster.spec.providerConfigRef?.name || 'Default'}
-                    </Typography>
-                  </div>
-                  <div className={classes.specRow}>
-                    <Typography className={classes.specLabel}>Team</Typography>
-                    <Typography className={classes.specValue}>
-                      {cluster.spec.teamRef?.name || team || 'N/A'}
-                    </Typography>
-                  </div>
-                  <div className={classes.specRow}>
-                    <Typography className={classes.specLabel}>
-                      Worker Replicas
-                    </Typography>
-                    <Typography className={classes.specValue}>
-                      {cluster.spec.workers?.replicas ?? 0}
-                    </Typography>
-                  </div>
-                  {cluster.spec.workers?.machineTemplate && (
-                    <>
-                      <div className={classes.specRow}>
-                        <Typography className={classes.specLabel}>
-                          Worker CPU
-                        </Typography>
-                        <Typography className={classes.specValue}>
-                          {cluster.spec.workers.machineTemplate.cpu || 'N/A'}
-                        </Typography>
-                      </div>
-                      <div className={classes.specRow}>
-                        <Typography className={classes.specLabel}>
-                          Worker Memory
-                        </Typography>
-                        <Typography className={classes.specValue}>
-                          {cluster.spec.workers.machineTemplate.memory || 'N/A'}
-                        </Typography>
-                      </div>
-                      <div className={classes.specRow}>
-                        <Typography className={classes.specLabel}>
-                          Worker Disk
-                        </Typography>
-                        <Typography className={classes.specValue}>
-                          {cluster.spec.workers.machineTemplate.diskSize || 'N/A'}
-                        </Typography>
-                      </div>
-                    </>
+      <ButlerTabPanel idPrefix="cluster" id={activeTab}>
+        {activeTab === 'overview' && (
+          <ButlerStack>
+            {banners.map(b => (
+              <ButlerBanner
+                key={b.kind}
+                severity={b.severity === 'danger' ? 'danger' : 'warning'}
+                title={b.title}
+                message={b.message}
+              />
+            ))}
+
+            <ButlerGrid>
+              <ButlerCard title="Specification">
+                <ButlerKeyValueList>
+                  <ButlerKeyValueRow label="Control Plane Version">
+                    {spec.kubernetesVersion || 'Unknown'}
+                  </ButlerKeyValueRow>
+                  {os?.type && (
+                    <ButlerKeyValueRow label="Worker OS">
+                      {osVersion ? `${os.type} ${osVersion}` : os.type}
+                    </ButlerKeyValueRow>
                   )}
-                  {cluster.spec.networking?.loadBalancerPool && (
-                    <div className={classes.specRow}>
-                      <Typography className={classes.specLabel}>
-                        LB IP Range
-                      </Typography>
-                      <Typography className={classes.specValue}>
-                        {cluster.spec.networking.loadBalancerPool.start} -{' '}
-                        {cluster.spec.networking.loadBalancerPool.end}
-                      </Typography>
-                    </div>
+                  <ButlerKeyValueRow label="Provider">
+                    {spec.providerConfigRef?.name || 'Default'}
+                  </ButlerKeyValueRow>
+                  <ButlerKeyValueRow label="Team">
+                    {spec.teamRef?.name || team || 'N/A'}
+                  </ButlerKeyValueRow>
+                  <ButlerKeyValueRow label="Environment">
+                    {environment || 'None'}
+                  </ButlerKeyValueRow>
+                  {owner && (
+                    <ButlerKeyValueRow label="Created by" title={owner}>
+                      {owner}
+                    </ButlerKeyValueRow>
                   )}
-                  <div className={classes.specRow}>
-                    <Typography className={classes.specLabel}>
-                      Cloud Workspaces
-                    </Typography>
-                    <Switch
-                      checked={cluster.spec.workspaces?.enabled ?? false}
-                      onChange={e =>
-                        handleToggleWorkspaces(e.target.checked)
-                      }
-                      color="primary"
-                      size="small"
-                      disabled={togglingWorkspaces}
-                    />
-                  </div>
-                </div>
-              </InfoCard>
-            </Grid>
-            <Grid item xs={12} md={6}>
-              <InfoCard title="Status">
-                <div>
-                  <div className={classes.specRow}>
-                    <Typography className={classes.specLabel}>Phase</Typography>
-                    <StatusBadge status={phase} />
-                  </div>
-                  {cluster.status?.tenantNamespace && (
-                    <div className={classes.specRow}>
-                      <Typography className={classes.specLabel}>
-                        Tenant Namespace
-                      </Typography>
-                      <Typography className={classes.specValue}>
-                        {cluster.status.tenantNamespace}
-                      </Typography>
-                    </div>
+                  <ButlerKeyValueRow label="Workers">
+                    <span
+                      className={classes.conditionValue}
+                      title={workers.word.detail}
+                    >
+                      <ButlerChip tone={workers.word.tone}>
+                        {workers.word.headline}
+                      </ButlerChip>
+                      {workers.scalePending && (
+                        <span className={classes.conditionMessage}>
+                          {workers.word.detail}
+                        </span>
+                      )}
+                    </span>
+                  </ButlerKeyValueRow>
+                  {spec.controlPlane?.replicas != null && (
+                    <ButlerKeyValueRow label="Control Plane Replicas">
+                      {spec.controlPlane.replicas}
+                    </ButlerKeyValueRow>
                   )}
-                </div>
-              </InfoCard>
-              {conditions.length > 0 && (
-                <Box mt={2}>
-                  <InfoCard title="Conditions">
-                    <div>
-                      {conditions.map((condition, idx) => (
-                        <div key={idx} className={classes.conditionRow}>
-                          <Chip
-                            label={condition.type}
-                            size="small"
-                            color={
-                              condition.status === 'True' ? 'primary' : 'default'
-                            }
-                            variant="outlined"
-                          />
-                          <StatusBadge
-                            status={
-                              condition.status === 'True'
-                                ? 'Ready'
-                                : condition.reason || 'Pending'
-                            }
-                          />
-                          {condition.message && (
-                            <Typography variant="caption" color="textSecondary">
-                              {condition.message}
-                            </Typography>
+                  {spec.workers?.machineTemplate?.cpu != null && (
+                    <ButlerKeyValueRow label="Worker CPU">
+                      {spec.workers.machineTemplate.cpu} cores
+                    </ButlerKeyValueRow>
+                  )}
+                  {spec.workers?.machineTemplate?.memory && (
+                    <ButlerKeyValueRow label="Worker Memory">
+                      {spec.workers.machineTemplate.memory}
+                    </ButlerKeyValueRow>
+                  )}
+                  {spec.workers?.machineTemplate?.diskSize && (
+                    <ButlerKeyValueRow label="Worker Disk">
+                      {spec.workers.machineTemplate.diskSize}
+                    </ButlerKeyValueRow>
+                  )}
+                </ButlerKeyValueList>
+              </ButlerCard>
+
+              <ButlerCard title="Status">
+                <ButlerKeyValueList>
+                  <ButlerKeyValueRow label="Phase">
+                    <ButlerStatusBadge status={phase} />
+                  </ButlerKeyValueRow>
+                  <ButlerKeyValueRow label="Tenant Namespace">
+                    {status?.tenantNamespace || 'N/A'}
+                  </ButlerKeyValueRow>
+                  <ButlerKeyValueRow
+                    label="Control Plane"
+                    title={controlPlane.detail}
+                  >
+                    <span className={classes.conditionValue}>
+                      <ButlerChip tone={controlPlane.tone}>
+                        {controlPlane.headline}
+                      </ButlerChip>
+                      {controlPlane.detail && (
+                        <span className={classes.conditionMessage}>
+                          {controlPlane.detail}
+                        </span>
+                      )}
+                    </span>
+                  </ButlerKeyValueRow>
+                  {workersReady && (
+                    <ButlerKeyValueRow
+                      label="Workers"
+                      title={workers.word.detail}
+                    >
+                      <span className={classes.conditionValue}>
+                        <ButlerChip tone={workers.word.tone}>
+                          {workers.word.headline}
+                        </ButlerChip>
+                        {workers.conditionStatus !== 'True' &&
+                          workers.conditionMessage && (
+                            <span className={classes.conditionMessage}>
+                              {workers.conditionMessage}
+                            </span>
                           )}
-                        </div>
-                      ))}
-                    </div>
-                  </InfoCard>
-                </Box>
-              )}
-            </Grid>
-            {machineRequests.length > 0 && (
-              <Grid item xs={12} md={6}>
-                <MachineRequestsCard machineRequests={machineRequests} />
-              </Grid>
-            )}
-            {loadBalancerRequests.length > 0 && (
-              <Grid item xs={12} md={6}>
-                <LoadBalancerRequestsCard
-                  loadBalancerRequests={loadBalancerRequests}
-                />
-              </Grid>
-            )}
-            {cluster.spec.infrastructureOverride && (
-              <Grid item xs={12} md={6}>
-                <InfrastructureOverrideCard
-                  override={cluster.spec.infrastructureOverride}
-                />
-              </Grid>
-            )}
-          </Grid>
-        </TabPanel>
+                      </span>
+                    </ButlerKeyValueRow>
+                  )}
+                  {networkReady && (
+                    <ButlerKeyValueRow label="Network Ready">
+                      <ButlerStatusBadge
+                        status={
+                          networkReady.status === 'True'
+                            ? 'Ready'
+                            : networkReady.status === 'False'
+                            ? 'Failed'
+                            : 'Pending'
+                        }
+                      />
+                    </ButlerKeyValueRow>
+                  )}
+                </ButlerKeyValueList>
+              </ButlerCard>
+            </ButlerGrid>
 
-        {/* Control Plane Tab */}
-        <TabPanel value={activeTab} index={1}>
-          {namespace && name && (
-            <ControlPlaneTab clusterNamespace={namespace} clusterName={name} />
-          )}
-        </TabPanel>
+            {conditions.length > 0 && (
+              <ButlerCard title="Conditions">
+                <ButlerKeyValueList>
+                  {conditions.map(condition => (
+                    <ButlerKeyValueRow
+                      key={condition.type}
+                      label={condition.type}
+                    >
+                      <span className={classes.conditionValue}>
+                        <span className={classes.conditionBadges}>
+                          {condition.reason && condition.status !== 'True' && (
+                            <ButlerChip tone="neutral">
+                              {condition.reason}
+                            </ButlerChip>
+                          )}
+                          <ButlerStatusBadge
+                            status={conditionBadge(condition)}
+                          />
+                        </span>
+                        {condition.message && (
+                          <span className={classes.conditionMessage}>
+                            {condition.message}
+                          </span>
+                        )}
+                      </span>
+                    </ButlerKeyValueRow>
+                  ))}
+                </ButlerKeyValueList>
+              </ButlerCard>
+            )}
 
-        {/* Nodes Tab */}
-        <TabPanel value={activeTab} index={2}>
-          {nodesLoading ? (
-            <Progress />
+            <ControlPlaneResourcesCard
+              resources={spec.controlPlane?.resources}
+            />
+
+            {spec.networking?.loadBalancerPool && (
+              <ButlerCard title="Networking">
+                <ButlerKeyValueList>
+                  <ButlerKeyValueRow label="Load Balancer IP Range" mono>
+                    {spec.networking.loadBalancerPool.start} -{' '}
+                    {spec.networking.loadBalancerPool.end}
+                  </ButlerKeyValueRow>
+                </ButlerKeyValueList>
+              </ButlerCard>
+            )}
+
+            <MachineRequestsCard
+              machineRequests={machineRequests}
+              absenceNote={requestsAbsenceNote('machine', cluster)}
+            />
+            <LoadBalancerRequestsCard
+              loadBalancerRequests={loadBalancerRequests}
+              absenceNote={requestsAbsenceNote('loadBalancer', cluster)}
+            />
+            <InfrastructureOverrideCard
+              override={spec.infrastructureOverride}
+            />
+
+            <NetworkAllocationsCard
+              clusterName={cluster.metadata.name}
+              clusterNamespace={cluster.metadata.namespace}
+            />
+
+            <ButlerCard
+              title="Cloud Workspaces"
+              titleAction={
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={workspacesEnabled}
+                  aria-label="Enable cloud workspaces"
+                  className={classes.toggle}
+                  disabled={togglingWorkspaces}
+                  onClick={() => handleToggleWorkspaces(!workspacesEnabled)}
+                />
+              }
+            >
+              <ButlerKeyValueList>
+                <ButlerKeyValueRow label="Enabled">
+                  {workspacesEnabled ? 'Yes' : 'No'}
+                </ButlerKeyValueRow>
+              </ButlerKeyValueList>
+            </ButlerCard>
+          </ButlerStack>
+        )}
+
+        {activeTab === 'control-plane' && namespace && name && (
+          <ControlPlaneTab clusterNamespace={namespace} clusterName={name} />
+        )}
+
+        {activeTab === 'nodes' &&
+          (nodesLoading ? (
+            <ButlerLoading />
           ) : nodes.length === 0 ? (
-            <EmptyState
-              title="No nodes found"
-              description="Nodes will appear here once the cluster is provisioned and workers are ready."
-              missing="content"
+            <ButlerEmptyState
+              title="No nodes available"
+              description="Nodes appear once the cluster is provisioned and workers are ready."
             />
           ) : (
-            <Table<NodeRow>
-              title={`Cluster Nodes (${nodes.length})`}
-              options={{
-                search: false,
-                paging: false,
-                padding: 'dense',
-              }}
+            <ButlerTable
               columns={nodeColumns}
-              data={nodeData}
+              rows={nodes}
+              rowKey={n => n.name}
+              aria-label="Nodes"
             />
-          )}
-        </TabPanel>
+          ))}
 
-        {/* Addons Tab */}
-        <TabPanel value={activeTab} index={3}>
-          {namespace && name && (
-            <AddonsTab clusterNamespace={namespace} clusterName={name} />
-          )}
-        </TabPanel>
+        {activeTab === 'addons' && namespace && name && (
+          <AddonsTab
+            clusterNamespace={namespace}
+            clusterName={name}
+            canOperate={canOperate}
+          />
+        )}
+        {activeTab === 'observability' && namespace && name && (
+          <ObservabilityTab
+            clusterNamespace={namespace}
+            clusterName={name}
+            canOperate={canOperate}
+          />
+        )}
 
-        {/* GitOps Tab */}
-        <TabPanel value={activeTab} index={4}>
-          {namespace && name && (
-            <GitOpsTab clusterNamespace={namespace} clusterName={name} />
-          )}
-        </TabPanel>
+        {activeTab === 'gitops' && namespace && name && (
+          <GitOpsTab clusterNamespace={namespace} clusterName={name} />
+        )}
 
-        {/* Certificates Tab */}
-        <TabPanel value={activeTab} index={5}>
-          {namespace && name && (
-            <CertificatesTab clusterNamespace={namespace} clusterName={name} />
-          )}
-        </TabPanel>
-
-        {/* Events Tab */}
-        <TabPanel value={activeTab} index={6}>
-          {eventsLoading ? (
-            <Progress />
+        {activeTab === 'events' &&
+          (eventsLoading ? (
+            <ButlerLoading />
           ) : events.length === 0 ? (
-            <EmptyState
-              title="No events"
-              description="Cluster events will appear here as they occur."
-              missing="content"
-            />
+            <ButlerEmptyState title="No events found" />
           ) : (
-            <Table<EventRow>
-              title={`Events (${events.length})`}
-              options={{
-                search: true,
-                paging: events.length > 20,
-                pageSize: 20,
-                padding: 'dense',
-              }}
+            <ButlerTable
               columns={eventColumns}
-              data={eventData}
+              rows={eventRows}
+              rowKey={e => e.id}
+              aria-label="Events"
             />
-          )}
-        </TabPanel>
+          ))}
 
-        {/* Terminal Tab */}
-        <TabPanel value={activeTab} index={7}>
-          {namespace && name && (
-            <TerminalTab clusterNamespace={namespace} clusterName={name} />
-          )}
-        </TabPanel>
+        {activeTab === 'certificates' && namespace && name && (
+          <CertificatesTab clusterNamespace={namespace} clusterName={name} />
+        )}
 
-      </div>
+        {activeTab === 'terminal' && namespace && name && phase === 'Ready' && (
+          <TerminalTab clusterNamespace={namespace} clusterName={name} />
+        )}
+      </ButlerTabPanel>
 
-      {/* Delete Confirmation Dialog */}
-      <Dialog
+      <EditClusterDialog
+        open={editOpen}
+        onClose={() => setEditOpen(false)}
+        cluster={cluster}
+        onSave={handleEdit}
+        isPlatformAdmin={isAdmin}
+      />
+
+      <ScaleWorkersDialog
+        open={scaleOpen}
+        onClose={() => setScaleOpen(false)}
+        cluster={cluster}
+        onScale={handleScale}
+      />
+
+      <ChangeEnvironmentDialog
+        open={envOpen}
+        onClose={() => setEnvOpen(false)}
+        cluster={cluster}
+        environments={environments}
+        onChange={handleChangeEnvironment}
+      />
+
+      <DeleteClusterDialog
         open={deleteOpen}
         onClose={() => setDeleteOpen(false)}
-        maxWidth="sm"
-        fullWidth
-      >
-        <DialogTitle>Delete Cluster</DialogTitle>
-        <DialogContent>
-          <Typography>
-            Are you sure you want to delete the cluster{' '}
-            <strong>{cluster.metadata.name}</strong> in namespace{' '}
-            <strong>{cluster.metadata.namespace}</strong>?
-          </Typography>
-          <Typography className={classes.deleteDialogWarning}>
-            This action is irreversible. All workloads, data, and resources
-            associated with this cluster will be permanently destroyed.
-          </Typography>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setDeleteOpen(false)} disabled={deleting}>
-            Cancel
-          </Button>
-          <Button
-            onClick={handleDelete}
-            color="secondary"
-            variant="contained"
-            disabled={deleting}
-          >
-            {deleting ? 'Deleting...' : 'Delete Cluster'}
-          </Button>
-        </DialogActions>
-      </Dialog>
-    </div>
+        onConfirm={handleDelete}
+        clusterName={cluster.metadata.name}
+        clusterNamespace={cluster.metadata.namespace}
+        workerCount={workerCount}
+      />
+    </ButlerStack>
   );
 };

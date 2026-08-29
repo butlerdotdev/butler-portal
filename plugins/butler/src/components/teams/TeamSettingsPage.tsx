@@ -2,160 +2,153 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { useEffect, useState, useCallback } from 'react';
-import { useParams, Link as RouterLink } from 'react-router-dom';
+import type { FormEvent } from 'react';
+import { useParams, useNavigate } from 'react-router-dom';
 import { useApi } from '@backstage/core-plugin-api';
-import {
-  InfoCard,
-  Progress,
-  EmptyState,
-} from '@backstage/core-components';
-import {
-  Grid,
-  Typography,
-  Button,
-  TextField,
-  Box,
-  Chip,
-  Divider,
-  List,
-  ListItem,
-  ListItemText,
-  makeStyles,
-} from '@material-ui/core';
-import ArrowBackIcon from '@material-ui/icons/ArrowBack';
-import EditIcon from '@material-ui/icons/Edit';
-import SaveIcon from '@material-ui/icons/Save';
-import CancelIcon from '@material-ui/icons/Cancel';
-
+import { makeStyles } from '@material-ui/core/styles';
 import { butlerApiRef } from '../../api/ButlerApi';
+import type {
+  GroupSyncResponse,
+  TeamMemberResponse,
+  TeamResponse,
+} from '../../api/types/teams';
+import { quotaRows, quotaSummary } from '../../utils/teamQuota';
 import { useTeamContext } from '../../hooks/useTeamContext';
 import { useButlerRoutes } from '../../hooks/useButlerRoutes';
+import { butlerTokens, rgb, rgba } from '../../theme';
+import {
+  ButlerButton,
+  ButlerCallout,
+  ButlerCard,
+  ButlerEmptyState,
+  ButlerErrorState,
+  ButlerInput,
+  ButlerKeyValueList,
+  ButlerKeyValueRow,
+  ButlerLoading,
+  ButlerPageHeader,
+  ButlerStack,
+  ButlerTextarea,
+} from '../ui';
 
-const useStyles = makeStyles(theme => ({
-  fieldRow: {
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    padding: theme.spacing(1.5, 0),
-  },
-  fieldLabel: {
-    color: theme.palette.text.secondary,
-    fontWeight: 500,
-    minWidth: 160,
-  },
-  fieldValue: {
-    fontWeight: 400,
-  },
-  editForm: {
-    display: 'flex',
-    gap: theme.spacing(1),
-    alignItems: 'center',
-    flexGrow: 1,
-  },
-  editField: {
-    flexGrow: 1,
-  },
-  editButtons: {
-    display: 'flex',
-    gap: theme.spacing(0.5),
-  },
-  quotaItem: {
-    padding: theme.spacing(1, 0),
-  },
-  quotaLabel: {
-    fontWeight: 500,
-  },
-  quotaValue: {
-    fontWeight: 600,
-    color: theme.palette.primary.main,
-  },
-  sectionDivider: {
-    margin: theme.spacing(2, 0),
-  },
-  accessChip: {
-    margin: theme.spacing(0.5),
-  },
-  accessSection: {
-    marginTop: theme.spacing(1),
-  },
-  successMessage: {
-    color: theme.palette.success?.main ?? '#4caf50',
-    marginTop: theme.spacing(1),
-  },
-  errorMessage: {
-    color: theme.palette.error.main,
-    marginTop: theme.spacing(1),
-  },
-  emptyText: {
-    color: theme.palette.text.secondary,
-    fontStyle: 'italic',
-  },
-}));
-
-interface TeamDetail {
-  metadata?: {
-    name: string;
-    namespace?: string;
-    uid?: string;
-    creationTimestamp?: string;
+const useStyles = makeStyles(theme => {
+  const t = butlerTokens(theme);
+  const p = t.palette;
+  return {
+    card: { padding: 24 },
+    cardTitle: {
+      margin: '0 0 16px',
+      fontSize: 18,
+      lineHeight: '28px',
+      fontWeight: 500,
+      color: t.text.strong,
+    },
+    cardTitleTight: { marginBottom: 4 },
+    cardDescription: {
+      margin: '0 0 16px',
+      fontSize: 14,
+      lineHeight: '20px',
+      color: t.text.subtle,
+    },
+    form: {
+      display: 'flex',
+      flexDirection: 'column',
+      gap: 24,
+    },
+    formFooter: {
+      display: 'flex',
+      justifyContent: 'flex-end',
+    },
+    muted: {
+      margin: 0,
+      fontSize: 14,
+      lineHeight: '20px',
+      color: t.text.subtle,
+    },
+    accessGrid: {
+      display: 'grid',
+      gridTemplateColumns: '1fr',
+      gap: 24,
+      '@media (min-width: 768px)': {
+        gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
+      },
+    },
+    accessTitle: {
+      margin: '0 0 8px',
+      fontSize: 14,
+      lineHeight: '20px',
+      fontWeight: 500,
+      color: rgb(p.neutral[300]),
+    },
+    chips: {
+      display: 'flex',
+      flexWrap: 'wrap',
+      gap: 8,
+    },
+    chip: {
+      display: 'inline-flex',
+      alignItems: 'center',
+      gap: 6,
+      padding: '4px 8px',
+      borderRadius: t.radius.sm,
+      fontSize: 14,
+      lineHeight: '20px',
+      backgroundColor: rgb(p.neutral[800]),
+      color: t.text.secondary,
+    },
+    chipGroup: {
+      backgroundColor: rgba(p.blue[500], 0.2),
+      color: rgb(p.blue[200]),
+    },
+    chipRole: { color: t.text.subtle },
+    chipRoleGroup: { color: rgba(p.blue[300], 0.6) },
   };
-  spec?: {
-    displayName?: string;
-    description?: string;
-    resourceQuotas?: {
-      maxClusters?: number;
-      maxWorkersPerCluster?: number;
-      maxTotalWorkers?: number;
-    };
-    access?: {
-      users?: Array<{
-        email: string;
-        role: string;
-      }>;
-      groups?: Array<{
-        name: string;
-        role: string;
-      }>;
-    };
-  };
-  status?: {
-    namespace?: string;
-    phase?: string;
-  };
-}
+});
 
 export const TeamSettingsPage = () => {
   const classes = useStyles();
   const { team } = useParams<{ team: string }>();
   const api = useApi(butlerApiRef);
   const routes = useButlerRoutes();
-  const { teams } = useTeamContext();
+  const navigate = useNavigate();
+  const { teams, isAdmin } = useTeamContext();
 
-  const [teamDetail, setTeamDetail] = useState<TeamDetail | null>(null);
+  const [teamDetail, setTeamDetail] = useState<TeamResponse | null>(null);
+  const [members, setMembers] = useState<TeamMemberResponse[]>([]);
+  const [groupSyncs, setGroupSyncs] = useState<GroupSyncResponse[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Edit state
-  const [editingField, setEditingField] = useState<string | null>(null);
-  const [editDisplayName, setEditDisplayName] = useState('');
-  const [editDescription, setEditDescription] = useState('');
+  const [displayName, setDisplayName] = useState('');
+  const [description, setDescription] = useState('');
   const [saving, setSaving] = useState(false);
   const [saveMessage, setSaveMessage] = useState<string | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
 
-  // Determine if user is a team admin
   const currentTeam = teams.find(t => t.name === team);
-  const isTeamAdmin = currentTeam?.role === 'admin';
+  const canEdit = currentTeam?.role === 'admin' || isAdmin;
 
   const loadTeam = useCallback(async () => {
     if (!team) return;
-
     setLoading(true);
     setError(null);
-
     try {
       const response = await api.getTeam(team);
       setTeamDetail(response);
+      setDisplayName(response.displayName || '');
+      setDescription(response.description || '');
+      // Group mappings are readable by anyone; the member list needs
+      // membership or a platform role, so a refusal there is not an error.
+      const [groupsRes, membersRes] = await Promise.allSettled([
+        api.getTeamGroupSyncs(team),
+        api.getTeamMembers(team),
+      ]);
+      setGroupSyncs(
+        groupsRes.status === 'fulfilled' ? groupsRes.value.groups : [],
+      );
+      setMembers(
+        membersRes.status === 'fulfilled' ? membersRes.value.members : [],
+      );
     } catch (err) {
       setError(
         err instanceof Error ? err.message : 'Failed to load team details',
@@ -169,49 +162,19 @@ export const TeamSettingsPage = () => {
     loadTeam();
   }, [loadTeam]);
 
-  const startEdit = (field: string) => {
-    setSaveMessage(null);
-    setSaveError(null);
-
-    if (field === 'displayName') {
-      setEditDisplayName(
-        teamDetail?.spec?.displayName || teamDetail?.metadata?.name || '',
-      );
-    } else if (field === 'description') {
-      setEditDescription(teamDetail?.spec?.description || '');
-    }
-    setEditingField(field);
-  };
-
-  const cancelEdit = () => {
-    setEditingField(null);
-    setSaveMessage(null);
-    setSaveError(null);
-  };
-
-  const saveField = async (field: string) => {
-    if (!team) return;
-
+  const handleSave = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!team || !canEdit) return;
     setSaving(true);
     setSaveMessage(null);
     setSaveError(null);
-
     try {
-      const updates: Record<string, string> = {};
-      if (field === 'displayName') {
-        updates.displayName = editDisplayName;
-      } else if (field === 'description') {
-        updates.description = editDescription;
-      }
-
-      await api.updateTeam(team!, updates);
-
-      setSaveMessage(`Updated ${field === 'displayName' ? 'display name' : 'description'} successfully`);
-      setEditingField(null);
+      await api.updateTeam(team, { displayName, description });
+      setSaveMessage('Team settings have been updated');
       await loadTeam();
     } catch (err) {
       setSaveError(
-        err instanceof Error ? err.message : `Failed to update ${field}`,
+        err instanceof Error ? err.message : 'Failed to save settings',
       );
     } finally {
       setSaving(false);
@@ -220,408 +183,177 @@ export const TeamSettingsPage = () => {
 
   if (!team) {
     return (
-      <EmptyState
+      <ButlerEmptyState
         title="No team selected"
         description="Navigate to a team to view its settings."
-        missing="info"
       />
     );
   }
 
-  if (loading) {
-    return <Progress />;
-  }
+  if (loading) return <ButlerLoading />;
 
   if (error) {
     return (
-      <Box p={2}>
-        <Typography color="error" variant="h6">
-          Failed to load settings
-        </Typography>
-        <Typography variant="body2" color="error">
-          {error}
-        </Typography>
-      </Box>
+      <ButlerErrorState
+        message="Failed to load settings"
+        detail={error}
+        onRetry={loadTeam}
+      />
     );
   }
 
+  const rows = quotaRows(teamDetail?.resourceLimits, teamDetail?.resourceUsage);
+  const limited = rows.filter(r => r.limit !== undefined);
+  const summary = quotaSummary(rows);
+  const users = members.filter(m => m.source !== 'group');
+  const groups = groupSyncs;
+  const namespace = teamDetail?.namespace || team || '';
+  const created = teamDetail?.createdAt
+    ? new Date(teamDetail.createdAt).toLocaleDateString(undefined, {
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric',
+      })
+    : '-';
+
   return (
-    <Grid container spacing={3}>
-            <Grid item xs={12}>
-              <Button
-                startIcon={<ArrowBackIcon />}
-                component={RouterLink}
-                to={routes.team({ team: team ?? '' })}
-                style={{ textTransform: 'none', marginBottom: 16 }}
+    <ButlerStack>
+      <ButlerPageHeader
+        title="Settings"
+        subtitle="Configure team settings"
+        onBack={() => navigate(routes.team({ team }))}
+      />
+
+      <ButlerCard flush className={classes.card}>
+        <h2 className={`${classes.cardTitle} ${classes.cardTitleTight}`}>
+          Resource Usage
+        </h2>
+        <p className={classes.cardDescription}>
+          {summary.detail} Limits are set by a platform admin; usage is what the
+          controller last reported.
+        </p>
+        {limited.length > 0 ? (
+          <ButlerKeyValueList dense>
+            {limited.map(r => (
+              <ButlerKeyValueRow
+                key={r.key}
+                label={`Max ${r.label}`}
+                mono
+                dense
               >
-                Back to Dashboard
-              </Button>
-            </Grid>
-            {/* General feedback messages */}
-            {saveMessage && (
-              <Grid item xs={12}>
-                <Typography variant="body2" className={classes.successMessage}>
-                  {saveMessage}
-                </Typography>
-              </Grid>
+                {`${r.usedText} / ${r.limitText}`}
+              </ButlerKeyValueRow>
+            ))}
+          </ButlerKeyValueList>
+        ) : (
+          <p className={classes.muted}>No limits are set on this team.</p>
+        )}
+        {rows.some(r => r.limit === undefined && r.used !== undefined) && (
+          <ButlerKeyValueList dense>
+            {rows
+              .filter(r => r.limit === undefined && r.used !== undefined)
+              .map(r => (
+                <ButlerKeyValueRow key={r.key} label={r.label} mono dense>
+                  {`${r.usedText} (no limit)`}
+                </ButlerKeyValueRow>
+              ))}
+          </ButlerKeyValueList>
+        )}
+      </ButlerCard>
+
+      <ButlerCard flush className={classes.card}>
+        <h2 className={classes.cardTitle}>Team Settings</h2>
+        <form className={classes.form} onSubmit={handleSave}>
+          {saveMessage && (
+            <ButlerCallout tone="success" compact role="status">
+              {saveMessage}
+            </ButlerCallout>
+          )}
+          {saveError && (
+            <ButlerCallout tone="danger" compact role="alert">
+              {saveError}
+            </ButlerCallout>
+          )}
+          <ButlerInput
+            label="Team Name"
+            value={teamDetail?.name || team}
+            disabled
+            readOnly
+            help="Team names cannot be changed"
+          />
+          <ButlerInput
+            label="Display Name"
+            value={displayName}
+            onChange={e => setDisplayName(e.target.value)}
+            placeholder="My Team"
+            disabled={!canEdit}
+          />
+          <ButlerTextarea
+            label="Description"
+            value={description}
+            onChange={e => setDescription(e.target.value)}
+            placeholder="Team description..."
+            rows={3}
+            disabled={!canEdit}
+          />
+          <ButlerKeyValueList dense>
+            <ButlerKeyValueRow label="Namespace" mono dense>
+              {namespace}
+            </ButlerKeyValueRow>
+            <ButlerKeyValueRow label="Created" dense>
+              {created}
+            </ButlerKeyValueRow>
+          </ButlerKeyValueList>
+          {canEdit && (
+            <div className={classes.formFooter}>
+              <ButlerButton type="submit" disabled={saving}>
+                {saving ? 'Saving...' : 'Save Changes'}
+              </ButlerButton>
+            </div>
+          )}
+        </form>
+      </ButlerCard>
+
+      <ButlerCard flush className={classes.card}>
+        <h2 className={classes.cardTitle}>Access Configuration</h2>
+        <div className={classes.accessGrid}>
+          <div>
+            <h3 className={classes.accessTitle}>Users</h3>
+            {users.length > 0 ? (
+              <div className={classes.chips}>
+                {users.map((user, index) => (
+                  <span key={`user-${index}`} className={classes.chip}>
+                    {user.email}
+                    <span className={classes.chipRole}>({user.role})</span>
+                  </span>
+                ))}
+              </div>
+            ) : (
+              <p className={classes.muted}>No direct user access configured.</p>
             )}
-            {saveError && (
-              <Grid item xs={12}>
-                <Typography variant="body2" className={classes.errorMessage}>
-                  {saveError}
-                </Typography>
-              </Grid>
+          </div>
+          <div>
+            <h3 className={classes.accessTitle}>Groups</h3>
+            {groups.length > 0 ? (
+              <div className={classes.chips}>
+                {groups.map((group, index) => (
+                  <span
+                    key={`group-${index}`}
+                    className={`${classes.chip} ${classes.chipGroup}`}
+                  >
+                    {group.name}
+                    <span className={classes.chipRoleGroup}>
+                      ({group.role})
+                    </span>
+                  </span>
+                ))}
+              </div>
+            ) : (
+              <p className={classes.muted}>No group access configured.</p>
             )}
-
-            {/* Team Info */}
-            <Grid item xs={12} md={6}>
-              <InfoCard title="Team Information">
-                {/* Name (read-only) */}
-                <Box className={classes.fieldRow}>
-                  <Typography
-                    variant="body2"
-                    className={classes.fieldLabel}
-                  >
-                    Name
-                  </Typography>
-                  <Typography variant="body1" className={classes.fieldValue}>
-                    {teamDetail?.metadata?.name || team}
-                  </Typography>
-                </Box>
-
-                <Divider />
-
-                {/* Display Name */}
-                <Box className={classes.fieldRow}>
-                  <Typography
-                    variant="body2"
-                    className={classes.fieldLabel}
-                  >
-                    Display Name
-                  </Typography>
-                  {editingField === 'displayName' ? (
-                    <Box className={classes.editForm}>
-                      <TextField
-                        className={classes.editField}
-                        variant="outlined"
-                        size="small"
-                        value={editDisplayName}
-                        onChange={e => setEditDisplayName(e.target.value)}
-                        autoFocus
-                      />
-                      <Box className={classes.editButtons}>
-                        <Button
-                          size="small"
-                          color="primary"
-                          startIcon={<SaveIcon />}
-                          onClick={() => saveField('displayName')}
-                          disabled={saving}
-                        >
-                          Save
-                        </Button>
-                        <Button
-                          size="small"
-                          startIcon={<CancelIcon />}
-                          onClick={cancelEdit}
-                          disabled={saving}
-                        >
-                          Cancel
-                        </Button>
-                      </Box>
-                    </Box>
-                  ) : (
-                    <Box display="flex" alignItems="center" style={{ gap: 8 }}>
-                      <Typography
-                        variant="body1"
-                        className={classes.fieldValue}
-                      >
-                        {teamDetail?.spec?.displayName || '-'}
-                      </Typography>
-                      {isTeamAdmin && (
-                        <Button
-                          size="small"
-                          startIcon={<EditIcon />}
-                          onClick={() => startEdit('displayName')}
-                        >
-                          Edit
-                        </Button>
-                      )}
-                    </Box>
-                  )}
-                </Box>
-
-                <Divider />
-
-                {/* Description */}
-                <Box className={classes.fieldRow}>
-                  <Typography
-                    variant="body2"
-                    className={classes.fieldLabel}
-                  >
-                    Description
-                  </Typography>
-                  {editingField === 'description' ? (
-                    <Box className={classes.editForm}>
-                      <TextField
-                        className={classes.editField}
-                        variant="outlined"
-                        size="small"
-                        value={editDescription}
-                        onChange={e => setEditDescription(e.target.value)}
-                        multiline
-                        minRows={2}
-                        autoFocus
-                      />
-                      <Box className={classes.editButtons}>
-                        <Button
-                          size="small"
-                          color="primary"
-                          startIcon={<SaveIcon />}
-                          onClick={() => saveField('description')}
-                          disabled={saving}
-                        >
-                          Save
-                        </Button>
-                        <Button
-                          size="small"
-                          startIcon={<CancelIcon />}
-                          onClick={cancelEdit}
-                          disabled={saving}
-                        >
-                          Cancel
-                        </Button>
-                      </Box>
-                    </Box>
-                  ) : (
-                    <Box display="flex" alignItems="center" style={{ gap: 8 }}>
-                      <Typography
-                        variant="body1"
-                        className={classes.fieldValue}
-                      >
-                        {teamDetail?.spec?.description || '-'}
-                      </Typography>
-                      {isTeamAdmin && (
-                        <Button
-                          size="small"
-                          startIcon={<EditIcon />}
-                          onClick={() => startEdit('description')}
-                        >
-                          Edit
-                        </Button>
-                      )}
-                    </Box>
-                  )}
-                </Box>
-
-                <Divider />
-
-                {/* Namespace (read-only) */}
-                <Box className={classes.fieldRow}>
-                  <Typography
-                    variant="body2"
-                    className={classes.fieldLabel}
-                  >
-                    Namespace
-                  </Typography>
-                  <Typography variant="body1" className={classes.fieldValue}>
-                    {teamDetail?.status?.namespace ||
-                      teamDetail?.metadata?.namespace ||
-                      `team-${team}`}
-                  </Typography>
-                </Box>
-
-                <Divider />
-
-                {/* Created */}
-                <Box className={classes.fieldRow}>
-                  <Typography
-                    variant="body2"
-                    className={classes.fieldLabel}
-                  >
-                    Created
-                  </Typography>
-                  <Typography variant="body1" className={classes.fieldValue}>
-                    {teamDetail?.metadata?.creationTimestamp
-                      ? new Date(
-                          teamDetail.metadata.creationTimestamp,
-                        ).toLocaleDateString(undefined, {
-                          year: 'numeric',
-                          month: 'long',
-                          day: 'numeric',
-                        })
-                      : '-'}
-                  </Typography>
-                </Box>
-              </InfoCard>
-            </Grid>
-
-            {/* Resource Quotas */}
-            <Grid item xs={12} md={6}>
-              <InfoCard title="Resource Quotas">
-                {teamDetail?.spec?.resourceQuotas ? (
-                  <List disablePadding>
-                    {teamDetail.spec.resourceQuotas.maxClusters !==
-                      undefined && (
-                      <ListItem
-                        disableGutters
-                        className={classes.quotaItem}
-                      >
-                        <ListItemText
-                          primary={
-                            <Typography
-                              variant="body2"
-                              className={classes.quotaLabel}
-                            >
-                              Max Clusters
-                            </Typography>
-                          }
-                          secondary={
-                            <Typography
-                              variant="h6"
-                              className={classes.quotaValue}
-                            >
-                              {teamDetail.spec.resourceQuotas.maxClusters}
-                            </Typography>
-                          }
-                        />
-                      </ListItem>
-                    )}
-                    {teamDetail.spec.resourceQuotas.maxWorkersPerCluster !==
-                      undefined && (
-                      <>
-                        <Divider />
-                        <ListItem
-                          disableGutters
-                          className={classes.quotaItem}
-                        >
-                          <ListItemText
-                            primary={
-                              <Typography
-                                variant="body2"
-                                className={classes.quotaLabel}
-                              >
-                                Max Workers per Cluster
-                              </Typography>
-                            }
-                            secondary={
-                              <Typography
-                                variant="h6"
-                                className={classes.quotaValue}
-                              >
-                                {
-                                  teamDetail.spec.resourceQuotas
-                                    .maxWorkersPerCluster
-                                }
-                              </Typography>
-                            }
-                          />
-                        </ListItem>
-                      </>
-                    )}
-                    {teamDetail.spec.resourceQuotas.maxTotalWorkers !==
-                      undefined && (
-                      <>
-                        <Divider />
-                        <ListItem
-                          disableGutters
-                          className={classes.quotaItem}
-                        >
-                          <ListItemText
-                            primary={
-                              <Typography
-                                variant="body2"
-                                className={classes.quotaLabel}
-                              >
-                                Max Total Workers
-                              </Typography>
-                            }
-                            secondary={
-                              <Typography
-                                variant="h6"
-                                className={classes.quotaValue}
-                              >
-                                {
-                                  teamDetail.spec.resourceQuotas
-                                    .maxTotalWorkers
-                                }
-                              </Typography>
-                            }
-                          />
-                        </ListItem>
-                      </>
-                    )}
-                  </List>
-                ) : (
-                  <Typography variant="body2" className={classes.emptyText}>
-                    No resource quotas configured for this team.
-                  </Typography>
-                )}
-              </InfoCard>
-            </Grid>
-
-            {/* Access Configuration */}
-            <Grid item xs={12}>
-              <InfoCard title="Access Configuration">
-                <Grid container spacing={3}>
-                  {/* Users */}
-                  <Grid item xs={12} md={6}>
-                    <Typography variant="subtitle2" gutterBottom>
-                      Users
-                    </Typography>
-                    <Box className={classes.accessSection}>
-                      {teamDetail?.spec?.access?.users &&
-                      teamDetail.spec.access.users.length > 0 ? (
-                        teamDetail.spec.access.users.map((user, index) => (
-                          <Chip
-                            key={`user-${index}`}
-                            label={`${user.email} (${user.role})`}
-                            variant="outlined"
-                            size="small"
-                            className={classes.accessChip}
-                          />
-                        ))
-                      ) : (
-                        <Typography
-                          variant="body2"
-                          className={classes.emptyText}
-                        >
-                          No direct user access configured.
-                        </Typography>
-                      )}
-                    </Box>
-                  </Grid>
-
-                  {/* Groups */}
-                  <Grid item xs={12} md={6}>
-                    <Typography variant="subtitle2" gutterBottom>
-                      Groups
-                    </Typography>
-                    <Box className={classes.accessSection}>
-                      {teamDetail?.spec?.access?.groups &&
-                      teamDetail.spec.access.groups.length > 0 ? (
-                        teamDetail.spec.access.groups.map((group, index) => (
-                          <Chip
-                            key={`group-${index}`}
-                            label={`${group.name} (${group.role})`}
-                            variant="outlined"
-                            size="small"
-                            color="primary"
-                            className={classes.accessChip}
-                          />
-                        ))
-                      ) : (
-                        <Typography
-                          variant="body2"
-                          className={classes.emptyText}
-                        >
-                          No group access configured.
-                        </Typography>
-                      )}
-                    </Box>
-                  </Grid>
-                </Grid>
-              </InfoCard>
-            </Grid>
-    </Grid>
+          </div>
+        </div>
+      </ButlerCard>
+    </ButlerStack>
   );
 };

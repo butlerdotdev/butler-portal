@@ -2,11 +2,9 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import React from 'react';
-import { Routes, Route, useLocation } from 'react-router-dom';
+import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { Header, Page, Content, Progress } from '@backstage/core-components';
 import { makeStyles } from '@material-ui/core/styles';
-import { Typography } from '@material-ui/core';
-import SecurityIcon from '@material-ui/icons/Security';
 import { CookieAuthRefreshProvider } from '@backstage/plugin-auth-react';
 import { TeamProvider } from '../../contexts/TeamProvider';
 import { TeamSwitcher } from '../TeamSwitcher/TeamSwitcher';
@@ -15,6 +13,8 @@ import {
   clustersRouteRef,
   createClusterRouteRef,
   clusterDetailRouteRef,
+  teamEnvironmentsRouteRef,
+  teamProvidersRouteRef,
   teamMembersRouteRef,
   teamSettingsRouteRef,
   adminRouteRef,
@@ -26,10 +26,22 @@ import {
   adminProvidersRouteRef,
   adminCreateProviderRouteRef,
   adminIdentityProvidersRouteRef,
+  adminPoliciesRouteRef,
+  adminObservabilityRouteRef,
+  adminAccessRouteRef,
+  adminAuditRouteRef,
+  teamAuditRouteRef,
+  adminPolicyRouteRef,
   adminCreateIdentityProviderRouteRef,
   adminSettingsRouteRef,
+  adminNetworksRouteRef,
+  adminNetworkPoolRouteRef,
 } from '../../routes';
-import { useIsAdminRoute } from '../../hooks/useButlerRoutes';
+import { butlerTokens } from '../../theme';
+import { ButlerNav, ButlerRoleBanner } from '../ButlerNav';
+import { NotFoundPage } from './NotFoundPage';
+import { useTeamContext } from '../../hooks/useTeamContext';
+import { useButlerRoutes } from '../../hooks/useButlerRoutes';
 import { ButlerErrorBoundary } from '../ErrorBoundary/ErrorBoundary';
 import { ClusterWatchProvider } from '../../contexts/ClusterWatchProvider';
 import { NotificationBell } from '../NotificationBell/NotificationBell';
@@ -102,6 +114,50 @@ const ManagementPage = React.lazy(() =>
 const UsersPage = React.lazy(() =>
   import('../admin/UsersPage').then(m => ({ default: m.UsersPage })),
 );
+const TeamProvidersPage = React.lazy(() =>
+  import('../providers/TeamProvidersPage').then(m => ({
+    default: m.TeamProvidersPage,
+  })),
+);
+const TeamEnvironmentsPage = React.lazy(() =>
+  import('../environments/TeamEnvironmentsPage').then(m => ({
+    default: m.TeamEnvironmentsPage,
+  })),
+);
+const PoliciesPage = React.lazy(() =>
+  import('../admin/PoliciesPage').then(m => ({ default: m.PoliciesPage })),
+);
+const PolicyDetailPage = React.lazy(() =>
+  import('../admin/PolicyDetailPage').then(m => ({
+    default: m.PolicyDetailPage,
+  })),
+);
+const AuditLogPage = React.lazy(() =>
+  import('../admin/AuditLogPage').then(m => ({ default: m.AuditLogPage })),
+);
+const TeamAuditPage = React.lazy(() =>
+  import('../teams/TeamAuditPage').then(m => ({ default: m.TeamAuditPage })),
+);
+const AccessOverviewPage = React.lazy(() =>
+  import('../admin/AccessOverviewPage').then(m => ({
+    default: m.AccessOverviewPage,
+  })),
+);
+const PlatformObservabilityPage = React.lazy(() =>
+  import('../admin/PlatformObservabilityPage').then(m => ({
+    default: m.PlatformObservabilityPage,
+  })),
+);
+const NetworkPoolsPage = React.lazy(() =>
+  import('../admin/NetworkPoolsPage').then(m => ({
+    default: m.NetworkPoolsPage,
+  })),
+);
+const NetworkPoolDetailPage = React.lazy(() =>
+  import('../admin/NetworkPoolDetailPage').then(m => ({
+    default: m.NetworkPoolDetailPage,
+  })),
+);
 const SettingsPage = React.lazy(() =>
   import('../admin/SettingsPage').then(m => ({ default: m.SettingsPage })),
 );
@@ -115,34 +171,13 @@ const CreateIdentityProviderPage = React.lazy(() =>
     default: m.CreateIdentityProviderPage,
   })),
 );
-const useStyles = makeStyles(() => ({
-  adminBanner: {
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    padding: '6px 16px',
-    backgroundColor: 'rgba(124, 58, 237, 0.2)',
-    borderBottom: '1px solid rgba(124, 58, 237, 0.3)',
-  },
-  adminBannerIcon: {
-    fontSize: 14,
-    color: '#a78bfa',
-  },
-  adminBannerText: {
-    fontSize: '0.75rem',
-    fontWeight: 600,
-    color: '#c4b5fd',
-    letterSpacing: '0.05em',
-    textTransform: 'uppercase',
-  },
-  adminBannerSeparator: {
-    color: 'rgba(124, 58, 237, 0.4)',
-    fontSize: '0.75rem',
-  },
-  adminBannerSubtext: {
-    fontSize: '0.75rem',
-    color: 'rgba(167, 139, 250, 0.7)',
+const useStyles = makeStyles(theme => ({
+  // Console page surface inside the Backstage shell: neutral-950 ground,
+  // Inter stack, 24px padding (console `main.p-6`).
+  surface: {
+    backgroundColor: butlerTokens(theme).page,
+    color: butlerTokens(theme).text.primary,
+    fontFamily: butlerTokens(theme).fontSans,
   },
   contentWrapper: {
     position: 'relative' as const,
@@ -161,6 +196,14 @@ const useStyles = makeStyles(() => ({
   contentInner: {
     position: 'relative' as const,
     zIndex: 1,
+    display: 'flex',
+    alignItems: 'stretch',
+    minHeight: 'calc(100vh - 160px)',
+  },
+  main: {
+    flex: 1,
+    minWidth: 0,
+    padding: 24,
   },
   headerActions: {
     display: 'flex',
@@ -169,56 +212,214 @@ const useStyles = makeStyles(() => ({
   },
 }));
 
+// Console sends callers without a platform role back to their team
+// dashboard instead of rendering admin pages that fail later with 403s.
+// A platform viewer keeps the read-only estate the server grants them.
+const AdminRouteGuard = ({ children }: { children: React.ReactElement }) => {
+  const routes = useButlerRoutes();
+  const { canAccessAdmin, loading, teams } = useTeamContext();
+  if (loading) return <Progress />;
+  if (canAccessAdmin) return children;
+  const team = teams[0]?.name;
+  return <Navigate to={team ? routes.team({ team }) : routes.root()} replace />;
+};
+
 const ButlerContent = () => {
   const classes = useStyles();
   const location = useLocation();
   return (
-    <Content>
+    <Content className={classes.surface} noPadding>
       <div className={classes.watermark} />
       <div className={classes.contentInner}>
-      <React.Suspense fallback={<Progress />}>
-        {/* Keyed on the path so navigating away clears a previous error. */}
-        <ButlerErrorBoundary key={location.pathname}>
-        <Routes>
-          <Route path="/" element={<OverviewPage />} />
-          <Route path={teamRouteRef.path} element={<DashboardPage />} />
-          <Route path={clustersRouteRef.path} element={<ClustersPage />} />
-          <Route
-            path={createClusterRouteRef.path}
-            element={<CreateClusterPage />}
-          />
-          <Route
-            path={clusterDetailRouteRef.path}
-            element={<ClusterDetailPage />}
-          />
-          <Route path={teamMembersRouteRef.path} element={<TeamMembersPage />} />
-          <Route path={teamSettingsRouteRef.path} element={<TeamSettingsPage />} />
-          <Route path={adminRouteRef.path} element={<AdminDashboard />} />
-          <Route path={adminClustersRouteRef.path} element={<AdminClustersPage />} />
-          <Route path={adminManagementRouteRef.path} element={<ManagementPage />} />
-          <Route path={adminTeamsRouteRef.path} element={<AdminTeamsPage />} />
-          <Route
-            path={adminTeamDetailRouteRef.path}
-            element={<AdminTeamDetailPage />}
-          />
-          <Route path={adminUsersRouteRef.path} element={<UsersPage />} />
-          <Route path={adminProvidersRouteRef.path} element={<ProvidersPage />} />
-          <Route
-            path={adminCreateProviderRouteRef.path}
-            element={<CreateProviderPage />}
-          />
-          <Route
-            path={adminIdentityProvidersRouteRef.path}
-            element={<IdentityProvidersPage />}
-          />
-          <Route
-            path={adminCreateIdentityProviderRouteRef.path}
-            element={<CreateIdentityProviderPage />}
-          />
-          <Route path={adminSettingsRouteRef.path} element={<SettingsPage />} />
-        </Routes>
-        </ButlerErrorBoundary>
-      </React.Suspense>
+        <ButlerNav />
+        <div className={classes.main}>
+          <React.Suspense fallback={<Progress />}>
+            {/* Keyed on the path so navigating away clears a previous error. */}
+            <ButlerErrorBoundary key={location.pathname}>
+              <Routes>
+                <Route path="/" element={<OverviewPage />} />
+                <Route path={teamRouteRef.path} element={<DashboardPage />} />
+                <Route
+                  path={clustersRouteRef.path}
+                  element={<ClustersPage />}
+                />
+                <Route
+                  path={createClusterRouteRef.path}
+                  element={<CreateClusterPage />}
+                />
+                <Route
+                  path={clusterDetailRouteRef.path}
+                  element={<ClusterDetailPage />}
+                />
+                <Route
+                  path={teamEnvironmentsRouteRef.path}
+                  element={<TeamEnvironmentsPage />}
+                />
+                <Route
+                  path={teamProvidersRouteRef.path}
+                  element={<TeamProvidersPage />}
+                />
+                <Route
+                  path={teamMembersRouteRef.path}
+                  element={<TeamMembersPage />}
+                />
+                <Route
+                  path={teamSettingsRouteRef.path}
+                  element={<TeamSettingsPage />}
+                />
+                <Route
+                  path={teamAuditRouteRef.path}
+                  element={<TeamAuditPage />}
+                />
+                <Route
+                  path={adminRouteRef.path}
+                  element={
+                    <AdminRouteGuard>
+                      <AdminDashboard />
+                    </AdminRouteGuard>
+                  }
+                />
+                <Route
+                  path={adminClustersRouteRef.path}
+                  element={
+                    <AdminRouteGuard>
+                      <AdminClustersPage />
+                    </AdminRouteGuard>
+                  }
+                />
+                <Route
+                  path={adminManagementRouteRef.path}
+                  element={
+                    <AdminRouteGuard>
+                      <ManagementPage />
+                    </AdminRouteGuard>
+                  }
+                />
+                <Route
+                  path={adminTeamsRouteRef.path}
+                  element={
+                    <AdminRouteGuard>
+                      <AdminTeamsPage />
+                    </AdminRouteGuard>
+                  }
+                />
+                <Route
+                  path={adminTeamDetailRouteRef.path}
+                  element={
+                    <AdminRouteGuard>
+                      <AdminTeamDetailPage />
+                    </AdminRouteGuard>
+                  }
+                />
+                <Route
+                  path={adminUsersRouteRef.path}
+                  element={
+                    <AdminRouteGuard>
+                      <UsersPage />
+                    </AdminRouteGuard>
+                  }
+                />
+                <Route
+                  path={adminProvidersRouteRef.path}
+                  element={
+                    <AdminRouteGuard>
+                      <ProvidersPage />
+                    </AdminRouteGuard>
+                  }
+                />
+                <Route
+                  path={adminCreateProviderRouteRef.path}
+                  element={
+                    <AdminRouteGuard>
+                      <CreateProviderPage />
+                    </AdminRouteGuard>
+                  }
+                />
+                <Route
+                  path={adminIdentityProvidersRouteRef.path}
+                  element={
+                    <AdminRouteGuard>
+                      <IdentityProvidersPage />
+                    </AdminRouteGuard>
+                  }
+                />
+                <Route
+                  path={adminCreateIdentityProviderRouteRef.path}
+                  element={
+                    <AdminRouteGuard>
+                      <CreateIdentityProviderPage />
+                    </AdminRouteGuard>
+                  }
+                />
+                <Route
+                  path={adminSettingsRouteRef.path}
+                  element={
+                    <AdminRouteGuard>
+                      <SettingsPage />
+                    </AdminRouteGuard>
+                  }
+                />
+                <Route
+                  path={adminPoliciesRouteRef.path}
+                  element={
+                    <AdminRouteGuard>
+                      <PoliciesPage />
+                    </AdminRouteGuard>
+                  }
+                />
+                <Route
+                  path={adminPolicyRouteRef.path}
+                  element={
+                    <AdminRouteGuard>
+                      <PolicyDetailPage />
+                    </AdminRouteGuard>
+                  }
+                />
+                <Route
+                  path={adminAuditRouteRef.path}
+                  element={
+                    <AdminRouteGuard>
+                      <AuditLogPage />
+                    </AdminRouteGuard>
+                  }
+                />
+                <Route
+                  path={adminAccessRouteRef.path}
+                  element={
+                    <AdminRouteGuard>
+                      <AccessOverviewPage />
+                    </AdminRouteGuard>
+                  }
+                />
+                <Route
+                  path={adminObservabilityRouteRef.path}
+                  element={
+                    <AdminRouteGuard>
+                      <PlatformObservabilityPage />
+                    </AdminRouteGuard>
+                  }
+                />
+                <Route
+                  path={adminNetworksRouteRef.path}
+                  element={
+                    <AdminRouteGuard>
+                      <NetworkPoolsPage />
+                    </AdminRouteGuard>
+                  }
+                />
+                <Route
+                  path={adminNetworkPoolRouteRef.path}
+                  element={
+                    <AdminRouteGuard>
+                      <NetworkPoolDetailPage />
+                    </AdminRouteGuard>
+                  }
+                />
+                <Route path="*" element={<NotFoundPage />} />
+              </Routes>
+            </ButlerErrorBoundary>
+          </React.Suspense>
+        </div>
       </div>
     </Content>
   );
@@ -226,24 +427,10 @@ const ButlerContent = () => {
 
 const ButlerPageInner = () => {
   const classes = useStyles();
-  const isAdminRoute = useIsAdminRoute();
 
   return (
     <>
-      {isAdminRoute && (
-        <div className={classes.adminBanner}>
-          <SecurityIcon className={classes.adminBannerIcon} />
-          <Typography className={classes.adminBannerText}>
-            Admin Mode
-          </Typography>
-          <Typography className={classes.adminBannerSeparator}>
-            &mdash;
-          </Typography>
-          <Typography className={classes.adminBannerSubtext}>
-            Actions affect the entire platform
-          </Typography>
-        </div>
-      )}
+      <ButlerRoleBanner />
       <Page themeId="tool">
         <Header title="Butler" subtitle="Kubernetes-as-a-Service Platform">
           <div className={classes.headerActions}>

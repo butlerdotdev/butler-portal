@@ -1,67 +1,196 @@
 // Copyright 2026 The Butler Authors.
 // SPDX-License-Identifier: Apache-2.0
 
-import { useEffect, useState, useCallback } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { Link as RouterLink } from 'react-router-dom';
 import { useApi } from '@backstage/core-plugin-api';
-import {
-  Table,
-  TableColumn,
-  Progress,
-  EmptyState,
-  Link,
-} from '@backstage/core-components';
-import {
-  Typography,
-  Button,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
-  TextField,
-  makeStyles,
-} from '@material-ui/core';
-import AddIcon from '@material-ui/icons/Add';
-import ArrowBackIcon from '@material-ui/icons/ArrowBack';
-import RefreshIcon from '@material-ui/icons/Refresh';
+import { makeStyles } from '@material-ui/core/styles';
 import { butlerApiRef } from '../../api/ButlerApi';
 import type { TeamInfo } from '../../api/types/teams';
 import { useButlerRoutes } from '../../hooks/useButlerRoutes';
+import { useTeamContext } from '../../hooks/useTeamContext';
+import { butlerTokens, rgb, rgba } from '../../theme';
+import {
+  ButlerButton,
+  ButlerAccessDenied,
+  ButlerCard,
+  ButlerChip,
+  ButlerDialog,
+  ButlerErrorState,
+  ButlerInput,
+  ButlerLoading,
+  ButlerPageHeader,
+  ButlerStack,
+  ButlerTextarea,
+  ChevronRightIcon,
+  PlusIcon,
+  ServerIcon,
+  UserGroupIcon,
+  UsersIcon,
+} from '../ui';
 
-const useStyles = makeStyles(theme => ({
-  header: {
-    display: 'flex',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: theme.spacing(2),
-  },
-  actions: {
-    display: 'flex',
-    gap: theme.spacing(1),
-  },
-  formField: {
-    marginBottom: theme.spacing(2),
-  },
-}));
+/** `/teams` returns the console `TeamResponse`; these fields are optional in TeamInfo. */
+interface AdminTeam extends TeamInfo {
+  description?: string;
+  phase?: string;
+  namespace?: string;
+  memberCount?: number;
+  groupCount?: number;
+}
 
-type TeamRow = {
-  id: string;
-  name: string;
-  displayName: string;
-  clusterCount: number;
-  role: string;
-};
+export function formatMemberCount(members: number, groups: number): string {
+  const m = `${members} member${members === 1 ? '' : 's'}`;
+  const g = `${groups} group${groups === 1 ? '' : 's'}`;
+  if (members === 0 && groups === 0) return '0 members';
+  if (groups === 0) return m;
+  if (members === 0) return g;
+  return `${m} + ${g}`;
+}
+
+const useStyles = makeStyles(theme => {
+  const t = butlerTokens(theme);
+  const p = t.palette;
+  return {
+    grid: {
+      display: 'grid',
+      gridTemplateColumns: '1fr',
+      gap: 16,
+      '@media (min-width: 768px)': {
+        gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
+      },
+      '@media (min-width: 1024px)': {
+        gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
+      },
+    },
+    link: {
+      display: 'block',
+      textDecoration: 'none',
+      color: 'inherit',
+      '&:focus-visible': {
+        outline: `2px solid ${rgb(p.violet[500])}`,
+        outlineOffset: 2,
+        borderRadius: t.radius.lg,
+      },
+    },
+    card: { height: '100%', boxSizing: 'border-box' },
+    top: {
+      display: 'flex',
+      alignItems: 'flex-start',
+      justifyContent: 'space-between',
+      gap: 12,
+      marginBottom: 12,
+    },
+    identity: {
+      display: 'flex',
+      alignItems: 'center',
+      gap: 12,
+      minWidth: 0,
+    },
+    avatar: {
+      width: 40,
+      height: 40,
+      borderRadius: t.radius.lg,
+      backgroundColor: rgba(p.violet[500], 0.2),
+      color: rgb(p.violet[400]),
+      fontWeight: 700,
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      flexShrink: 0,
+    },
+    name: {
+      margin: 0,
+      fontSize: 16,
+      lineHeight: '24px',
+      fontWeight: 500,
+      color: t.text.strong,
+      overflowWrap: 'anywhere',
+    },
+    slug: {
+      margin: 0,
+      fontSize: 12,
+      lineHeight: '16px',
+      color: t.text.subtle,
+    },
+    description: {
+      margin: '0 0 12px',
+      fontSize: 14,
+      lineHeight: '20px',
+      color: t.text.muted,
+      display: '-webkit-box',
+      WebkitLineClamp: 2,
+      WebkitBoxOrient: 'vertical',
+      overflow: 'hidden',
+    },
+    meta: {
+      display: 'flex',
+      alignItems: 'center',
+      gap: 16,
+      fontSize: 14,
+      lineHeight: '20px',
+      color: t.text.subtle,
+    },
+    metaItem: {
+      display: 'flex',
+      alignItems: 'center',
+      gap: 4,
+    },
+    footer: {
+      marginTop: 12,
+      paddingTop: 12,
+      borderTop: `1px solid ${t.border}`,
+      display: 'flex',
+      justifyContent: 'flex-end',
+    },
+    viewDetails: {
+      display: 'flex',
+      alignItems: 'center',
+      gap: 4,
+      fontSize: 12,
+      lineHeight: '16px',
+      color: t.text.subtle,
+    },
+    emptyIcon: {
+      width: 64,
+      height: 64,
+      margin: '0 auto 16px',
+      borderRadius: '50%',
+      backgroundColor: rgb(p.neutral[800]),
+      color: rgb(p.neutral[600]),
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    emptyCard: { padding: 32, textAlign: 'center' },
+    emptyText: {
+      margin: '0 0 16px',
+      fontSize: 16,
+      lineHeight: '24px',
+      color: t.text.muted,
+    },
+    formError: {
+      margin: 0,
+      padding: 12,
+      borderRadius: t.radius.lg,
+      border: `1px solid ${rgba(p.red[500], 0.2)}`,
+      backgroundColor: rgba(p.red[500], 0.1),
+      fontSize: 14,
+      color: rgb(p.red[400]),
+    },
+  };
+});
 
 export const AdminTeamsPage = () => {
   const classes = useStyles();
   const api = useApi(butlerApiRef);
   const routes = useButlerRoutes();
-  const [teams, setTeams] = useState<TeamInfo[]>([]);
+  const { isAdmin } = useTeamContext();
+  const [teams, setTeams] = useState<AdminTeam[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<Error | undefined>();
   const [createOpen, setCreateOpen] = useState(false);
   const [creating, setCreating] = useState(false);
-  const [formData, setFormData] = useState({
+  const [form, setForm] = useState({
     name: '',
     displayName: '',
     description: '',
@@ -73,7 +202,7 @@ export const AdminTeamsPage = () => {
     setError(undefined);
     try {
       const response = await api.listAllTeams();
-      setTeams(response.teams || []);
+      setTeams((response.teams || []) as AdminTeam[]);
     } catch (e) {
       setError(e instanceof Error ? e : new Error(String(e)));
     } finally {
@@ -82,222 +211,224 @@ export const AdminTeamsPage = () => {
   }, [api]);
 
   useEffect(() => {
-    fetchTeams();
-  }, [fetchTeams]);
+    if (isAdmin) fetchTeams();
+  }, [fetchTeams, isAdmin]);
 
-  const handleCreateTeam = async () => {
-    if (!formData.name.trim()) {
+  const closeCreate = () => {
+    setCreateOpen(false);
+    setForm({ name: '', displayName: '', description: '' });
+    setFormError(undefined);
+  };
+
+  const handleCreate = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!form.name.trim()) {
       setFormError('Team name is required.');
       return;
     }
-
-    const nameRegex = /^[a-z0-9][a-z0-9-]*[a-z0-9]$/;
-    if (formData.name.length > 2 && !nameRegex.test(formData.name)) {
+    if (!/^[a-z0-9]([a-z0-9-]*[a-z0-9])?$/.test(form.name)) {
       setFormError(
         'Name must be lowercase alphanumeric with hyphens, and cannot start or end with a hyphen.',
       );
       return;
     }
-
     setCreating(true);
     setFormError(undefined);
     try {
       await api.createTeam({
-        name: formData.name,
-        displayName: formData.displayName || formData.name,
-        description: formData.description,
+        name: form.name,
+        displayName: form.displayName || form.name,
+        description: form.description,
       });
-      setCreateOpen(false);
-      setFormData({ name: '', displayName: '', description: '' });
+      closeCreate();
       fetchTeams();
-    } catch (e) {
+    } catch (err) {
       setFormError(
-        e instanceof Error ? e.message : 'Failed to create team.',
+        err instanceof Error ? err.message : 'Failed to create team.',
       );
     } finally {
       setCreating(false);
     }
   };
 
-  const handleCloseDialog = () => {
-    setCreateOpen(false);
-    setFormData({ name: '', displayName: '', description: '' });
-    setFormError(undefined);
-  };
+  const createButton = (
+    <ButlerButton startIcon={<PlusIcon />} onClick={() => setCreateOpen(true)}>
+      Create Team
+    </ButlerButton>
+  );
 
-  if (loading) {
-    return <Progress />;
-  }
-
-  if (error) {
+  let body: React.ReactNode;
+  // Mutating controls on this page are not individually gated yet, so a
+  // platform viewer is told plainly rather than shown actions that would
+  // be refused.
+  if (!isAdmin) {
     return (
-      <EmptyState
-        title="Failed to load teams"
-        description={error.message}
-        missing="info"
+      <ButlerAccessDenied
+        resourceType="page"
+        message="Platform administrator access is required to manage teams."
+        homeTo={routes.admin()}
       />
     );
   }
 
-  const columns: TableColumn<TeamRow>[] = [
-    {
-      title: 'Name',
-      field: 'name',
-      render: (row: TeamRow) => (
-        <Link to={`./${row.name}`}>{row.name}</Link>
-      ),
-    },
-    {
-      title: 'Display Name',
-      field: 'displayName',
-    },
-    {
-      title: 'Clusters',
-      field: 'clusterCount',
-      type: 'numeric',
-    },
-    {
-      title: 'Role',
-      field: 'role',
-    },
-  ];
-
-  const data: TeamRow[] = teams.map(team => ({
-    id: team.name,
-    name: team.name,
-    displayName: team.displayName || team.name,
-    clusterCount: team.clusterCount,
-    role: team.role,
-  }));
+  if (loading) {
+    body = <ButlerLoading />;
+  } else if (error) {
+    body = (
+      <ButlerErrorState
+        message="Failed to load teams"
+        detail={error.message}
+        onRetry={fetchTeams}
+      />
+    );
+  } else if (teams.length === 0) {
+    body = (
+      <ButlerCard flush className={classes.emptyCard}>
+        <div className={classes.emptyIcon}>
+          <UsersIcon size={32} />
+        </div>
+        <p className={classes.emptyText}>No teams found</p>
+        <ButlerButton onClick={() => setCreateOpen(true)}>
+          Create Your First Team
+        </ButlerButton>
+      </ButlerCard>
+    );
+  } else {
+    body = (
+      <div className={classes.grid} role="list" aria-label="Teams">
+        {teams.map(team => {
+          const phase = team.phase || 'Ready';
+          const label = team.displayName || team.name;
+          return (
+            <div key={team.name} role="listitem">
+              <RouterLink
+                to={routes.adminTeamDetail({ teamName: team.name })}
+                className={classes.link}
+              >
+                <ButlerCard hoverable className={classes.card}>
+                  <div className={classes.top}>
+                    <div className={classes.identity}>
+                      <div className={classes.avatar} aria-hidden>
+                        {label.charAt(0).toUpperCase()}
+                      </div>
+                      <div style={{ minWidth: 0 }}>
+                        <h3 className={classes.name}>{label}</h3>
+                        <p className={classes.slug}>@{team.name}</p>
+                      </div>
+                    </div>
+                    <ButlerChip tone={phase === 'Ready' ? 'green' : 'yellow'}>
+                      {phase}
+                    </ButlerChip>
+                  </div>
+                  {team.description && (
+                    <p className={classes.description}>{team.description}</p>
+                  )}
+                  <div className={classes.meta}>
+                    <span className={classes.metaItem}>
+                      <UserGroupIcon />
+                      {formatMemberCount(
+                        team.memberCount ?? 0,
+                        team.groupCount ?? 0,
+                      )}
+                    </span>
+                    <span className={classes.metaItem}>
+                      <ServerIcon size={16} />
+                      {team.clusterCount} clusters
+                    </span>
+                  </div>
+                  <div className={classes.footer}>
+                    <span className={classes.viewDetails}>
+                      View details
+                      <ChevronRightIcon size={12} />
+                    </span>
+                  </div>
+                </ButlerCard>
+              </RouterLink>
+            </div>
+          );
+        })}
+      </div>
+    );
+  }
 
   return (
-    <div>
-      <Button
-        startIcon={<ArrowBackIcon />}
-        component={RouterLink}
-        to={routes.admin()}
-        style={{ textTransform: 'none', marginBottom: 16 }}
-      >
-        Back to Admin
-      </Button>
-      <div className={classes.header}>
-        <Typography variant="h4">Teams</Typography>
-        <div className={classes.actions}>
-          <Button
-            variant="outlined"
-            size="small"
-            startIcon={<RefreshIcon />}
-            onClick={fetchTeams}
-          >
-            Refresh
-          </Button>
-          <Button
-            variant="contained"
-            color="primary"
-            startIcon={<AddIcon />}
-            onClick={() => setCreateOpen(true)}
-          >
-            Create Team
-          </Button>
-        </div>
-      </div>
+    <ButlerStack>
+      <ButlerPageHeader
+        title="Teams"
+        subtitle="Manage team access and permissions"
+        actions={createButton}
+      />
+      {body}
 
-      {teams.length === 0 ? (
-        <EmptyState
-          title="No teams found"
-          description="Get started by creating your first team."
-          missing="content"
-          action={
-            <Button
-              variant="contained"
-              color="primary"
-              startIcon={<AddIcon />}
-              onClick={() => setCreateOpen(true)}
-            >
-              Create Team
-            </Button>
-          }
-        />
-      ) : (
-        <Table<TeamRow>
-          title={`Teams (${teams.length})`}
-          options={{
-            search: true,
-            paging: teams.length > 20,
-            pageSize: 20,
-            padding: 'dense',
-          }}
-          columns={columns}
-          data={data}
-        />
-      )}
-
-      {/* Create Team Dialog */}
-      <Dialog
+      <ButlerDialog
         open={createOpen}
-        onClose={handleCloseDialog}
-        maxWidth="sm"
-        fullWidth
+        onClose={creating ? () => undefined : closeCreate}
+        busy={creating}
+        title="Create Team"
+        footer={
+          <>
+            <ButlerButton
+              variant="secondary"
+              onClick={closeCreate}
+              disabled={creating}
+            >
+              Cancel
+            </ButlerButton>
+            <ButlerButton
+              type="submit"
+              form="create-team-form"
+              disabled={creating}
+            >
+              {creating ? 'Creating...' : 'Create Team'}
+            </ButlerButton>
+          </>
+        }
       >
-        <DialogTitle>Create Team</DialogTitle>
-        <DialogContent>
+        <form
+          id="create-team-form"
+          onSubmit={handleCreate}
+          style={{ display: 'flex', flexDirection: 'column', gap: 16 }}
+        >
           {formError && (
-            <Typography color="error" variant="body2" gutterBottom>
+            <p className={classes.formError} role="alert">
               {formError}
-            </Typography>
+            </p>
           )}
-          <TextField
-            className={classes.formField}
-            label="Name"
-            helperText="Lowercase alphanumeric with hyphens. Used as the namespace identifier."
-            value={formData.name}
+          <ButlerInput
+            id="teamName"
+            label="Team Name (slug)"
+            value={form.name}
             onChange={e =>
-              setFormData(prev => ({ ...prev, name: e.target.value }))
+              setForm(prev => ({
+                ...prev,
+                name: e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, '-'),
+              }))
             }
-            fullWidth
+            placeholder="engineering-team"
             required
             autoFocus
-            margin="dense"
           />
-          <TextField
-            className={classes.formField}
+          <ButlerInput
+            id="displayName"
             label="Display Name"
-            helperText="Human-readable name for the team."
-            value={formData.displayName}
+            value={form.displayName}
             onChange={e =>
-              setFormData(prev => ({ ...prev, displayName: e.target.value }))
+              setForm(prev => ({ ...prev, displayName: e.target.value }))
             }
-            fullWidth
-            margin="dense"
+            placeholder="Engineering Team"
           />
-          <TextField
-            className={classes.formField}
-            label="Description"
-            helperText="Optional description of the team's purpose."
-            value={formData.description}
+          <ButlerTextarea
+            id="teamDescription"
+            label="Description (optional)"
+            value={form.description}
             onChange={e =>
-              setFormData(prev => ({ ...prev, description: e.target.value }))
+              setForm(prev => ({ ...prev, description: e.target.value }))
             }
-            fullWidth
-            multiline
+            placeholder="Team description..."
             rows={3}
-            margin="dense"
           />
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={handleCloseDialog} disabled={creating}>
-            Cancel
-          </Button>
-          <Button
-            onClick={handleCreateTeam}
-            color="primary"
-            variant="contained"
-            disabled={creating}
-          >
-            {creating ? 'Creating...' : 'Create'}
-          </Button>
-        </DialogActions>
-      </Dialog>
-    </div>
+        </form>
+      </ButlerDialog>
+    </ButlerStack>
   );
 };

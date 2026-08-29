@@ -35,7 +35,11 @@ describe('authorizeRoute', () => {
     });
     expect(decision).toEqual({ kind: 'allow' });
     expect(authorize).toHaveBeenCalledWith(
-      [{ permission: expect.objectContaining({ name: 'butler.cluster.read' }) }],
+      [
+        {
+          permission: expect.objectContaining({ name: 'butler.cluster.read' }),
+        },
+      ],
       { credentials },
     );
   });
@@ -48,7 +52,10 @@ describe('authorizeRoute', () => {
       method: 'DELETE',
       path: '/clusters/ns/c1',
     });
-    expect(decision).toEqual({ kind: 'deny', permission: 'butler.cluster.delete' });
+    expect(decision).toEqual({
+      kind: 'deny',
+      permission: 'butler.cluster.delete',
+    });
   });
 
   it('reports unmapped routes without consulting the policy', async () => {
@@ -72,7 +79,13 @@ describe('authorizeRoute', () => {
       path: '/ws/terminal/tenant/ns/c1',
     });
     expect(authorize).toHaveBeenCalledWith(
-      [{ permission: expect.objectContaining({ name: 'butler.cluster.terminal' }) }],
+      [
+        {
+          permission: expect.objectContaining({
+            name: 'butler.cluster.terminal',
+          }),
+        },
+      ],
       { credentials },
     );
   });
